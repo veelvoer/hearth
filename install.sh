@@ -42,5 +42,5 @@ else
 fi
 
 # when piped from curl, the keyboard is not stdin: reconnect it so the installer can ask questions
-if [ ! -t 0 ] && [ -r /dev/tty ]; then exec node "$SRC/server/hearth-server.js" "$@" </dev/tty; fi
+if [ ! -t 0 ] && (: </dev/tty) 2>/dev/null; then exec node "$SRC/server/hearth-server.js" "$@" </dev/tty; fi
 exec node "$SRC/server/hearth-server.js" "$@"
