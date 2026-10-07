@@ -21,7 +21,7 @@
 - 🔁 **Same chats, same files, everywhere.** Your laptop, your phone and your server always show the same chats and the same project folder.
 - 📥 **"A project was made while you were away."** If your laptop is off, Hearth asks next time: *Install* it here, or *Later*.
 - 🔔 **Get told when Claude is done or needs you.** A message, or even a phone call if you want one.
-- 🧰 **Everything the terminal can do, without the terminal.** Slash commands, skills, plugins, connections, project notes, save & undo changes, model and effort pickers, voice.
+- 🧰 **Everything the terminal can do, without the terminal.** Slash commands, skills, plugins, connections, project notes, save & undo changes, model and effort pickers. (Talking by voice needs an optional voice engine, see `relay/install_voice.sh`.)
 - 📊 **See your Claude limit.** Usage on your desktop and as a phone widget.
 
 > Hearth is a helper app. You still need **Claude Code** and your own **Claude account**. Hearth never sees your Claude password.
