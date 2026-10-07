@@ -36,7 +36,7 @@ if [ -n "$HERE" ] && [ -f "$HERE/server/hearth-server.js" ]; then
 else
   say "Downloading Hearth…"
   rm -rf "$DEST"; mkdir -p "$DEST"
-  curl -fsSL "https://github.com/$REPO/archive/refs/heads/$REF.tar.gz" | tar -xz -C "$DEST" --strip-components=1 \
+  curl -fsSL "https://github.com/$REPO/archive/$REF.tar.gz" | tar -xz -C "$DEST" --strip-components=1 \
     || die "Could not download Hearth from GitHub. Check the internet connection of this server."
   SRC="$DEST"
 fi
