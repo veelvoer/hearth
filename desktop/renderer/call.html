@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Claude is calling</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28px; box-sizing: border-box; -webkit-app-region: drag; }
+  button, a { -webkit-app-region: no-drag; }
+  .spark { animation: ring 1s ease-in-out infinite; }
+  @keyframes ring { 0%,100% { transform: rotate(-8deg) scale(1.0); } 50% { transform: rotate(8deg) scale(1.08); } }
+  .actions { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 22px; }
+</style></head>
+<body>
+  <div id="spark" class="spark"></div>
+  <div class="label" id="kind" style="margin-top:16px"></div>
+  <h2 id="title" style="margin:6px 0"></h2>
+  <p id="text" class="muted" style="margin:0"></p>
+  <div class="actions" id="actions"></div>
+<script src="spark.js"></script>
+<script src="call.js"></script>
+</body></html>

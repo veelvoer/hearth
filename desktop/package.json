@@ -1,0 +1,87 @@
+{
+  "name": "hearth-desktop",
+  "productName": "Hearth",
+  "version": "1.0.0",
+  "description": "Use Claude Code from your computer and your phone",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "test:layout": "electron test/layout.js",
+    "test:sync": "node test/sync.test.js"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "author": {
+    "name": "veelvoer",
+    "url": "https://github.com/veelvoer"
+  },
+  "homepage": "https://github.com/veelvoer/hearth",
+  "build": {
+    "appId": "dev.voer.hearth",
+    "productName": "Hearth",
+    "executableName": "hearth",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.js",
+      "relay/**",
+      "assets/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "artifactName": "Hearth-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hearth",
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Development",
+      "synopsis": "Claude usage, chats, voice and calls",
+      "maintainer": "Hearth contributors"
+    },
+    "portable": {
+      "artifactName": "Hearth-${version}-portable.${ext}"
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/veelvoer/hearth.git"
+  }
+}

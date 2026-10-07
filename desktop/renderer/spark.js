@@ -1,0 +1,5 @@
+'use strict';
+/* The Hearth flame as inline SVG. */
+function sparkSVG(size, color = 'var(--clay)') {
+  return `<svg width="${size}" height="${size}" viewBox="96 80 320 340"><path d="M256 96c10 52 78 86 78 170a78 78 0 0 1-156 0c0-34 18-58 34-76 2 24 14 38 28 44-8-50 4-98 16-138z" fill="${color}"/><path d="M256 262c6 26 38 40 38 72a38 38 0 0 1-76 0c0-20 10-30 20-42 2 12 8 18 14 20-4-24 0-38 4-50z" fill="#FFD3A8"/><path d="M150 392h212" stroke="${color}" stroke-width="24" stroke-linecap="round"/></svg>`;
+}

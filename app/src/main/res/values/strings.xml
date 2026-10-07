@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Hearth</string>
+    <string name="w_tiny">Usage mini</string>
+    <string name="w_small">Usage ring</string>
+    <string name="w_wide">Usage dual</string>
+    <string name="w_strip">Usage strip</string>
+</resources>

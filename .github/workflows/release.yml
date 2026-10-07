@@ -1,0 +1,48 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  desktop:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+        working-directory: desktop
+      - run: npx electron-builder --publish never
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Restore signing key
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+          printf "storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n" "$RUNNER_TEMP/release.jks" "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" "hearth" "${{ secrets.ANDROID_KEY_PASSWORD }}" > "$RUNNER_TEMP/keys.properties"
+      - run: ./gradlew :app:assembleRelease
+        env:
+          CM_KEYSTORE_PROPS: ${{ runner.temp }}/keys.properties
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: app/build/outputs/apk/release/*.apk }
+  publish:
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with: { files: out/* }
