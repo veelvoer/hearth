@@ -73,6 +73,7 @@ handle_path /support/* {
 	reverse_proxy 127.0.0.1:47610
 }
 EOF
+  chmod 644 /etc/caddy/hearth.d/*.caddy   # Caddy runs as its own user and must be able to read them
   systemctl reload caddy || systemctl restart caddy
 else
   echo "  (No Hearth address found. Run the Hearth server installer again, then this script.)"
