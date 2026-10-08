@@ -20,6 +20,12 @@
 
 **Claude Code was not found.** Install it (claude.com/claude-code), open a terminal, type `claude` once and sign in. Then restart Hearth.
 
+## Installing the phone app
+
+**Android says "App not installed" (or "something went wrong").** Almost always an older Hearth is already on the phone that was installed another way (a test build). Android refuses to replace an app with one signed by a different key. Fix: open Settings → Apps → Hearth → **Uninstall**, then install `Hearth-….apk` again. The first time Android also shows "Install anyway" (because Hearth is not in the Play Store) and may ask to allow your browser to install apps: allow it.
+
+If it still fails: the file may be incomplete. Download it again, and make sure your phone has at least 100 MB free.
+
 ## Updates
 
 **How do I update?** Open Hearth → *Settings → Updates → Check for updates* (on the phone: *Settings → Updates*). Hearth looks at the newest release on GitHub. If there is one, press **Update**: the app downloads it and installs it. On the phone, Android asks you once to allow Hearth to install updates, then shows an *Update* button. If you are connected to a server, the same screen can update the server too.
