@@ -4,7 +4,7 @@
 set -euo pipefail
 HOST="${HEARTH_HOST:?set HEARTH_HOST=user@server first}"
 DIR="$(cd "$(dirname "$0")/../desktop/relay" && pwd)"
-FILES="core.js server.js standalone.js ask-mcp.js chathub.js filehub.js tools.js buildsig.js"
+FILES="$(cd "$DIR" && ls *.js | grep -v "^embedded.js$" | tr "\n" " ")"
 (cd "$DIR" && tar -c $FILES) | ssh -o BatchMode=yes -o ConnectTimeout=15 "$HOST" '
   set -e
   if [ -f /opt/hearth/install.json ] && grep -q "\"mode\": \"docker\"" /opt/hearth/install.json; then

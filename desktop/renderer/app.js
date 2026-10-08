@@ -41,9 +41,10 @@ function renderNav() {
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
 }
 function setTab(t) { tab = t; render(); }
+let lastTab = null;
 function render() {
   renderNav();
-  content.className = tab === 'sessions' && S.signedIn ? 'flush' : '';
+  content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
   if (S.settings && !S.settings.onboarded && typeof startTutorial === 'function') startTutorial();
   if (!S.signedIn) return content.append(loginView());
@@ -272,7 +273,8 @@ function updatesCard() {
     rows.innerHTML = '';
     if (!det) { rows.append(h('div', { class: 'small muted' }, 'Checking…')); return; }
     if (det.unavailable) { rows.append(h('div', { class: 'small muted' }, det.unavailable)); return; }
-    for (const [k, name, what] of NAMES) {
+    const names = det.mode === 'release' ? [['desktop', 'This app', 'downloads the new version from GitHub'], ['server', 'Server', 'your server'], ['phone', 'Phone app', 'updates itself']] : NAMES;
+    for (const [k, name, what] of names) {
       const r = det[k] || {};
       rows.append(h('div', { class: 'row' }, h('span', { class: 'pill ' + (r.need ? 'warn' : r.na ? '' : 'ok') }, h('i')), h('div', { class: 'grow' }, h('div', {}, name, h('span', { class: 'small muted' }, '  ' + what)), h('div', { class: 'small ' + (r.need ? '' : 'muted') }, r.text || ''))));
     }
@@ -303,7 +305,10 @@ function pairCard() {
       h('div', { class: 'row' }, h('div', { style: 'font:600 38px ui-monospace,monospace;letter-spacing:.18em;padding:6px 0' }, (i.code || '').replace(/(\d{3})(\d{3})/, '$1 $2')),
         h('button', { class: 'link', onclick: async () => { await cm.newPairCode(); render(); } }, 'New code')),
       h('div', { class: 'small muted' }, 'Scan not finding it? Add it by address instead: ' + (i.addresses.length ? i.addresses.map((a) => a + (i.port === 47601 ? '' : ':' + i.port)).join(' or ') : 'check your network') + '.'),
-      i.platform === 'win32' ? h('div', { class: 'small muted' }, 'If Windows asks, allow Hearth through the firewall on private networks.') : null);
+      i.platform === 'win32' ? h('div', { class: 'small muted' }, 'If Windows asks, allow Hearth through the firewall on private networks.') : null,
+      h('div', { class: 'small muted' }, i.tailscale ? 'Away from home? With Tailscale, use ' + i.tailscale + (i.port === 47601 ? '' : ':' + i.port) + ' as the address.' : 'Away from home? Install the free app Tailscale on this computer and your phone. Hearth then shows a second address here.'),
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, 'Allow connections from the internet'), h('div', { class: 'small muted' }, 'Advanced. Only if you opened a port on your router. It is not encrypted, so Tailscale is the safer way.')),
+        toggle(!!i.allowRemote, async () => { S.settings = await cm.setSettings({ allowRemote: !i.allowRemote }); toast('Restart Hearth to apply this', () => cm.relaunch()); render(); })));
   }).catch(() => { card.append(h('div', { class: 'small err' }, 'Could not read the connection status.')); });
   return card;
 }

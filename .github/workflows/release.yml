@@ -5,7 +5,18 @@ on:
 permissions:
   contents: write
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag must match the version inside the app, the server and the phone app
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          [ "$(node -p "require('./desktop/package.json').version")" = "$V" ] || { echo "desktop/package.json is not $V"; exit 1; }
+          [ "$(node -p "require('./desktop/relay/version.js')")" = "$V" ] || { echo "desktop/relay/version.js is not $V"; exit 1; }
+          grep -q "versionName = \"$V\"" app/build.gradle.kts || { echo "app/build.gradle.kts is not $V"; exit 1; }
   desktop:
+    needs: check
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -26,6 +37,7 @@ jobs:
             desktop/dist/*.AppImage
             desktop/dist/*.deb
   android:
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

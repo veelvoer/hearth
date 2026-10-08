@@ -1,17 +1,18 @@
 'use strict';
 /* First-run tutorial: what the app is, check Claude Code, optional server, connect a phone. Every step can be skipped. */
-const OB = { el: null, step: 0, server: false, phoneMode: null };
+const OB = { el: null, step: 0, where: 'server', connected: false };
 
 function startTutorial() {
   if (OB.el) return;
   OB.step = 0; OB.el = h('div', { class: 'ob' }); document.body.append(OB.el); drawTutorial();
+  cm.setSettings({ onboarded: true }).then((s) => { if (s) S.settings = s; }).catch(() => {});   // shows once, even if the app is closed halfway
 }
 async function endTutorial() {
   if (OB.el) { OB.el.remove(); OB.el = null; }
   try { S.settings = await cm.setSettings({ onboarded: true }); } catch { /* ignore */ }
   if (typeof render === 'function') render();
 }
-const go = (n) => { OB.step = n; drawTutorial(); };
+const go = (n) => { OB.dir = n > OB.step ? 'fwd' : 'back'; OB.step = n; drawTutorial(); };
 
 const STEPS = ['Welcome', 'Your server', 'Claude Code', 'Your phone', 'Your projects', 'Ready'];
 const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash';
@@ -19,7 +20,7 @@ const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/veelvoer/heart
 function drawTutorial() {
   const card = h('div', { class: 'obcard' });
   const dots = h('div', { class: 'obdots' }, STEPS.map((l, i) => h('span', { class: 'obdot' + (i === OB.step ? ' on' : i < OB.step ? ' done' : ''), title: l })));
-  const body = h('div', { class: 'obbody' });
+  const body = h('div', { class: 'obbody' + (OB.dir ? ' ' + OB.dir : '') }); OB.dir = null;   // slide only when the step changes
   const foot = h('div', { class: 'obfoot' });
   const last = STEPS.length - 1;
   card.append(dots, body, foot);
@@ -37,15 +38,22 @@ function drawTutorial() {
       h('p', { class: 'small muted' }, 'This takes about five minutes. You can skip any step and come back from Settings.'));
     foot.append(skip, h('div', { class: 'grow' }), next('Get started'));
   } else if (OB.step === 1) {
-    title('First, set up your server', 'A server is a computer that is always on, far away, like a robot that never sleeps. Hearth lives there, so your phone works even when this laptop is closed.');
-    body.append(h('div', { class: 'obnote' }, h('b', {}, 'Already have a server?'), list(['Open a terminal on the server (for example with ssh).', 'Copy this line, paste it there and press Enter:'], true),
-      h('div', { class: 'obcmd' }, h('code', {}, INSTALL_CMD), h('button', { class: 'ghost sm', onclick: (e) => { cm.copy ? cm.copy(INSTALL_CMD) : navigator.clipboard.writeText(INSTALL_CMD); e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy'; }, 1500); } }, 'Copy')),
-      h('div', { class: 'small muted' }, 'It asks a few easy questions and then shows an address and a 6-digit code. Type them below.')));
-    const addr = h('input', { placeholder: 'Address, like https://1-2-3-4.sslip.io' }), code = h('input', { placeholder: '6-digit code', inputmode: 'numeric', style: 'font-family:ui-monospace,monospace;letter-spacing:.12em' }), msg = h('div', { class: 'small' });
-    const connect = async () => { msg.className = 'small'; msg.textContent = 'Connecting…'; try { await cm.addMachine({ name: '', host: addr.value, token: code.value }); msg.className = 'small okc'; msg.textContent = '✓ Connected to your server'; OB.connected = true; } catch (e) { msg.className = 'small err'; msg.textContent = clean(e); } };
-    body.append(addr, code, h('button', { class: 'primary sm', onclick: connect }, 'Connect'), msg,
-      h('details', { class: 'small muted' }, h('summary', {}, 'I don’t have a server'), h('p', {}, 'Any small Linux server works (about 4 to 6 euros a month at most hosting companies). Pick the cheapest one with Debian or Ubuntu, then come back here. You can also skip this step: Hearth then works only while this computer is on.')));
-    foot.append(back, skip, h('div', { class: 'grow' }), next(OB.connected ? 'Continue' : 'Later'));
+    title('Where should Hearth run?', 'Pick one. You can change it later in Settings.');
+    const opt = (id, name, text) => h('button', { class: 'obopt' + (OB.where === id ? ' on' : ''), onclick: () => { OB.where = id; drawTutorial(); } }, h('b', {}, name), h('span', { class: 'small muted' }, text));
+    body.append(opt('server', 'On a server (recommended)', 'A computer that is always on, far away, like a robot that never sleeps. Your phone works even when this laptop is closed, from anywhere.'),
+      opt('computer', 'On this computer', 'No server needed. Your phone connects straight to this computer, so it works while this computer is on and your phone is on the same Wi-Fi.'));
+    if (OB.where === 'server') {
+      body.append(h('div', { class: 'obnote' }, h('b', {}, 'Already have a server?'), list(['Open a terminal on the server (for example with ssh).', 'Copy this line, paste it there and press Enter:'], true),
+        h('div', { class: 'obcmd' }, h('code', {}, INSTALL_CMD), h('button', { class: 'ghost sm', onclick: (e) => { navigator.clipboard.writeText(INSTALL_CMD); e.target.textContent = 'Copied ✓'; setTimeout(() => { e.target.textContent = 'Copy'; }, 1500); } }, 'Copy')),
+        h('div', { class: 'small muted' }, 'It asks a few easy questions and then shows an address and a 6-digit code. Type them below.')));
+      const addr = h('input', { placeholder: 'Address, like https://1-2-3-4.sslip.io' }), code = h('input', { placeholder: '6-digit code', inputmode: 'numeric', style: 'font-family:ui-monospace,monospace;letter-spacing:.12em' }), msg = h('div', { class: 'small' });
+      const connect = async () => { msg.className = 'small'; msg.textContent = 'Connecting…'; try { await cm.addMachine({ name: '', host: addr.value, token: code.value }); msg.className = 'small okc'; msg.textContent = '✓ Connected to your server'; OB.connected = true; } catch (e) { msg.className = 'small err'; msg.textContent = clean(e); } };
+      body.append(addr, code, h('button', { class: 'primary sm', onclick: connect }, 'Connect'), msg,
+        h('details', { class: 'small muted' }, h('summary', {}, 'I don’t have a server'), h('p', {}, 'Any small Linux server works (about 4 to 6 euros a month at most hosting companies). Pick the cheapest one with Debian or Ubuntu, then come back here. Or choose “On this computer” above.')));
+    } else if (OB.where === 'computer') {
+      body.append(h('div', { class: 'obnote' }, h('b', {}, 'Good to know'), list(['Chats and projects stay on this computer. Hearth on your phone shows them while both are on the same Wi-Fi.', 'Away from home? Install the free app Tailscale on this computer and your phone. Hearth then works anywhere, still without a server.', 'Advanced: you can also open a port on your router (port forwarding). Hearth only talks to devices that know the secret code.'])));
+    }
+    foot.append(back, skip, h('div', { class: 'grow' }), next(OB.where === 'server' && !OB.connected ? 'Later' : 'Continue'));
   } else if (OB.step === 2) {
     title('Is Claude Code installed here?', 'Hearth uses Claude Code, the tool made by Anthropic. It must be on every computer where you work on projects.');
     const res = h('div', { class: 'obnote' }, 'Checking…'); body.append(res);
@@ -72,7 +80,8 @@ function drawTutorial() {
         if (st && st.server) { const r = await cm.phoneCode(); code = r.code; addrs = [r.address]; }
         else { const i = await cm.pairInfo(); code = i.code; addrs = (i.addresses || []).map((a) => a + (i.port === 47601 ? '' : ':' + i.port)); }
         box.className = 'obnote'; box.innerHTML = '';
-        box.append(h('div', { class: 'obcode' }, String(code || '').replace(/(\d{3})(\d{3})/, '$1 $2')), h('div', { class: 'small muted' }, 'Address: ' + (addrs.filter(Boolean).join(' or ') || 'not available') + (st && st.server ? '' : '  ·  phone and computer on the same Wi-Fi')), h('div', { class: 'small muted' }, 'The code works for 10 minutes. You can get a new one in Settings.'));
+        const ts = !(st && st.server) && (await cm.pairInfo().catch(() => ({}))).tailscale;
+        box.append(h('div', { class: 'obcode' }, String(code || '').replace(/(\d{3})(\d{3})/, '$1 $2')), h('div', { class: 'small muted' }, 'Address: ' + (addrs.filter(Boolean).join(' or ') || 'not available') + (st && st.server ? '' : '  ·  phone and computer on the same Wi-Fi')), ts ? h('div', { class: 'small muted' }, 'Away from home with Tailscale: use ' + ts) : null, h('div', { class: 'small muted' }, 'The code works for 10 minutes. You can get a new one in Settings.'));
       } catch (e) { box.className = 'obnote bad'; box.textContent = 'Couldn’t make a code right now: ' + clean(e); }
     })();
     foot.append(back, h('button', { class: 'link', onclick: () => go(4) }, 'Do this later'), h('div', { class: 'grow' }), next('Done'));

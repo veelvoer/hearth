@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
             Sched.ensure(this)
             CallService.sync(this)
             lifecycleScope.launch { Ui.refresh(this@MainActivity) }
+            if (System.currentTimeMillis() - Updates.checkedAt > 6 * 3600_000L) lifecycleScope.launch { Updates.check(this@MainActivity) }
         }
     }
 }
@@ -73,6 +74,7 @@ private fun Root() {
     val c = androidx.compose.ui.platform.LocalContext.current
     var tour by remember { mutableStateOf(!Store.onboarded(c)) }
     LaunchedEffect(Ui.tourRev) { if (Ui.tourRev > 0) tour = true }
+    LaunchedEffect(tour) { if (tour) Store.setOnboarded(c, true) }   // the tutorial shows once; closing the app halfway must not bring it back
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (tour) Welcome { Store.setOnboarded(c, true); tour = false; (c as? MainActivity)?.askNotifications() } else Main()
     }
@@ -83,13 +85,17 @@ private fun Main() {
     var tab = Ui.tab
     val tabs = listOf("Sessions", "Usage", "Settings")
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        Updates.release?.let { r -> androidx.compose.animation.AnimatedVisibility(!Ui.chatOpen && tab != 2, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).clickable { Ui.tab = 2 }.padding(horizontal = 20.dp, vertical = 10.dp)) {
+            Txt("Hearth ${r.version} is ready", T.small, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
+            Txt("Update", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary)
+        } } }
         if (CallSession.active && !Ui.chatOpen) Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary)
             .clickable { Ui.pendingOpen = PendingOpen(CallSession.host, CallSession.sessId, CallSession.title, "", true); Ui.tab = 0 }.padding(horizontal = 20.dp, vertical = 10.dp)) {
             Txt("Call with Claude · tap to return", T.small, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
             Txt("End", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.clickable { CallSession.end() })
         }
         Box(Modifier.weight(1f)) {
-            when (tab) { 0 -> SessionsScreen(); 1 -> UsageScreen(); else -> SettingsScreen() }
+            androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(240), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); else -> SettingsScreen() } }
         }
         if (!Ui.chatOpen) Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
         if (!Ui.chatOpen) Row(Modifier.fillMaxWidth()) {

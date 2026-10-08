@@ -353,6 +353,7 @@ fun SettingsScreen() {
     Screen {
         Header("Settings")
         ComputersCard()
+        UpdatesCard()
         Card { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Label("Help"); Txt("New here? The tutorial shows how to connect.", T.small, muted = true) }; TextAction("Show tutorial") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
         Card {
             Label("Notifications and calls")

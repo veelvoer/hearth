@@ -89,13 +89,21 @@ async function pollLive() {
   }
   if (tab === 'sessions') drawSide();
 }
+/** Messages you sent that the computer's copy of the chat does not show yet (still travelling, or queued for a laptop that is off). They stay visible until they show up. */
+function withUnsent(list, sel) {
+  const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const seen = list.filter((x) => x.role === 'user').slice(-40).map((x) => norm(x.text));
+  SS.unsent = (SS.unsent || []).filter((u) => (u.sel === sel || (u.id && u.id === sel.id)) && Date.now() - u.at < 30 * 60e3 && !seen.some((t) => t === norm(u.text) || (u.text.length > 24 && (t.includes(norm(u.text)) || norm(u.text).includes(t) && t.length > 24))));
+  return SS.unsent.length ? [...list, ...SS.unsent.map((u) => ({ role: 'user', text: u.text, pending: true }))] : list;
+}
 async function loadMsgs(quiet) {
   const s = SS.sel;
   if (!s || !s.id) return;
   try {
-    const m = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/messages?tail=400`);
-    const last = (a) => a.length ? a[a.length - 1] : {};
+    const raw = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/messages?tail=400`);
     if (SS.sel !== s) return;
+    const m = withUnsent(raw, s);
+    const last = (a) => a.length ? a[a.length - 1] : {};
     if (!quiet || m.length !== SS.msgs.length || last(m).text !== last(SS.msgs).text || last(m).result !== last(SS.msgs).result) { SS.msgs = m; renderMsgs(); }
     SS.chatErr = null;
   } catch (e) { SS.chatErr = clean(e); }
@@ -136,11 +144,12 @@ function sessionsView() {
   return root;
 }
 
+function swapPane() { if (!SS.pane) return; SS.pane.classList.remove('swap'); void SS.pane.offsetWidth; SS.pane.classList.add('swap'); }
 function openSession(s, voice) {
   SS.call = 'off';
   SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = []; SS.parts = []; SS.sending = false;
   if (tab !== 'sessions') setTab('sessions');
-  drawSide(); drawPane();
+  drawSide(); drawPane(); swapPane();
   loadMsgs(false).then(() => { if (voice) startVoice(); });
   loadCall();
 }
@@ -171,7 +180,7 @@ function newChat() {
   SS.sel.cwd = (SS.lastCwdBy && SS.lastCwdBy[mid]) || (own && own.cwd) || '';
   SS.msgs = []; SS.parts = []; SS.sending = false; SS.chatErr = null;
   if (tab !== 'sessions') setTab('sessions');
-  drawSide(); drawPane();
+  drawSide(); drawPane(); swapPane();
   const t = $('#composer-text'); if (t) t.focus();
 }
 document.addEventListener('keydown', (e) => { if (tab === 'sessions' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); } });
@@ -357,13 +366,16 @@ function renderMsgs() {
   col.innerHTML = '';
   if (SS.sel && SS.sel.isNew && !SS.msgs.length && !SS.sending) col.append(newChatIntro());
   let tools = null;
+  const key = SS.sel ? (SS.sel.id || 'new') : '', before = SS.shown && SS.shown.key === key ? SS.shown.n : -1;   // messages that are new since the last drawing glide in
   SS.msgs.forEach((m, i) => {
-    if (m.role === 'tool') { if (!tools) { tools = h('div', { class: 'tools' }); col.append(tools); } tools.append(toolCard(m, 'm' + i)); return; }
+    const fresh = before >= 0 && i >= before ? ' fresh' : '';
+    if (m.role === 'tool') { if (!tools) { tools = h('div', { class: 'tools' + fresh }); col.append(tools); } tools.append(toolCard(m, 'm' + i)); return; }
     tools = null;
     if (m.role === 'meta') { col.append(h('div', { class: 'meta' }, m.text)); return; }
-    if (m.role === 'user') col.append(h('div', { class: 'msg user' }, m.text));
-    else col.append(assistantEl(m.text));
+    if (m.role === 'user') col.append(h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, m.text));
+    else { const el = assistantEl(m.text); if (fresh) el.classList.add('fresh'); col.append(el); }
   });
+  SS.shown = { key, n: SS.msgs.length };
   col.append(h('div', { id: 'live' }));
   if (false) col.append(h('div', { class: 'small muted' }, (SS.lastRun.error ? 'Stopped' : 'Done') + (SS.lastRun.ms ? ' in ' + (SS.lastRun.ms >= 60000 ? Math.floor(SS.lastRun.ms / 60000) + 'm ' + Math.round(SS.lastRun.ms % 60000 / 1000) + 's' : Math.round(SS.lastRun.ms / 1000) + 's') : '')));
   if (SS.chatErr) col.append(h('div', { class: 'small err' }, SS.chatErr));
@@ -394,7 +406,8 @@ function sendMsg(text) {
   if (s.isNew && s.kind !== 'talk' && !s.cwd) { SS.chatErr = 'Choose a project folder first.'; renderMsgs(); return; }
   const mm = SS.machines.find((x) => x.id === s.mid);
   if (mm && !mm.secure) localStorage.setItem('cm.lastMachine', mm.id);
-  SS.sending = true; SS.parts = []; SS.chatErr = null; SS.lastRun = null; SS.msgs.push({ role: 'user', text });
+  SS.sending = true; SS.parts = []; SS.chatErr = null; SS.lastRun = null; SS.msgs.push({ role: 'user', text, pending: true });
+  (SS.unsent = SS.unsent || []).push({ text, sel: s, id: s.id || null, at: Date.now() });
   drawPane();
   const finish = async () => {
     delete chatHandlers[sid];
@@ -407,7 +420,7 @@ function sendMsg(text) {
   };
   chatHandlers[sid] = (ev) => {
     if (ev.t === 'queued') { toast(ev.online ? `Sent to ${ev.to}. It runs there now.` : 'Queued. It runs on your laptop when it is online.'); return; }
-    if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; s.title = text.slice(0, 70); drawSide(); } return; }
+    if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; s.title = text.slice(0, 70); (SS.unsent || []).forEach((u) => { if (u.sel === s) u.id = ev.id; }); drawSide(); } return; }
     if (ev.t === 'delta') { const last = SS.parts[SS.parts.length - 1]; if (last && last.type === 'text') last.text += ev.text; else SS.parts.push({ type: 'text', text: ev.text }); }
     else if (ev.t === 'tool') SS.parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, text: ev.text });
     else if (ev.t === 'result') { const t = SS.parts.find((p) => p.type === 'tool' && p.id === ev.id); if (t) { t.result = ev.text; t.error = ev.error; } }

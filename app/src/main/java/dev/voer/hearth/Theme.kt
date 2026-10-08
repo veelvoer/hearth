@@ -30,6 +30,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -81,11 +94,26 @@ fun Txt(s: String, style: TextStyle = T.body, muted: Boolean = false, color: Col
 @Composable
 fun Label(s: String, modifier: Modifier = Modifier) = Txt(s.uppercase(), T.label, muted = true, modifier = modifier)
 
+/** Slides up and fades in the first time it appears. */
+fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { delay(delayMs.toLong()); a.animateTo(1f, tween(340, easing = FastOutSlowInEasing)) }
+    graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 28f }
+}
+
+/** Shrinks a little while pressed and springs back. */
+fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
+    graphicsLayer { scaleX = s; scaleY = s }.clickable(interactionSource = src, indication = null, onClick = onClick)
+}
+
 @Composable
 fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Column(
-        modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
+        modifier.appear().fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
             .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), shape).padding(18.dp),
         content = content,
     )
@@ -139,7 +167,7 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
 fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Box(
-        modifier.clip(RoundedCornerShape(12.dp)).background(cs.primary).clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        modifier.pressable(onClick).clip(RoundedCornerShape(12.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) { Txt(text, T.body.copy(fontWeight = FontWeight.Medium), color = cs.onPrimary) }
 }

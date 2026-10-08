@@ -22,6 +22,7 @@
 - 📥 **"A project was made while you were away."** If your laptop is off, Hearth asks next time: *Install* it here, or *Later*.
 - 🔔 **Get told when Claude is done or needs you.** A message, or even a phone call if you want one.
 - 🧰 **Everything the terminal can do, without the terminal.** Slash commands, skills, plugins, connections, project notes, save & undo changes, model and effort pickers. (Talking by voice needs an optional voice engine, see `relay/install_voice.sh`.)
+- 🔄 **Updates itself from GitHub.** Press *Check for updates*: the phone app, the desktop app and your server all update, no cable needed.
 - 📊 **See your Claude limit.** Usage on your desktop and as a phone widget.
 
 > Hearth is a helper app. You still need **Claude Code** and your own **Claude account**. Hearth never sees your Claude password.
@@ -83,7 +84,7 @@ Found a problem? See [SECURITY.md](SECURITY.md).
 
 ## Questions
 
-**Do I need a server?** It is the easy way: it is always on, so your phone works when your laptop is closed. Hearth also works with only your computer (phone and computer on the same Wi-Fi), but the server is what makes it feel magic.
+**Do I need a server?** It is the easy way: it is always on, so your phone works when your laptop is closed. Hearth also works with only your computer: the desktop app can be the server. Your phone then connects while both are on the same Wi-Fi, or anywhere with the free app [Tailscale](https://tailscale.com) on both.
 **Does it cost money?** Hearth is free. You pay for your server (a few euros) and for your Claude plan.
 **Mac / iPhone?** Not yet. The desktop app is built with Electron, so a Mac build is possible; the phone app is Android only for now. Help is welcome!
 **Is this an official Anthropic product?** No. Hearth is an independent project and is not made by or affiliated with Anthropic. "Claude" is a trademark of Anthropic.

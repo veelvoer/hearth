@@ -24,6 +24,8 @@ fun Welcome(finish: () -> Unit) {
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
     var connected by remember { mutableStateOf(Store.machines(c).isNotEmpty()) }
+    var found by remember { mutableStateOf<List<Machine>>(emptyList()) }
+    var scanning by remember { mutableStateOf(false) }
     val last = 3
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
@@ -33,7 +35,13 @@ fun Welcome(finish: () -> Unit) {
             }
         }
         Spacer(Modifier.height(24.dp))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        androidx.compose.animation.AnimatedContent(step, Modifier.weight(1f), transitionSpec = {
+            val dir = if (targetState > initialState) 1 else -1
+            androidx.compose.animation.ContentTransform(
+                targetContentEnter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(320)) { it / 5 * dir } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(320)),
+                initialContentExit = androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(220)) { -it / 5 * dir } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
+            )
+        }, label = "step") { step -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             when (step) {
                 0 -> {
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Spark(84.dp) }
@@ -68,7 +76,7 @@ fun Welcome(finish: () -> Unit) {
                     if (connected) {
                         Card { Txt("✓ Connected: ${Store.machines(c).joinToString { it.name }}", T.body) }
                     } else {
-                        AddComputer(null) { m ->
+                        androidx.compose.runtime.key(found.firstOrNull()?.host) { AddComputer(found.firstOrNull()) { m ->
                             if (m != null) {
                                 val had = Store.machines(c)
                                 Store.saveMachines(c, had.filter { it.host != m.host } + m)
@@ -76,9 +84,10 @@ fun Welcome(finish: () -> Unit) {
                                 CallService.sync(c); Ui.machinesRev++; connected = true
                                 Toast.makeText(c, "Connected to ${m.name}", Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        } }
                         Spacer(Modifier.height(8.dp))
-                        Txt("No server? You can also connect straight to your computer when both are on the same Wi-Fi: open Hearth on the computer and use the address and code it shows.", T.small, muted = true)
+                        Txt("No server? You can connect straight to your computer when both are on the same Wi-Fi. Open Hearth on the computer: it shows an address and a code.", T.small, muted = true)
+                        TextAction(if (scanning) "Looking…" else "Find my computer on this Wi-Fi") { if (!scanning) scope.launch { scanning = true; found = withContext(Dispatchers.IO) { Relay.discover() }; scanning = false; if (found.isEmpty()) Toast.makeText(c, "Nothing found. Type the address from the computer.", Toast.LENGTH_LONG).show() } }
                     }
                 }
                 2 -> {
@@ -100,7 +109,7 @@ fun Welcome(finish: () -> Unit) {
                     Txt("Hearth is an independent app and is not made by or affiliated with Anthropic. “Claude” is a trademark of Anthropic.", T.small, muted = true)
                 }
             }
-        }
+        } }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (step in 1 until last) { TextAction("Back") { step -= 1 }; Spacer(Modifier.width(20.dp)) }

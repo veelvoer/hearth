@@ -203,7 +203,7 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
 
 @Composable
 private fun SessionCard(s: Sess, machine: String?, now: Long, onClick: () -> Unit) {
-    Card(Modifier.clickable(onClick = onClick)) {
+    Card(Modifier.pressable(onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (s.running || s.busy) Box(Modifier.size(8.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary))
             if (s.running || s.busy) Spacer(Modifier.width(8.dp))
@@ -371,6 +371,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
     val scope = rememberCoroutineScope()
     var sess by remember { mutableStateOf(s0) }
     val msgs = remember { mutableStateListOf<Msg>() }
+    val settled = remember { mutableIntStateOf(-1) }   // how many messages were there when the chat opened: later ones glide in
+    val unsent = remember { mutableStateListOf<Pair<String, Long>>() }   // sent, but not in the computer's copy of the chat yet: they stay visible until they show up
     val parts = remember { mutableStateListOf<Part>() }
     var sending by remember { mutableStateOf(false) }
     var serverBusy by remember { mutableStateOf(false) }
@@ -410,7 +412,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
     suspend fun reload() {
         if (sess.id.isEmpty()) return
         runCatching { withContext(Dispatchers.IO) { Relay.messages(m, sess.id) } }
-            .onSuccess { if (it.size != msgs.size || it.lastOrNull()?.text != msgs.lastOrNull()?.text || it.lastOrNull()?.result != msgs.lastOrNull()?.result) { msgs.clear(); msgs.addAll(it) }; err = null }
+            .onSuccess { raw ->
+                val norm = { t: String -> t.replace(Regex("\\s+"), " ").trim() }
+                val seen = raw.filter { x -> x.role == "user" }.takeLast(40).map { x -> norm(x.text) }
+                unsent.removeAll { u -> val t = norm(u.first); System.currentTimeMillis() - u.second > 30 * 60_000 || seen.any { x -> x == t || (t.length > 24 && (x.contains(t) || (t.contains(x) && x.length > 24))) } }
+                val it = raw + unsent.map { u -> Msg("user", u.first) }
+                if (it.size != msgs.size || it.lastOrNull()?.text != msgs.lastOrNull()?.text || it.lastOrNull()?.result != msgs.lastOrNull()?.result) { msgs.clear(); msgs.addAll(it) }; if (settled.intValue < 0) settled.intValue = msgs.size; err = null }
             .onFailure { err = it.message ?: "Can't reach ${m.name}" }
     }
     LaunchedEffect(sess.id) {
@@ -430,7 +437,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
         val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
         if (text.isEmpty() || sending || uploading) return
         input = ""; files.clear(); sending = true; parts.clear(); err = null
-        msgs.add(Msg("user", text))
+        msgs.add(Msg("user", text)); unsent.add(text to System.currentTimeMillis())
         val isNew = sess.id.isEmpty()
         scope.launch {
             runCatching {
@@ -467,7 +474,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
             Spacer(Modifier.width(16.dp))
             TextAction("Close", back)
         }
-        if (options) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Label("How much can Claude do on its own?")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v } }
@@ -497,10 +504,11 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
                 Chip("Also if it needs me", call == "attention") { setCall("attention") }
             }
             Txt("You always get a message when Claude finishes or needs you. A call only happens if you pick one here.", T.small, muted = true)
-        }
+        } }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty()) item { Txt(if (sess.kind == "talk") "What's on your mind?" else "What should we build in ${folder(sess.cwd)}?", T.title, modifier = Modifier.padding(top = 24.dp)) }
-            itemsIndexed(msgs) { _, msg ->
+            itemsIndexed(msgs) { idx, msg ->
+              Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
                 when (msg.role) {
                     "user" -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                         Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(14.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(14.dp)).padding(12.dp)) { Txt(msg.text, T.body) }
@@ -509,6 +517,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
                     "meta" -> Txt(msg.text, T.small, muted = true)
                     else -> MarkdownText(msg.text)
                 }
+              }
             }
             itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err) else MarkdownText(p.text) }
             if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }

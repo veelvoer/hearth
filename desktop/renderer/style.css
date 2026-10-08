@@ -259,3 +259,50 @@ textarea.notes { width: 100%; font-family: inherit; }
 .obcmd { display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .obcmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 12.5px ui-monospace, monospace; user-select: all; }
 .obbody details summary { cursor: pointer; }
+.msg.user.pending { opacity: .72; }
+
+/* ───────── motion ───────── */
+:root { --ease: cubic-bezier(.2, .8, .2, 1); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popin { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes slideup { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes fromright { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes fromleft { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes msgin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* screens glide in, their cards one after another */
+.entering .page > .card, .entering .page > .head { animation: rise .4s var(--ease) both; }
+.entering .page > :nth-child(2) { animation-delay: .04s; } .entering .page > :nth-child(3) { animation-delay: .08s; } .entering .page > :nth-child(4) { animation-delay: .12s; }
+.entering .page > :nth-child(5) { animation-delay: .16s; } .entering .page > :nth-child(6) { animation-delay: .2s; } .entering .page > :nth-child(n+7) { animation-delay: .24s; }
+.entering .split { animation: fadein .3s ease both; }
+.pane.swap { animation: fadein .22s ease both; }
+
+/* controls feel alive */
+button, .chip, .item, .toggle, select, input, textarea { transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .14s var(--ease), box-shadow .2s ease, opacity .2s ease; }
+button:not(:disabled):active, .chip:active { transform: scale(.96); }
+button.primary:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--clay) 35%, transparent); }
+button.ghost:hover, .chip:hover { border-color: color-mix(in srgb, var(--clay) 50%, var(--line)); }
+.item { transition: background-color .18s ease, border-color .18s ease, transform .18s var(--ease); }
+.item:hover { transform: translateX(2px); }
+.toggle::after { transition: transform .22s var(--ease); }
+input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--clay) 22%, transparent); }
+
+/* messages, panels, popups */
+.msg.fresh, .md.fresh, .tools.fresh { animation: msgin .3s var(--ease) both; }
+.modal { animation: fadein .18s ease both; }
+.mcard { animation: popin .26s var(--ease) both; }
+.updcard { animation: slideup .34s var(--ease) both; }
+.slashmenu:not([hidden]) { animation: popin .16s var(--ease) both; }
+.tool[open] > .tbody { animation: fadein .22s ease both; }
+.ob { animation: fadein .25s ease both; }
+.obcard { animation: popin .34s var(--ease) both; }
+.obbody.fwd { animation: fromright .3s var(--ease) both; }
+.obbody.back { animation: fromleft .3s var(--ease) both; }
+.obdot { transition: width .3s var(--ease), background-color .3s ease, opacity .3s ease; }
+.ghead .chev { transition: transform .2s var(--ease); }
+.toast { animation: slideup .3s var(--ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}

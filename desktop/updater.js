@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 const { sigOfDir } = require('./relay/buildsig');
+const gh = require('./relay/selfupdate');
 
 const SKIP = new Set(['node_modules', 'dist', 'build', '.gradle', '.git', 'test', 'diagnostics', '.uploads']);
 
@@ -42,19 +43,28 @@ function create(d) {
   const sigs = () => ({ desktop: hashFiles(desktopFiles()), phone: hasAndroid ? hashFiles(phoneFiles()) : '' });
   const relaySig = () => sigOfDir(path.join(desktopDir, 'relay'));   // what the server and this computer's relay should be running
 
+  const releaseMode = !hasSource;   // an installed app updates from GitHub releases; a source checkout updates from its own files
+  let ghCache = null;
+  const latest = async () => { if (!ghCache || Date.now() - ghCache.at > 60000) ghCache = { at: Date.now(), r: await gh.latest().catch(() => null) }; return ghCache.r; };
+  async function computeRelease() {
+    const l = await latest(), cur = d.version(), sv = await d.relayStatus('server');   // sv: object, null (unreachable) or undefined (no server)
+    const server = !!(l && sv && sv.version && sv.canSelfUpdate && gh.newer(l.version, sv.version));
+    return { mode: 'release', latest: l && l.version, desktop: !!(l && gh.newer(l.version, cur)), phone: false, server, cur, sv, l };
+  }
+
   const loaded = hasSource ? sigs().desktop : '';   // what this running app was started from
   let running = false, dismissedAt = 0, last = '';
 
   /** What is out of date. The server and this computer's relay are asked what they really run; the phone is judged by the last install from here. */
   async function compute() {
-    if (!hasSource) return null;
+    if (releaseMode) return computeRelease();
     const sg = sigs(), dep = d.getState().deployed || {}, rs = relaySig();
     const srv = hasServer ? await d.relayBuild('server') : undefined;     // string = build, '' = older relay, null = unreachable, undefined = none
     const loc = await d.relayBuild('local');
     const localNeed = typeof loc === 'string' && loc !== rs;
     return { desktop: sg.desktop !== loaded || localNeed, phone: hasAndroid && sg.phone !== dep.phone, server: typeof srv === 'string' && srv !== rs, sigs: sg, rs, srv, loc };
   }
-  const summary = (n) => (n && (n.desktop || n.phone || n.server) ? { desktop: n.desktop, phone: n.phone, server: n.server, canPhone: hasAndroid, canServer: hasServer } : null);
+  const summary = (n) => (n && (n.desktop || n.phone || n.server) ? { desktop: n.desktop, phone: n.phone, server: n.server, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest } : null);
 
   async function check(force = false) {
     if (running) return;
@@ -69,7 +79,14 @@ function create(d) {
 
   /** For the Settings screen: the state of each part, in words. */
   async function details() {
-    if (!hasSource) return { unavailable: 'Updates are only available when the app runs from your project folder.', checkedAt: Date.now() };
+    if (releaseMode) {
+      const n = await computeRelease();
+      if (!n.l) return { unavailable: 'Could not look for updates right now. Check your internet connection.', checkedAt: Date.now() };
+      const srv = n.sv === undefined ? { na: true, text: 'No server connected' } : n.sv === null ? { na: true, text: 'The server can\'t be reached right now' }
+        : !n.sv.version ? { need: false, na: true, text: 'Older server: run the installer line again to update it' }
+        : n.server ? { need: true, text: `Version ${n.sv.version} · update to ${n.latest}` } : gh.newer(n.latest, n.sv.version) ? { na: true, text: 'Version ' + n.sv.version + ' · update it on the server with: hearth-server update' } : { text: 'Version ' + n.sv.version + ' · up to date' };
+      return { mode: 'release', checkedAt: Date.now(), desktop: { need: n.desktop, text: n.desktop ? `Version ${n.cur} · update to ${n.latest}` : `Version ${n.cur} · up to date` }, phone: { na: true, text: 'Update it inside the phone app (Settings → Updates)' }, server: srv };
+    }
     const n = await compute(), dep = d.getState().deployed || {};
     const when = dep.phoneAt ? new Date(dep.phoneAt).toLocaleDateString() : '';
     return {
@@ -99,9 +116,72 @@ function create(d) {
   const adbDevices = (adb) => new Promise((resolve) => execFile(adb, ['devices'], { timeout: 8000 }, (e, out) => resolve(e ? null : String(out).split('\n').slice(1).filter((l) => /\tdevice$/.test(l.trim() + '')).map((l) => l.split('\t')[0]))));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  const download = (url, file, onPct) => new Promise((resolve, reject) => {
+    gh.get(url, { ms: 120000 }).then((rs) => {
+      const total = Number(rs.headers['content-length']) || 0; let got = 0, last = 0;
+      const out = fs.createWriteStream(file);
+      rs.on('data', (c) => { got += c.length; if (total && Date.now() - last > 300) { last = Date.now(); onPct(Math.floor(got * 100 / total)); } });
+      rs.pipe(out); out.on('finish', () => resolve()); out.on('error', reject); rs.on('error', reject);
+    }, reject);
+  });
+  async function installDesktop(l, say) {
+    const pick = (re) => l.assets.find((a) => re.test(a.name));
+    const tmp = path.join(os.tmpdir(), 'hearth-update'); fs.mkdirSync(tmp, { recursive: true });
+    if (process.platform === 'linux' && process.env.APPIMAGE) {
+      const a = pick(/AppImage$/); if (!a) throw new Error('No AppImage in the newest release.');
+      const target = process.env.APPIMAGE, part = target + '.new';
+      await download(a.url, part, (p) => say('desktop', `Downloading the new version… ${p}%`)); fs.chmodSync(part, 0o755); fs.renameSync(part, target);
+      return { relaunch: target };
+    }
+    if (process.platform === 'win32' && !process.env.PORTABLE_EXECUTABLE_FILE) {
+      const a = pick(/win-x64\.exe$/); if (!a) throw new Error('No installer in the newest release.');
+      const file = path.join(tmp, a.name); await download(a.url, file, (p) => say('desktop', `Downloading the new version… ${p}%`));
+      spawn('cmd', ['/c', 'start', '/wait', '""', file, '/S', '&&', 'start', '""', process.execPath], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+      return { quit: true };
+    }
+    if (process.platform === 'linux') {   // installed from a .deb: the system installer asks for the password itself
+      const a = pick(/\.deb$/); if (!a) throw new Error('No package in the newest release.');
+      const file = path.join(os.homedir(), 'Downloads', a.name); fs.mkdirSync(path.dirname(file), { recursive: true });
+      await download(a.url, file, (p) => say('desktop', `Downloading the new version… ${p}%`));
+      d.openPath(file); return { manual: 'The installer is open. Press Install, then start Hearth again.' };
+    }
+    d.openExternal('https://github.com/veelvoer/hearth/releases/latest'); return { manual: 'The download page is open in your browser.' };
+  }
+  async function runRelease(want, say) {
+    const l = await latest(); let failed = false, relaunch = null;
+    if (want.server) {
+      say('server', 'Updating the server…');
+      try {
+        if (await d.serverBusy()) throw new Error('Claude is working on the server right now. Try again when it has finished.');
+        const r = await d.relayPost('server', '/admin/update', {});
+        if (r && r.restarting) { for (let i = 0; i < 30; i++) { await sleep(1500); const sv = await d.relayStatus('server').catch(() => null); if (sv && sv.version === r.to) break; } }
+        say('server', 'Server updated', 'ok');
+      } catch (e) { failed = true; say('server', e.message, 'fail'); }
+    }
+    if (want.desktop && l) {
+      try {
+        if (await d.localBusy()) throw new Error('Claude is working on this computer right now. Try again when it has finished.');
+        say('desktop', 'Downloading the new version…');
+        const r = await installDesktop(l, say);
+        if (r.manual) say('desktop', r.manual, 'ok'); else { say('desktop', 'Restarting…', 'ok'); relaunch = r; }
+      } catch (e) { failed = true; say('desktop', e.message, 'fail'); }
+    }
+    return { failed, relaunch };
+  }
+
   async function run(want) {
     if (running) return;
     running = true;
+    if (releaseMode) {
+      const say = (step, text, state = 'run') => d.send('update-progress', { step, text, state });
+      let res = { failed: true };
+      try { res = await runRelease(want, say); } finally {
+        running = false;
+        if (res.relaunch) { await sleep(1200); d.relaunch(res.relaunch.relaunch || null); }
+        else { d.send('update-progress', { step: 'end', state: res.failed ? 'fail' : 'ok' }); if (!res.failed) last = ''; }
+      }
+      return;
+    }
     const say = (step, text, state = 'run') => d.send('update-progress', { step, text, state });
     let failed = false;
     try {

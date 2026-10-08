@@ -5,7 +5,7 @@ const { start } = require('./server');
 const dir = process.env.CM_DIR;
 let r = null, lastCode = '';
 const say = (m) => { try { process.send(m); } catch { /* app gone */ } };
-start({ dir, moveRoot: process.env.CM_MOVE_ROOT || '', onLog: (m) => say({ t: 'log', m }) }).then((x) => {
+start({ dir, moveRoot: process.env.CM_MOVE_ROOT || '', allowRemote: process.env.CM_ALLOW_REMOTE === '1', onLog: (m) => say({ t: 'log', m }) }).then((x) => {
   r = x;
   if (!x.ok) return say({ t: 'ready', ok: false, inUse: x.inUse, error: x.error });
   say({ t: 'ready', ok: true, port: x.port, token: x.token, addresses: x.addresses(), code: x.pairCode() });

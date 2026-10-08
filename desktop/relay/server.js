@@ -18,6 +18,8 @@ const { spawn, spawnSync } = require('child_process');
 const core = require('./core');
 const chathub = require('./chathub');
 const filehub = require('./filehub');
+const selfupdate = require('./selfupdate');
+const VERSION = require('./version');
 const tools = require('./tools');
 const zlib = require('zlib');
 const BUILD = require('./buildsig').sigOfDir(__dirname);   // what code this relay is running
@@ -39,6 +41,7 @@ const rank = (f) => ({ off: 0, done: 1, attention: 2 }[f] || 0);
 function lanOnly(addr) {
   const a = String(addr || '').replace(/^::ffff:/, '').split('%')[0];
   if (a === '::1' || /^127\./.test(a) || /^10\./.test(a) || /^192\.168\./.test(a) || /^169\.254\./.test(a)) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a)) return true;   // Tailscale
   const m = /^172\.(\d+)\./.exec(a);
   if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
   return /^f[cd][0-9a-f]{2}:/i.test(a) || /^fe80:/i.test(a);
@@ -58,6 +61,7 @@ function findClaude() {
 
 function start(opts) {
   const dir = opts.dir, port = opts.port || Number(process.env.CM_PORT) || 47601, host = opts.host || '0.0.0.0';
+  const reach = (a) => !!opts.allowRemote || lanOnly(a);   // normally only your own network; "reach from outside" is an opt-in for port forwarding
   const publicMode = !!opts.publicMode, allowBypass = opts.allowBypass !== false;
   const onLog = opts.onLog || (() => {});
   let root = null;
@@ -286,7 +290,7 @@ function start(opts) {
   const failures = new Map(); // ip -> {n, until}
   const authed = (req, res) => {
     const ip = clientIp(req);
-    if (!publicMode && !lanOnly(ip)) { json(res, 403, { error: 'local network only' }); return false; }
+    if (!publicMode && !reach(ip)) { json(res, 403, { error: 'local network only' }); return false; }
     const f = failures.get(ip);
     if (f && f.until > Date.now()) { json(res, 429, { error: 'too many failed attempts, try again later' }); return false; }
     const got = Buffer.from(req.headers.authorization || ''), want = Buffer.from('Bearer ' + token);
@@ -463,9 +467,9 @@ function start(opts) {
         return json(res, r.code || 200, r.data);
       }
       if (req.method === 'GET') {
-        if (parts[0] === 'info') { if (publicMode ? !authed(req, res) : !lanOnly(ip)) return undefined; return json(res, 200, { name: opts.name || os.hostname(), claude: !!findClaude(), root, public: publicMode }); }
+        if (parts[0] === 'info') { if (publicMode ? !authed(req, res) : !reach(ip)) return undefined; return json(res, 200, { name: opts.name || os.hostname(), claude: !!findClaude(), root, public: publicMode }); }
         if (!authed(req, res)) return undefined;
-        if (parts[0] === 'status') return json(res, 200, { away: away(), build: BUILD, listeners: clients.size, root, allowBypass, moveRoot, laptop: laptopOnline(), queued: work.length });
+        if (parts[0] === 'status') return json(res, 200, { away: away(), build: BUILD, version: VERSION, canSelfUpdate: !!opts.selfUpdate, listeners: clients.size, root, allowBypass, moveRoot, laptop: laptopOnline(), queued: work.length });
         if (parts[0] === 'voice' && parts[1] === 'status') return proxyVoice(req, res);
         if (parts[0] === 'stats') return json(res, 200, core.stats(Math.max(1, Math.min(90, Number(u.searchParams.get('days')) || 30))));
         if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || inRoot(cwd)) ? cwd : '', findClaude())); }
@@ -502,6 +506,10 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
+        if (parts[0] === 'admin' && parts[1] === 'latest') {   // is there a newer Hearth on GitHub than the one running here?
+          try { const l = await selfupdate.latest(); return json(res, 200, { current: VERSION, latest: l.version, newer: selfupdate.newer(l.version, VERSION), notes: l.notes, canSelfUpdate: !!opts.selfUpdate }); }
+          catch (e) { return json(res, 502, { error: 'Could not look on GitHub: ' + e.message }); }
+        }
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event));
         if (parts[0] === 'sessions' && parts.length === 1) {
@@ -513,10 +521,14 @@ function start(opts) {
         }
         if (parts[0] === 'sessions' && parts[2] === 'messages') {
           const ew = hubSync && hubSync.findElsewhere(parts[1]);
-          if (ew) return json(res, 200, core.messagesOf(ew, Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80))));
+          const tail = Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80));
+          // messages that were sent but wait for a laptop that is off: show them, so a sent prompt never seems to vanish
+          const waiting = work.filter((w) => w.session === parts[1] && w.text).map((w) => ({ role: 'user', text: String(root ? w.text.split(chathub.MARK).join(root) : w.text), pending: true }));
+          const withWaiting = (list) => { const n = (t) => String(t || '').replace(/\s+/g, ' ').trim(), seen = list.filter((m) => m.role === 'user').slice(-40).map((m) => n(m.text)); return [...list, ...waiting.filter((w) => !seen.includes(n(w.text)))]; };
+          if (ew) return json(res, 200, withWaiting(core.messagesOf(ew, tail)));
           const f = core.findSession(parts[1]);
           if (f && !visibleSession(core.summarize(f))) return json(res, 403, { error: 'outside the projects folder' });
-          return json(res, 200, core.messages(parts[1], Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80))));
+          return json(res, 200, withWaiting(core.messages(parts[1], tail)));
         }
         if (parts[0] === 'sessions' && parts[2] === 'prefs') return json(res, 200, getPrefs(parts[1]));
         if (parts[0] === 'sessions' && parts[2] === 'stream') {
@@ -546,7 +558,7 @@ function start(opts) {
           return json(res, 403, { error: 'wrong or expired code' });
         }
         if (parts[0] === 'pair' && !parts[1]) {  // desktop app only: the 6-digit code on screen is the proof
-          if (publicMode || !lanOnly(ip)) return json(res, 403, { error: 'not available here' });
+          if (publicMode || !reach(ip)) return json(res, 403, { error: 'not available here' });
           if (Date.now() < pair.lockedUntil) return json(res, 429, { error: 'too many tries, wait a minute' });
           const b = await bodyJson(req);
           if (String(b.code || '') === pair.code) { newCode(); return json(res, 200, { token, name: os.hostname() }); }
@@ -704,6 +716,18 @@ function start(opts) {
         if (parts[0] === 'agent' && parts[1] === 'files' && parts[2] === 'delete') {
           if (!hubFiles) return json(res, 404, { error: 'this is not the server' });
           return json(res, 200, hubFiles.remove(String(b.rel || '')));
+        }
+        if (parts[0] === 'admin' && parts[1] === 'update') {   // replace this server's program with the newest release, then restart (the service manager starts it again)
+          if (!opts.selfUpdate) return json(res, 400, { error: 'This one updates together with its app.' });
+          if ([...jobs.values()].some((j) => !j.done)) return json(res, 409, { error: 'Claude is working on this server right now. Try again when it has finished.' });
+          try {
+            const l = await selfupdate.latest();
+            if (!selfupdate.newer(l.version, VERSION)) return json(res, 200, { ok: true, from: VERSION, to: VERSION, restarting: false });
+            const to = await selfupdate.apply(l.tag, opts.relayDir || __dirname);
+            json(res, 200, { ok: true, from: VERSION, to, restarting: true });
+            setTimeout(() => process.exit(0), 800);
+          } catch (e) { return json(res, 500, { error: e.message }); }
+          return undefined;
         }
         if (parts[0] === 'sync' && parts[1] === 'projects' && parts[2] === 'accept') {   // "Install": this computer now keeps these project folders too
           if (!fileAgent) return json(res, 400, { error: 'this computer is not linked to a server' });
@@ -879,7 +903,7 @@ function start(opts) {
   const fileSyncOn = () => !fs.existsSync(path.join(dir, 'no-filesync'));   // a file with that name turns it off (for people who use Syncthing instead)
   async function syncOverview() {
     const base = hubSync ? hubSync.status() : agentSync ? { ...agentSync.status(), linked: true } : { role: 'single', linked: !!link };
-    return { ...base, files: hubFiles ? { count: hubFiles.count() } : fileAgent ? fileAgent.status() : null, pending: pendingProjects, build: BUILD, now: Date.now(), syncthing: await syncStatus('claude-projects').catch(() => ({ available: false })) };
+    return { ...base, files: hubFiles ? { count: hubFiles.count() } : fileAgent ? fileAgent.status() : null, pending: pendingProjects, build: BUILD, version: VERSION, now: Date.now(), syncthing: await syncStatus('claude-projects').catch(() => ({ available: false })) };
   }
 
   // ── discovery (desktop app only) ──

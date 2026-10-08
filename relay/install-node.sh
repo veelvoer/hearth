@@ -18,7 +18,7 @@ link_old() { [ -e "$1" ] && [ ! -e "$2" ] && ln -s "$1" "$2" || true; }   # the 
 link_old "$HOME/.local/share/claude-meter-relay" "$HOME/.local/share/hearth-relay"
 link_old "$HOME/.config/claude-meter-relay" "$HOME/.config/hearth-relay"
 rm -f "$DEST/chatsync.js"
-install -m 644 "$SRC/core.js" "$SRC/server.js" "$SRC/standalone.js" "$SRC/ask-mcp.js" "$SRC/chathub.js" "$SRC/filehub.js" "$SRC/tools.js" "$SRC/buildsig.js" "$DEST/"
+install -m 644 $(ls "$SRC"/*.js | grep -v "/embedded.js$") "$DEST/"
 SEED=""; VOICE=""
 [ -f "$HOME/.config/hearth-relay/token" ] && SEED="--seed-token-file $HOME/.config/hearth-relay/token" && VOICE="--voice-port 47602 --voice-token-file $HOME/.config/hearth-relay/token"
 cat > "$UNIT" <<EOF

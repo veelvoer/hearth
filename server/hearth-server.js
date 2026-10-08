@@ -16,8 +16,8 @@ const { spawn, spawnSync } = require('child_process');
 
 const REPO = path.resolve(__dirname, '..');
 const RELAY_SRC = path.join(REPO, 'desktop', 'relay');
-const RELAY_FILES = ['core.js', 'server.js', 'standalone.js', 'ask-mcp.js', 'chathub.js', 'filehub.js', 'tools.js', 'buildsig.js'];
-const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(REPO, 'desktop', 'package.json'), 'utf8')).version; } catch { return '1.0.0'; } })();
+const RELAY_FILES = (() => { try { return fs.readdirSync(RELAY_SRC).filter((f) => f.endsWith('.js') && f !== 'embedded.js'); } catch { return []; } })();   // the program files of the server
+const VERSION = (() => { try { return require(path.join(RELAY_SRC, 'version.js')); } catch { return '1.0.0'; } })();
 const PORT = 47601;
 
 // ───────────────────────── arguments ─────────────────────────
@@ -171,7 +171,7 @@ const dockerfileText = () => `FROM node:22-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* \\
  && npm install -g @anthropic-ai/claude-code
 WORKDIR /app
-COPY relay/ /app/relay/
+COPY --chown=node:node relay/ /app/relay/
 USER node
 ENV HOME=/home/node
 EXPOSE ${PORT}
@@ -272,7 +272,7 @@ async function install() {
   try {
     if (!docker) {
       if (isRoot && !PREFIX && spawnSync('id', ['hearth']).status !== 0) await must('Create a user called "hearth"', 'useradd', ['-m', '-s', '/bin/bash', 'hearth']);
-      await must('Copy Hearth to ' + INSTALL_DIR, 'sh', ['-c', `mkdir -p '${relayDir}' && cp ${RELAY_FILES.map((f) => `'${RELAY_SRC}/${f}'`).join(' ')} '${relayDir}/' && mkdir -p '${INSTALL_DIR}/installer' && cp '${__dirname}/hearth-server.js' '${INSTALL_DIR}/installer/' && chmod -R a+rX '${INSTALL_DIR}'`], { sudo: !PREFIX });
+      await must('Copy Hearth to ' + INSTALL_DIR, 'sh', ['-c', `mkdir -p '${relayDir}' && cp ${RELAY_FILES.map((f) => `'${RELAY_SRC}/${f}'`).join(' ')} '${relayDir}/' && mkdir -p '${INSTALL_DIR}/installer' && cp '${__dirname}/hearth-server.js' '${INSTALL_DIR}/installer/' && chmod -R a+rX '${INSTALL_DIR}' && chown -R ${user} '${relayDir}' 2>/dev/null || true`], { sudo: !PREFIX });
       await must('Make the projects folder', 'sh', ['-c', `mkdir -p '${projects}' '${cfgDir}' && chown -R ${user} '${projects}' '${cfgDir}' 2>/dev/null || true`], { sudo: !PREFIX });
       if (!claudeAlready && !PREFIX) await must('Install Claude Code (this is the part that does the thinking)', 'npm', ['install', '-g', '@anthropic-ai/claude-code'], { sudo: true });
       else ok('Claude Code is already installed');

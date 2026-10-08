@@ -33,6 +33,7 @@ start({
   publicMode: !args.includes('--lan'),
   projectsRoot: args.includes('--lan') && !args.includes('--projects') ? null : get('projects', path.join(os.homedir(), 'projects')),
   allowBypass: args.includes('--allow-bypass'),
+  selfUpdate: true, relayDir: __dirname,
   moveRoot: get('move-root', ''),
   seedToken: get('seed-token-file', '') ? (() => { try { return fs.readFileSync(get('seed-token-file', ''), 'utf8'); } catch { return ''; } })() : '',
   voice: get('voice-port', '') ? { port: Number(get('voice-port', '')), tokenFile: get('voice-token-file', '') } : null,

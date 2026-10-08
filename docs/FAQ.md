@@ -18,6 +18,16 @@
 
 **Claude Code was not found.** Install it (claude.com/claude-code), open a terminal, type `claude` once and sign in. Then restart Hearth.
 
+## Updates
+
+**How do I update?** Open Hearth → *Settings → Updates → Check for updates* (on the phone: *Settings → Updates*). Hearth looks at the newest release on GitHub. If there is one, press **Update**: the app downloads it and installs it. On the phone, Android asks you once to allow Hearth to install updates, then shows an *Update* button. If you are connected to a server, the same screen can update the server too.
+
+**The phone says the update cannot be installed.** Android only installs an update when it is signed by the same key as the installed app. If you installed a test build, remove the app once and install the one from the GitHub release.
+
+## Using your computer as the server
+
+You do not need a rented server. In the tutorial choose **On this computer**. Your phone connects to the address and code that the desktop app shows (*Settings → Connect your phone*). Away from home, install **Tailscale** on both devices (free): the desktop app then shows a second address to use. Opening a port on your router also works, but it is not encrypted, so Tailscale is the safer choice.
+
 ## General
 
 **What does Hearth cost?** Nothing. You pay for your server and your Claude plan.

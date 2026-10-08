@@ -139,7 +139,7 @@ function startRelay() {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     const child = fork(path.join(__dirname, 'relay', 'embedded.js'), [], {
-      execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', CM_DIR: app.getPath('userData'), CM_MOVE_ROOT: path.join(os.homedir(), 'projects') }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', CM_DIR: app.getPath('userData'), CM_MOVE_ROOT: path.join(os.homedir(), 'projects'), CM_ALLOW_REMOTE: S.settings.allowRemote ? '1' : '0' }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     });
     relayProc = child;
     const info = { ok: false, pairCode: () => info.code || '', addresses: () => info.addrs || [], newPairCode: () => { child.send({ t: 'newcode' }); return info.code || ''; }, stop: () => { try { child.kill(); } catch { /* gone */ } } };
@@ -425,7 +425,7 @@ function setAutostart(on) {
 h('pair:info', () => ({
   embedded: !!(relayInfo && relayInfo.ok), external: !!(relayInfo && relayInfo.inUse), error: relayInfo && !relayInfo.ok && !relayInfo.inUse ? relayInfo.error : null,
   code: relayInfo && relayInfo.ok ? relayInfo.pairCode() : null, port: relayInfo && relayInfo.ok ? relayInfo.port : 47601,
-  addresses: relayInfo && relayInfo.ok ? relayInfo.addresses() : [], name: os.hostname(), claude: !!relayMod.findClaude(), hooks: hooksStatus(), platform: process.platform,
+  addresses: relayInfo && relayInfo.ok ? relayInfo.addresses() : [], tailscale: ((relayInfo && relayInfo.ok ? relayInfo.addresses() : []).find((a) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a))) || null, allowRemote: !!S.settings.allowRemote, name: os.hostname(), claude: !!relayMod.findClaude(), hooks: hooksStatus(), platform: process.platform,
 }));
 h('pair:newcode', () => (relayInfo && relayInfo.ok ? relayInfo.newPairCode() : null));
 h('hooks:install', () => hooksInstall());
@@ -467,6 +467,7 @@ async function checkPending() {
   const fresh = lastPend.filter((p) => !pendSeen.has(p.name)); fresh.forEach((p) => pendSeen.add(p.name));
   if (fresh.length) notify(fresh.length === 1 ? 'New project: ' + fresh[0].name : fresh.length + ' new projects', 'Made on your server while this computer was off. Open Hearth to install ' + (fresh.length === 1 ? 'it' : 'them') + '.', () => showMain());
 }
+h('app:relaunch', () => { quitting = true; app.relaunch(); app.quit(); return true; });
 h('projects:pending', async () => { await checkPending().catch(() => {}); return lastPend; });
 h('projects:accept', async (e, names) => {
   const m = machines().find((x) => x.local); if (!m) throw new Error('This computer is not running Hearth yet.');
@@ -628,8 +629,12 @@ app.whenReady().then(async () => {
   upd = updater.create({
     root: path.join(__dirname, '..'), desktopDir: __dirname, getState: () => S, save, send: (ch, data) => broadcast(ch, data),
     serverBusy: () => anyRunning(machines().find((m) => m.secure)), localBusy: () => anyRunning(machines().find((m) => m.local)),
-    relaunch: () => { quitting = true; app.relaunch(); app.quit(); },
+    relaunch: (execPath) => { quitting = true; if (execPath) app.relaunch({ execPath, args: process.argv.slice(1).filter((a) => a === '--hidden') }); else app.relaunch(); app.quit(); },
     relayBuild: async (which) => { const m = which === 'server' ? machines().find((x) => x.secure) : machines().find((x) => x.local); if (!m) return undefined; try { const st = await relayJson(m, 'GET', '/status'); return typeof st.build === 'string' ? st.build : ''; } catch { return null; } },
+    version: () => app.getVersion(),
+    relayStatus: async (which) => { const m = which === 'server' ? machines().find((x) => x.secure) : machines().find((x) => x.local); if (!m) return undefined; try { return await relayJson(m, 'GET', '/status'); } catch { return null; } },
+    relayPost: async (which, p, body) => { const m = which === 'server' ? machines().find((x) => x.secure) : machines().find((x) => x.local); if (!m) throw new Error('No server connected'); return relayJson(m, 'POST', p, body); },
+    openPath: (f) => shell.openPath(f), openExternal: (u) => shell.openExternal(u),
     notify: (t, b) => notify(t, b), windowHidden: () => !main || main.isDestroyed() || !main.isVisible(),
   });
   setTimeout(() => upd.check(), 15000); setInterval(() => upd.check(), 120000);
