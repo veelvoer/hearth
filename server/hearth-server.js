@@ -330,7 +330,7 @@ async function setupCaddy(info, domain, upstream) {
     if (!/import\s+\/etc\/caddy\/hearth\.caddy/.test(has)) await sudoWrite(main, (has ? has.replace(/\s*$/, '\n\n') : '') + 'import /etc/caddy/hearth.caddy\n');
   }
   await openFirewall();
-  if (!PREFIX) await must('Turn on the padlock', 'sh', ['-c', 'systemctl enable caddy && systemctl reload caddy || systemctl restart caddy'], { sudo: true });
+  if (!PREFIX) await must('Turn on the padlock', 'sh', ['-c', 'systemctl enable caddy && systemctl restart caddy'], { sudo: true });
 }
 async function openFirewall() {
   if (PREFIX || DRY) return;
@@ -398,7 +398,7 @@ async function main() {
   if (cmd === 'uninstall') {
     banner(); say('This removes the Hearth server program. Your projects and chats stay where they are.'); if (!(await confirm('Remove Hearth from this server?', false))) return undefined;
     if (meta.mode === 'docker') await run('Stop Hearth', 'docker', ['compose', 'down'], { sudo: true, cwd: INSTALL_DIR });
-    else await run('Stop Hearth', 'sh', ['-c', 'systemctl disable --now hearth; rm -f /etc/systemd/system/hearth.service /etc/caddy/hearth.caddy; systemctl daemon-reload; systemctl reload caddy 2>/dev/null; true'], { sudo: true });
+    else await run('Stop Hearth', 'sh', ['-c', 'systemctl disable --now hearth; rm -f /etc/systemd/system/hearth.service /etc/caddy/hearth.caddy; systemctl daemon-reload; systemctl restart caddy 2>/dev/null; true'], { sudo: true });
     await run('Remove the program files', 'sh', ['-c', `rm -rf '${INSTALL_DIR}/relay' '${INSTALL_DIR}/installer' '${INSTALL_DIR}/install.json' /usr/local/bin/hearth-server`], { sudo: true });
     ok('Hearth is removed.'); return undefined;
   }

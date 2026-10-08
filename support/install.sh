@@ -74,7 +74,7 @@ handle_path /support/* {
 }
 EOF
   chmod 644 /etc/caddy/hearth.d/*.caddy   # Caddy runs as its own user and must be able to read them
-  systemctl reload caddy || systemctl restart caddy
+  systemctl restart caddy   # not "reload": Caddy 2.6 (Debian) can crash on reload
 else
   echo "  (No Hearth address found. Run the Hearth server installer again, then this script.)"
 fi
