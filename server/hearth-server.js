@@ -162,6 +162,7 @@ ${domain} {
 		X-Content-Type-Options "nosniff"
 		-Server
 	}
+	import /etc/caddy/hearth.d/*.caddy
 	reverse_proxy ${upstream} {
 		flush_interval -1
 	}
@@ -321,6 +322,7 @@ async function setupCaddy(info, domain, upstream) {
     else if (info.pm === 'dnf') await must('Install Caddy (it makes the safe padlock)', 'dnf', ['install', '-y', 'caddy'], { sudo: true });
     else throw new Error('I do not know how to install Caddy on this system. Install it from caddyserver.com, or choose the Docker option');
   } else ok('Caddy is already installed');
+  await sudoWrite(sysPath('/etc/caddy/hearth.d/00-hearth.caddy'), '# extra routes for this server (the support desk adds one here)\n');
   await sudoWrite(sysPath('/etc/caddy/hearth.caddy'), caddyText(domain, upstream));
   const main = sysPath('/etc/caddy/Caddyfile');
   if (!PREFIX) {

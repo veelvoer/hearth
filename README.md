@@ -89,7 +89,7 @@ Found a problem? See [SECURITY.md](SECURITY.md).
 **Mac / iPhone?** Not yet. The desktop app is built with Electron, so a Mac build is possible; the phone app is Android only for now. Help is welcome!
 **Is this an official Anthropic product?** No. Hearth is an independent project and is not made by or affiliated with Anthropic. "Claude" is a trademark of Anthropic.
 
-More answers in the [FAQ](docs/FAQ.md).
+More answers in the [FAQ](docs/FAQ.md). Still stuck? Open **Settings → Support** in the app and write to us. We answer by email ([how the support desk works](docs/SUPPORT.md)).
 
 ## Build it yourself
 

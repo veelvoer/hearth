@@ -175,6 +175,7 @@ function settingsView() {
   const v = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Voice'), h('div', { class: 'small muted', id: 'vstat' }, 'Checking…'));
   cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { $('#vstat') && ($('#vstat').textContent = s.stt && s.tts ? `${ms[0].name}: Whisper and Piper ready. Talk from any session.` : 'Run relay/install_voice.sh to enable local voice.'); }).catch(() => { $('#vstat') && ($('#vstat').textContent = 'The relay isn\'t reachable. Run relay/install.sh.'); }) : ($('#vstat').textContent = 'No relay found. Run relay/install.sh on this computer.'));
   p.append(v);
+  p.append(h('div', { class: 'card row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Support'), h('div', { class: 'small muted' }, 'Found a bug, have a question or an idea? Write to us. We answer by email.')), h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact support')));
   return p;
 }
 

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('cm', {
   relay: inv('relay'), send: inv('send'),
   voiceStatus: inv('voice:status'), stt: inv('voice:stt'), tts: inv('voice:tts'),
   callAction: inv('call:action'),
+  supportState: inv('support:state'), supportStart: inv('support:start'), supportVerify: inv('support:verify'), supportLogout: inv('support:logout'), support: inv('support:call'),
   pairRequests: inv('pair:requests'), decidePair: inv('pair:decide'), relaunch: inv('app:relaunch'), pendingProjects: inv('projects:pending'), acceptProjects: inv('projects:accept'),
   on: (ch, cb) => {
     if (!CHANNELS.includes(ch)) return () => {};

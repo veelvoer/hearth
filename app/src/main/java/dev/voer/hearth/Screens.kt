@@ -335,6 +335,8 @@ fun UsageScreen() {
 fun SettingsScreen() {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
+    var support by remember { mutableStateOf(false) }
+    if (support) { SupportScreen { support = false }; return }
     var thr by remember { mutableStateOf(Store.thresholds(c)) }
     var interval by remember { mutableIntStateOf(Store.interval(c)) }
     var nreset by remember { mutableStateOf(Store.notifyReset(c)) }
@@ -473,6 +475,12 @@ fun SettingsScreen() {
             Txt("Android may delay background work to save battery. Opening the app always refreshes.", T.small, muted = true)
         }
         }
-        Txt("Unofficial. Reads your limits from the same endpoint Claude Code uses; Anthropic can change it without notice. Your token is encrypted on this device and only sent to Anthropic.", T.small, muted = true)
+        Card {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { Label("Support"); Txt("Found a bug, have a question or an idea? Write to us. We answer by email.", T.small, muted = true) }
+                Button("Contact", Modifier) { support = true }
+            }
+        }
+        Txt("Hearth is an independent app, not made by or affiliated with Anthropic. Your usage limits come from what Claude Code reports on your own computer or server; Hearth never sees your Claude login.", T.small, muted = true)
     }
 }

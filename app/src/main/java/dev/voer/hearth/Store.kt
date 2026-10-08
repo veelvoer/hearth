@@ -91,6 +91,9 @@ object Store {
     fun setNotifyReset(c: Context, v: Boolean) = sp(c).edit().putBoolean("nreset", v).apply()
     fun callMe(c: Context) = sp(c).getBoolean("callme", false)
     fun setCallMe(c: Context, v: Boolean) = sp(c).edit().putBoolean("callme", v).apply()
+    fun supportToken(c: Context): String? = sp(c).getString("support_t", null)?.let { runCatching { Crypto.dec(it) }.getOrNull() }
+    fun supportEmail(c: Context): String? = sp(c).getString("support_e", null)
+    fun setSupport(c: Context, token: String?, email: String?) = sp(c).edit().apply { if (token == null) { remove("support_t"); remove("support_e") } else { putString("support_t", Crypto.enc(token)); putString("support_e", email) } }.apply()
     fun lastMachine(c: Context): String? = sp(c).getString("lastm", null)
     fun setLastMachine(c: Context, host: String) = sp(c).edit().putString("lastm", host).apply()
     /** Language the call is held in: "en" or "nl". Replies are still spoken in the language they are written in. */

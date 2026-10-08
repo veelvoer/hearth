@@ -309,3 +309,10 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in s
 #cardhost { position: fixed; right: 18px; bottom: 18px; z-index: 130; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; max-height: calc(100vh - 36px); overflow-y: auto; pointer-events: none; }
 #cardhost > * { pointer-events: auto; }
 #cardhost .updcard { position: static; max-width: calc(100vw - 36px); }
+.mcard.sup { width: min(560px, 94vw); }
+.spitem { text-align: left; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); width: 100%; }
+.spitem:hover { border-color: color-mix(in srgb, var(--clay) 50%, var(--line)); background: var(--bg); }
+.spthread { display: flex; flex-direction: column; gap: 10px; }
+.spmsg { padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 92%; }
+.spmsg.user { align-self: flex-end; background: var(--bg); }
+.spmsg.support { align-self: flex-start; border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); background: color-mix(in srgb, var(--clay) 8%, transparent); }

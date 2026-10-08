@@ -484,6 +484,21 @@ h('pair:decide', async (e, id, accept) => {
   const m = machines().find((x) => x.local); if (!m) throw new Error('This computer is not running Hearth yet.');
   await relayJson(m, 'POST', '/pair/decision', { id, accept: !!accept }); await checkPairRequests().catch(() => {}); return lastPairReq;
 });
+// ── support: sign in with an emailed code, send requests, read answers (the desk lives on the project's server) ──
+const SUPPORT_URL = process.env.HEARTH_SUPPORT_URL || 'https://cm.vpswb.store/support';
+async function supportCall(method, p, body, auth = true) {
+  const headers = { 'Content-Type': 'application/json' }; if (auth && S.settings.supportToken) headers.Authorization = 'Bearer ' + S.settings.supportToken;
+  let r; try { r = await fetch(SUPPORT_URL + p, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) }); } catch { throw new Error('Could not reach support. Check your internet connection and try again.'); }
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && auth) { S.settings.supportToken = ''; S.settings.supportEmail = ''; save(); }
+  if (!r.ok) throw new Error(j.error || 'Support said ' + r.status);
+  return j;
+}
+h('support:state', () => ({ email: S.settings.supportToken ? S.settings.supportEmail || '' : '', signedIn: !!S.settings.supportToken, meta: { app: 'Desktop', version: app.getVersion(), platform: `${os.type()} ${os.release()}` } }));
+h('support:start', (e, email) => supportCall('POST', '/auth/start', { email }, false));
+h('support:verify', async (e, email, code) => { const j = await supportCall('POST', '/auth/verify', { email, code }, false); S.settings.supportToken = j.token; S.settings.supportEmail = j.email; save(); return { email: j.email }; });
+h('support:logout', async () => { try { await supportCall('POST', '/auth/logout', {}); } catch { /* signed out anyway */ } S.settings.supportToken = ''; S.settings.supportEmail = ''; save(); return true; });
+h('support:call', (e, method, p, body) => supportCall(method, p, body));
 h('app:relaunch', () => { quitting = true; app.relaunch(); app.quit(); return true; });
 h('projects:pending', async () => { await checkPending().catch(() => {}); return lastPend; });
 h('projects:accept', async (e, names) => {

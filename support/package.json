@@ -1,0 +1,10 @@
+{
+  "name": "hearth-support",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Hearth support desk: sign in with an email code, send requests, and answer them from your mailbox.",
+  "license": "MIT",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test/support.test.js" },
+  "dependencies": { "imapflow": "^1.0.164", "mailparser": "^3.7.1", "nodemailer": "^6.9.16" }
+}
