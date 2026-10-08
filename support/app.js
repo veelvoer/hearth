@@ -127,6 +127,6 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
       return send(404, { error: 'unknown' });
     } catch (e) { return send(500, { error: 'Something went wrong on our side.' }); }
   }
-  return { handle, inbound, flushOutbox, db: () => db, plus, stripQuoted, addSupportMessage };
+  return { handle, inbound, flushOutbox, db: () => db, save, plus, stripQuoted, addSupportMessage };
 }
 module.exports = { createApp };

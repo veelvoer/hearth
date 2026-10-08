@@ -14,29 +14,45 @@ const app = createApp({ dataDir: process.env.SUPPORT_DATA || path.join(__dirname
 const port = Number(process.env.SUPPORT_PORT || 47610);
 http.createServer((req, res) => app.handle(req, res)).listen(port, '127.0.0.1', () => console.log('Support desk on 127.0.0.1:' + port));
 
-// answers come back as emails: look at the mailbox now and then
+// answers come back as emails: look at the mailbox now and then.
+// Messages are followed by number (UID), not by "unread": reading a mail in Gmail must never make us miss it.
 const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 let busy = false;
+const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 async function poll() {
   if (busy) return; busy = true;
-  const c = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user, pass }, logger: false });
+  const db = app.db(); db.mail = db.mail || { lastUid: 0, ids: [] };
+  const c = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user, pass }, logger: false, connectionTimeout: 20000, greetingTimeout: 20000, socketTimeout: 45000 });
+  c.on('error', (e) => log('mailbox connection problem:', e.message));   // without this a timeout would stop the whole program
   try {
     await c.connect(); const lock = await c.getMailboxLock('INBOX');
     try {
-      for await (const msg of c.fetch({ seen: false }, { source: true, uid: true })) {
-        const m = await simpleParser(msg.source);
-        const auth = String(m.headers.get('authentication-results') || '');
-        if (!m.headers.get('x-hearth-mail')) {
-          const r = await app.inbound({ from: (m.from && m.from.value[0] && m.from.value[0].address) || '', to: (m.to ? m.to.value : []).map((x) => x.address).concat((m.headers.get('delivered-to') ? [String(m.headers.get('delivered-to'))] : [])), subject: m.subject || '', text: m.text || '', authOk: /(dkim|spf)=pass/i.test(auth) });
-          if (!r.handled && r.why) console.error('ignored a mail:', r.why);
+      const top = c.mailbox.uidNext - 1;
+      if (db.mail.lastUid === 0 && top > 0) db.mail.lastUid = Math.max(0, top - 200);   // the first time: look at the newest 200 messages
+      if (top > db.mail.lastUid) {
+        const found = [];
+        for await (const msg of c.fetch(`${db.mail.lastUid + 1}:*`, { source: true, uid: true }, { uid: true })) if (msg.uid > db.mail.lastUid) found.push(msg);
+        for (const msg of found.sort((x, y) => x.uid - y.uid)) {
+          try {
+            const m = await simpleParser(msg.source), mid = String(m.messageId || msg.uid);
+            if (!db.mail.ids.includes(mid) && !m.headers.get('x-hearth-mail')) {
+              const arH = m.headers.get('authentication-results'), auth = arH ? (typeof arH === 'string' ? arH : JSON.stringify(arH)) : '';
+              // a mail that Gmail did not receive from outside (we answered from the mailbox itself) has no such header; anything from outside always has one, and must pass
+              const r = await app.inbound({ from: (m.from && m.from.value[0] && m.from.value[0].address) || '', to: (m.to ? m.to.value : []).map((x) => x.address).concat(m.headers.get('delivered-to') ? [String(m.headers.get('delivered-to'))] : []), subject: m.subject || '', text: m.text || '', authOk: !arH || (/(dkim|spf)=pass/i.test(auth) && !/dkim=fail/i.test(auth)) });
+              if (r.handled) log('handled a', r.kind, 'from the mailbox:', m.subject); else if (r.why) log('ignored a mail:', r.why, '-', m.subject);
+              if (r.handled || !r.why) db.mail.ids = [...db.mail.ids, mid].slice(-500);
+            }
+          } catch (e) { log('could not read mail', msg.uid, e.message); }
+          db.mail.lastUid = Math.max(db.mail.lastUid, msg.uid); app.save();
         }
-        await c.messageFlagsAdd({ uid: msg.uid }, ['\\Seen'], { uid: true });
       }
+      db.mail.lastUid = Math.max(db.mail.lastUid, top); app.save();
     } finally { lock.release(); }
     await c.logout();
-  } catch (e) { console.error('mailbox check failed:', e.message); try { await c.close(); } catch { /* gone */ } }
+  } catch (e) { log('mailbox check failed:', e.message); try { c.close(); } catch { /* gone */ } }
   busy = false;
 }
 setInterval(poll, 30000); setTimeout(poll, 3000);
-setInterval(() => app.flushOutbox().catch(() => {}), 60000);
+setInterval(() => app.flushOutbox().catch((e) => log('outbox:', e.message)), 60000);
+process.on('uncaughtException', (e) => log('problem (kept running):', e.message));
