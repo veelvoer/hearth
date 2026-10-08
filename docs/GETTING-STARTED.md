@@ -57,14 +57,12 @@ You now have one **projects folder**: a folder named `projects` inside your home
 ## Step 3: the app on your phone (Android)
 
 1. Download `Hearth-….apk` from the [latest release](https://github.com/veelvoer/hearth/releases/latest) on your phone and open it. Android may ask permission to install apps from your browser. Allow it.
-2. Open Hearth and follow the tutorial. Type the same **address** and a **new code**. Get a new code on the server with:
+2. Put the phone on the **same Wi-Fi as your computer** and open Hearth on both.
+3. On the phone, follow the tutorial. At **Connect to your computer** you see your computer in a list. Tap **Connect**.
+4. On your computer a card pops up: *"Your phone wants to connect"*. Press **Accept**. Done! The phone also gets the connection to your server, if you set one up. You can turn these cards off in Settings → Connect your phone.
+5. Allow notifications when asked, so Hearth can tell you when Claude is done.
 
-   ```bash
-   hearth-server code
-   ```
-
-   Or on your computer: Settings → Your devices → *Add a phone*.
-3. Allow notifications when it asks, so Hearth can tell you when Claude is done.
+> **Not on the same Wi-Fi?** Tap *Enter the address myself* and type the address and a 6-digit code (`hearth-server code` on the server, or Settings → Connect your phone on the computer).
 
 ## Try it
 

@@ -4,6 +4,8 @@
 
 **The app says it cannot reach my server.** Check the address (it must start with `https://`). On the server run `hearth-server status`. Make sure ports 80 and 443 are open at your hosting company.
 
+**My phone does not find my computer.** Both must be on the same Wi-Fi, and Hearth must be open on the computer. Some guest or office Wi-Fi networks block devices from seeing each other; use *Enter the address myself* then.
+
 **The code is wrong or ran out.** Codes work for 10 minutes. Run `hearth-server code` on the server for a new one.
 
 **A chat does not show on my other device.** Open **Settings → Sync** on the desktop app and press *Sync now*. Both lines should say OK. A chat that lives outside your `projects` folder stays on its own computer; other devices see it marked *only on …*.

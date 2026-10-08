@@ -14,11 +14,11 @@
     card = h('div', { class: 'updcard' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(22) }), h('h3', { class: 'grow' }, list.length === 1 ? 'A new project is waiting' : list.length + ' new projects are waiting')),
       h('div', { class: 'small muted' }, 'Made on your server while this computer was off. Install copies it here so you can work on it.'), h('div', { class: 'stack', style: 'gap:2px;margin:8px 0;max-height:220px;overflow-y:auto;overflow-x:hidden' }, rows),
       h('div', { class: 'row' }, h('div', { class: 'grow' }), h('button', { class: 'ghost sm', onclick: () => { later = true; remove(); } }, 'Later'), list.length > 1 ? h('button', { class: 'primary sm', onclick: () => install('all') }, 'Install all') : null));
-    document.body.append(card);
+    cardHost().append(card);
   }
   async function install(what) {
     const names = what === 'all' ? list.map((p) => p.name) : what, paths = list.filter((p) => names.includes(p.name));
-    remove(); card = h('div', { class: 'updcard' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(22) }), h('h3', { class: 'grow' }, 'Installing…')), h('div', { class: 'small muted' }, 'Copying the project to this computer.')); document.body.append(card);
+    remove(); card = h('div', { class: 'updcard' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(22) }), h('h3', { class: 'grow' }, 'Installing…')), h('div', { class: 'small muted' }, 'Copying the project to this computer.')); cardHost().append(card);
     try { list = await cm.acceptProjects(what === 'all' ? 'all' : names); done = paths; } catch (e) { remove(); toast(clean(e)); return; }
     draw();
   }
@@ -28,7 +28,7 @@
       h('div', { class: 'small muted' }, 'The files are on this computer now. Claude can also set it up for you (install what it needs and tell you how to start it).'),
       h('div', { class: 'row', style: 'margin-top:10px' }, h('div', { class: 'grow' }), h('button', { class: 'ghost sm', onclick: () => { done = null; remove(); draw(); } }, 'Done'),
         many ? null : h('button', { class: 'primary sm', onclick: () => { const d = done[0]; done = null; remove(); setupWithClaude(d.path); } }, 'Set it up with Claude')));
-    document.body.append(card);
+    cardHost().append(card);
   }
   function setupWithClaude(dir) {
     newChat(); SS.sel.cwd = dir; SS.sel.title = 'Set up ' + dir.split(/[\\/]/).pop();

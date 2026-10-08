@@ -12,6 +12,8 @@ function h(tag, props, ...kids) {
   for (const k of kids.flat(Infinity)) { if (k == null || k === false) continue; e.append(k.nodeType ? k : document.createTextNode(k)); }
   return e;
 }
+/** Popup cards (updates, new projects, phones asking to connect) stack in one corner instead of covering each other. */
+function cardHost() { let c = document.getElementById('cardhost'); if (!c) { c = h('div', { id: 'cardhost' }); document.body.append(c); } return c; }
 const clean = (e) => String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label);
@@ -273,12 +275,12 @@ function updatesCard() {
     rows.innerHTML = '';
     if (!det) { rows.append(h('div', { class: 'small muted' }, 'Checking…')); return; }
     if (det.unavailable) { rows.append(h('div', { class: 'small muted' }, det.unavailable)); return; }
-    const names = det.mode === 'release' ? [['desktop', 'This app', 'downloads the new version from GitHub'], ['server', 'Server', 'your server'], ['phone', 'Phone app', 'updates itself']] : NAMES;
+    const names = det.mode === 'release' ? [['desktop', 'This app', 'downloads the new version from GitHub'], ['server', 'Server', 'your server'], ['phone', 'Phone app', 'updates itself']] : (det.github ? [['github', 'Code on GitHub', 'the newest version of Hearth'], ...NAMES] : NAMES);
     for (const [k, name, what] of names) {
       const r = det[k] || {};
       rows.append(h('div', { class: 'row' }, h('span', { class: 'pill ' + (r.need ? 'warn' : r.na ? '' : 'ok') }, h('i')), h('div', { class: 'grow' }, h('div', {}, name, h('span', { class: 'small muted' }, '  ' + what)), h('div', { class: 'small ' + (r.need ? '' : 'muted') }, r.text || ''))));
     }
-    const any = NAMES.some(([k]) => det[k] && det[k].need);
+    const any = ['github', ...NAMES.map((x) => x[0])].some((k) => det[k] && det[k].need);
     goBtn.style.display = any ? '' : 'none';
     note.textContent = det.checkedAt ? 'Checked ' + new Date(det.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   };
@@ -288,30 +290,38 @@ function updatesCard() {
     checkBtn.disabled = false; checkBtn.textContent = 'Check for updates'; draw();
   };
   checkBtn.onclick = check;
-  goBtn.onclick = () => { const want = {}; for (const [k] of NAMES) want[k] = !!(det && det[k] && det[k].need); cm.updateRun(want); };
+  goBtn.onclick = () => { const want = {}; for (const k of ['github', ...NAMES.map((x) => x[0])]) want[k] = !!(det && det[k] && det[k].need); cm.updateRun(want); };
   draw(); check();
   return card;
 }
 
 function pairCard() {
   const card = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Connect your phone'), h('div', { class: 'small muted' }, 'Checking…'));
-  cm.pairInfo().then((i) => {
+  cm.pairInfo().then(async (i) => {
     card.innerHTML = '';
     card.append(h('div', { class: 'label' }, 'Connect your phone'));
     if (i.error) { card.append(h('div', { class: 'small err' }, 'The phone connection could not start: ' + i.error)); return; }
     if (!i.claude) card.append(h('div', { class: 'small err' }, 'Claude Code was not found on this computer. Install it from claude.com/claude-code, then restart this app.'));
-    if (i.external) { card.append(h('div', { class: 'small muted' }, 'A relay service is already running on this computer and handles your phone. Pair from the phone with the token from that service.')); return; }
-    card.append(h('div', { class: 'small muted' }, 'On your phone, open Hearth, go to Settings, tap Scan under Computers and servers, then Pair on this computer and enter this code. Both need to be on the same Wi-Fi.'),
-      h('div', { class: 'row' }, h('div', { style: 'font:600 38px ui-monospace,monospace;letter-spacing:.18em;padding:6px 0' }, (i.code || '').replace(/(\d{3})(\d{3})/, '$1 $2')),
-        h('button', { class: 'link', onclick: async () => { await cm.newPairCode(); render(); } }, 'New code')),
-      h('div', { class: 'small muted' }, 'Scan not finding it? Add it by address instead: ' + (i.addresses.length ? i.addresses.map((a) => a + (i.port === 47601 ? '' : ':' + i.port)).join(' or ') : 'check your network') + '.'),
-      i.platform === 'win32' ? h('div', { class: 'small muted' }, 'If Windows asks, allow Hearth through the firewall on private networks.') : null,
-      h('div', { class: 'small muted' }, i.tailscale ? 'Away from home? With Tailscale, use ' + i.tailscale + (i.port === 47601 ? '' : ':' + i.port) + ' as the address.' : 'Away from home? Install the free app Tailscale on this computer and your phone. Hearth then shows a second address here.'),
-      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, 'Allow connections from the internet'), h('div', { class: 'small muted' }, 'Advanced. Only if you opened a port on your router. It is not encrypted, so Tailscale is the safer way.')),
-        toggle(!!i.allowRemote, async () => { S.settings = await cm.setSettings({ allowRemote: !i.allowRemote }); toast('Restart Hearth to apply this', () => cm.relaunch()); render(); })));
+    card.append(h('ol', { class: 'oblist small' }, h('li', {}, 'Put your phone on the same Wi-Fi as this computer.'), h('li', {}, 'Open Hearth on the phone and tap “Find my computer”.'), h('li', {}, 'A card appears here. Press Accept. Done!')));
+    card.append(h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, 'Tell me when a phone wants to connect'), h('div', { class: 'small muted' }, 'A notification and a card. If you turn it off, requests still wait here for two minutes.')),
+      toggle(S.settings.pairNotify !== false, async () => { S.settings = await cm.setSettings({ pairNotify: S.settings.pairNotify === false }); render(); })));
+    const waiting = await cm.pairRequests().catch(() => []);
+    waiting.forEach((r) => card.append(h('div', { class: 'row crow' }, h('div', { class: 'grow' }, h('b', {}, r.name), h('div', { class: 'small muted' }, 'wants to connect · ' + r.ip)),
+      h('button', { class: 'ghost sm', onclick: async () => { await cm.decidePair(r.id, false); render(); } }, 'Decline'), h('button', { class: 'primary sm', onclick: async () => { await cm.decidePair(r.id, true); render(); } }, 'Accept'))));
+    if (i.external) card.append(h('div', { class: 'small muted' }, 'A background service on this computer handles your phone. Pair with the address and code below.'));
+    card.append(h('details', { class: 'small muted' }, h('summary', {}, 'Other ways to connect (address and code)'),
+      h('div', { class: 'stack', style: 'gap:6px;margin-top:8px' },
+        h('div', {}, 'If your phone cannot find this computer, type this in the Hearth app under “Enter the address myself”:'),
+        h('div', { class: 'row' }, h('div', { style: 'font:600 30px ui-monospace,monospace;letter-spacing:.18em' }, (i.code || '').replace(/(\d{3})(\d{3})/, '$1 $2')), h('button', { class: 'link', onclick: async () => { await cm.newPairCode(); render(); } }, 'New code')),
+        h('div', {}, 'Address: ' + (i.addresses.length ? i.addresses.map((x) => x + (i.port === 47601 ? '' : ':' + i.port)).join(' or ') : 'check your network')),
+        i.tailscale ? h('div', {}, 'Away from home with Tailscale: ' + i.tailscale + (i.port === 47601 ? '' : ':' + i.port)) : h('div', {}, 'Away from home? Install the free app Tailscale on this computer and your phone. Hearth then shows a second address here.'),
+        i.platform === 'win32' ? h('div', {}, 'If Windows asks, allow Hearth through the firewall on private networks.') : null,
+        h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, 'Allow connections from the internet'), h('div', {}, 'Advanced. Only if you opened a port on your router. It is not encrypted, so Tailscale is the safer way.')),
+          toggle(!!i.allowRemote, async () => { S.settings = await cm.setSettings({ allowRemote: !i.allowRemote }); toast('Restart Hearth to apply this', () => cm.relaunch()); render(); })))));
   }).catch(() => { card.append(h('div', { class: 'small err' }, 'Could not read the connection status.')); });
   return card;
 }
+
 function hooksCard() {
   const card = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Calls from Claude Code'), h('div', { class: 'small muted' }, 'Checking…'));
   cm.pairInfo().then((i) => {

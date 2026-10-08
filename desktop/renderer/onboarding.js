@@ -71,18 +71,18 @@ function drawTutorial() {
     foot.append(back, skip, h('div', { class: 'grow' }), next());
   } else if (OB.step === 3) {
     title('Add your phone', 'Optional. You can do this later from Settings.');
-    body.append(list(['Install the Hearth app on your phone.', 'Open it. It asks for your server.', 'Type the address and the code shown below.'], true));
-    const box = h('div', { class: 'obnote' }, 'Getting a code…'); body.append(box);
+    body.append(list(['Install the Hearth app on your phone (download it from github.com/veelvoer/hearth/releases).', 'Put the phone on the same Wi-Fi as this computer and open Hearth.', 'Tap “Find my computer”. A card pops up here: press Accept.'], true),
+      h('p', { class: 'small muted' }, 'That is all. Your phone gets everything it needs, also the connection to your server if you set one up.'));
+    const more = h('details', { class: 'small muted' }, h('summary', {}, 'The phone cannot find this computer?'));
+    body.append(more);
     (async () => {
       try {
         let st = null; try { st = await cm.hubStatus(); } catch { /* none */ }
         let code, addrs;
         if (st && st.server) { const r = await cm.phoneCode(); code = r.code; addrs = [r.address]; }
         else { const i = await cm.pairInfo(); code = i.code; addrs = (i.addresses || []).map((a) => a + (i.port === 47601 ? '' : ':' + i.port)); }
-        box.className = 'obnote'; box.innerHTML = '';
-        const ts = !(st && st.server) && (await cm.pairInfo().catch(() => ({}))).tailscale;
-        box.append(h('div', { class: 'obcode' }, String(code || '').replace(/(\d{3})(\d{3})/, '$1 $2')), h('div', { class: 'small muted' }, 'Address: ' + (addrs.filter(Boolean).join(' or ') || 'not available') + (st && st.server ? '' : '  ·  phone and computer on the same Wi-Fi')), ts ? h('div', { class: 'small muted' }, 'Away from home with Tailscale: use ' + ts) : null, h('div', { class: 'small muted' }, 'The code works for 10 minutes. You can get a new one in Settings.'));
-      } catch (e) { box.className = 'obnote bad'; box.textContent = 'Couldn’t make a code right now: ' + clean(e); }
+        more.append(h('p', {}, 'Type this on the phone, under “Enter the address myself”:'), h('div', { class: 'obcode' }, String(code || '').replace(/(\d{3})(\d{3})/, '$1 $2')), h('div', {}, 'Address: ' + (addrs.filter(Boolean).join(' or ') || 'not available')), h('div', {}, 'The code works for 10 minutes. You can get a new one in Settings.'));
+      } catch (e) { more.append(h('p', {}, 'Could not make a code right now: ' + clean(e))); }
     })();
     foot.append(back, h('button', { class: 'link', onclick: () => go(4) }, 'Do this later'), h('div', { class: 'grow' }), next('Done'));
   } else if (OB.step === 4) {

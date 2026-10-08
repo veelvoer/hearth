@@ -456,6 +456,17 @@ function start(opts) {
     return /permission|need me|stuck|question|attention|input|approve|asks?\b/i.test(text) ? 'attention' : 'done';
   }
 
+  // ── "ask to connect": a phone on your Wi-Fi asks, the person at this computer says yes or no ──
+  const pairReqs = new Map();   // id -> { name, ip, at, status: 'pending' | 'accepted' | 'declined', delivered }
+  const askedAt = new Map();    // ip -> when it last asked or was declined
+  const pairLive = () => { for (const [id, r] of pairReqs) if (Date.now() - r.at > 120000 || (r.delivered && Date.now() - r.at > 30000)) pairReqs.delete(id); };
+  const pairPoll = (id) => {   // what the phone asks every second or two; the key is only handed out once
+    pairLive(); const r = pairReqs.get(id); if (!r) return { status: 'expired' };
+    if (r.status === 'accepted' && !r.delivered) { r.delivered = true; return { status: 'accepted', token, name: os.hostname(), server: link ? { url: link.url, token: link.token, name: link.name || 'Server' } : null }; }
+    return { status: r.status === 'accepted' ? 'done' : r.status };
+  };
+  const pairPending = () => { pairLive(); return [...pairReqs].filter(([, r]) => r.status === 'pending').map(([id, r]) => ({ id, name: r.name, ip: r.ip, at: r.at })); };
+
   // ── routes ──
   const server = http.createServer(async (req, res) => {
     try {
@@ -468,6 +479,10 @@ function start(opts) {
       }
       if (req.method === 'GET') {
         if (parts[0] === 'info') { if (publicMode ? !authed(req, res) : !reach(ip)) return undefined; return json(res, 200, { name: opts.name || os.hostname(), claude: !!findClaude(), root, public: publicMode }); }
+        if (parts[0] === 'pair' && parts[1] === 'request' && parts[2]) {   // the phone checks on its request
+          if (publicMode || !reach(ip)) return json(res, 403, { error: 'not available here' });
+          return json(res, 200, pairPoll(String(parts[2])));
+        }
         if (!authed(req, res)) return undefined;
         if (parts[0] === 'status') return json(res, 200, { away: away(), build: BUILD, version: VERSION, canSelfUpdate: !!opts.selfUpdate, listeners: clients.size, root, allowBypass, moveRoot, laptop: laptopOnline(), queued: work.length });
         if (parts[0] === 'voice' && parts[1] === 'status') return proxyVoice(req, res);
@@ -510,6 +525,7 @@ function start(opts) {
           try { const l = await selfupdate.latest(); return json(res, 200, { current: VERSION, latest: l.version, newer: selfupdate.newer(l.version, VERSION), notes: l.notes, canSelfUpdate: !!opts.selfUpdate }); }
           catch (e) { return json(res, 502, { error: 'Could not look on GitHub: ' + e.message }); }
         }
+        if (parts[0] === 'pair' && parts[1] === 'requests') return json(res, 200, pairPending());
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event));
         if (parts[0] === 'sessions' && parts.length === 1) {
@@ -556,6 +572,16 @@ function start(opts) {
           if (hubPair.code && Date.now() < hubPair.expires && String(b.code || '') === hubPair.code) { hubPair.code = ''; return json(res, 200, { token, name: opts.name || os.hostname() }); }
           if (++hubPair.fails >= 5) { hubPair.fails = 0; hubPair.lockedUntil = Date.now() + 60000; }
           return json(res, 403, { error: 'wrong or expired code' });
+        }
+        if (parts[0] === 'pair' && parts[1] === 'request') {   // a phone on your network asks to connect (no code needed: the person here must accept)
+          if (publicMode || !reach(ip)) return json(res, 403, { error: 'not available here' });
+          const b = await bodyJson(req);
+          if (Date.now() - (askedAt.get(ip) || 0) < 3000) return json(res, 429, { error: 'wait a moment' });
+          askedAt.set(ip, Date.now()); pairLive();
+          if (pairPending().length >= 4) return json(res, 429, { error: 'too many requests waiting' });
+          const id = crypto.randomBytes(16).toString('hex');
+          pairReqs.set(id, { name: String(b.name || 'A phone').replace(/[^\p{L}\p{N} ._()-]/gu, '').slice(0, 40) || 'A phone', ip: String(ip).replace(/^::ffff:/, ''), at: Date.now(), status: 'pending', delivered: false });
+          return json(res, 200, { id });
         }
         if (parts[0] === 'pair' && !parts[1]) {  // desktop app only: the 6-digit code on screen is the proof
           if (publicMode || !reach(ip)) return json(res, 403, { error: 'not available here' });
@@ -698,6 +724,13 @@ function start(opts) {
           if (!publicMode) return json(res, 400, { error: 'only a server pairs phones this way' });
           hubPair.code = String(crypto.randomInt(0, 1000000)).padStart(6, '0'); hubPair.expires = Date.now() + 10 * 60000; hubPair.fails = 0;
           return json(res, 200, { code: hubPair.code, expiresIn: 600 });
+        }
+        if (parts[0] === 'pair' && parts[1] === 'decision') {   // the desktop app answers a request
+          const r = pairReqs.get(String(b.id || ''));
+          if (!r || r.status !== 'pending') return json(res, 404, { error: 'that request is gone' });
+          r.status = b.accept ? 'accepted' : 'declined'; r.at = Date.now();
+          if (!b.accept) askedAt.set(r.ip, Date.now() + 57000);   // a declined phone waits a minute before it can ask again
+          return json(res, 200, { ok: true });
         }
         if (parts[0] === 'agent' && parts[1] === 'usage') {   // plan limits seen by a linked laptop
           const us = b.usage || {};
@@ -877,7 +910,7 @@ function start(opts) {
     get: async (p) => { const r = await agentRaw('GET', p, {}, null, 300000); if (r.status === 404) return null; if (r.status !== 200) throw new Error('server said ' + r.status); return { body: r.headers['x-gzip'] ? zlib.gunzipSync(r.body) : r.body, mtime: Number(r.headers['x-mtime']) || Date.now(), mode: Number(r.headers['x-mode']) || 0o644 }; },
   };
   function setLink(l) {
-    link = l && l.url && l.token ? { url: l.url, token: l.token } : null;
+    link = l && l.url && l.token ? { url: l.url, token: l.token, name: String(l.name || '').slice(0, 60) } : null;
     linkGen++;
     if (agentSync) { agentSync.stop(); agentSync = null; }
     if (fileAgent) { fileAgent.stop(); fileAgent = null; pendingProjects = []; }

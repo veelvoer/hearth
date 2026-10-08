@@ -54,6 +54,22 @@ object Relay {
         } finally { c.disconnect() }
     }
 
+    /** Asks a computer on this Wi-Fi to let this phone in. The person at the computer presses Accept; no address or code is typed. Returns the request id. */
+    fun askToConnect(m: Machine, device: String): String {
+        val c = open(m, "/pair/request", post = true)
+        try {
+            c.outputStream.use { it.write(JSONObject().put("name", device).toString().toByteArray()) }
+            val code = c.responseCode
+            val body = (if (code == 200) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
+            if (code != 200) throw ApiException(code, runCatching { JSONObject(body).optString("error") }.getOrNull()?.ifBlank { null } ?: "The computer said $code")
+            return JSONObject(body).getString("id")
+        } finally { c.disconnect() }
+    }
+    fun askStatus(m: Machine, id: String): JSONObject {
+        val c = open(m, "/pair/request/$id")
+        try { return JSONObject(c.inputStream.bufferedReader().readText()) } finally { c.disconnect() }
+    }
+
     /** Trades the 6-digit code on the computer's screen for its pairing token. */
     fun pair(m: Machine, code: String): Machine {
         val host = m.host

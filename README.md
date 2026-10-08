@@ -49,7 +49,7 @@ You can run it directly on the server or inside Docker. [More about the server �
 
 Open it. A short tutorial walks you through everything. When it asks for your server, type the address and the code.
 
-**3. Install the Hearth app on your phone** (Android: `Hearth-….apk` from the same page). Open it, follow the tutorial, type the same address and a new code (`hearth-server code` on the server prints one).
+**3. Install the Hearth app on your phone** (Android: `Hearth-….apk` from the same page). Put it on the same Wi-Fi as your computer, open it and tap **Connect** next to your computer. Press **Accept** on the computer. No address to type. (Away from home? Use the address and a code from `hearth-server code`.)
 
 That's it. Start a chat anywhere and find it everywhere. [Step-by-step guide with pictures →](docs/GETTING-STARTED.md)
 

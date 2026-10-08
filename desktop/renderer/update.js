@@ -2,21 +2,21 @@
 /* The "new version is ready" popup. Shown when the project files on this computer are newer than what runs or is installed. */
 (function () {
   let avail = null, run = null, card = null, timer = null;
-  const LABEL = { server: 'Server', phone: 'Phone app', desktop: 'This app' };
+  const LABEL = { github: 'Newest code', server: 'Server', phone: 'Phone app', desktop: 'This app' };
   const remove = () => { if (card) { card.remove(); card = null; } clearTimeout(timer); };
 
   function drawIdle() {
     remove();
-    const want = { server: !!avail.server, phone: !!avail.phone, desktop: !!avail.desktop };
-    const rows = ['server', 'phone', 'desktop'].filter((k) => avail[k]).map((k) => {
+    const want = { github: !!avail.github, server: !!avail.server, phone: !!avail.phone, desktop: !!avail.desktop };
+    const rows = ['github', 'server', 'phone', 'desktop'].filter((k) => avail[k]).map((k) => {
       const box = h('input', { type: 'checkbox', checked: true, onchange: () => { want[k] = box.checked; } });
-      return h('label', { class: 'updrow' }, box, h('span', {}, LABEL[k], h('span', { class: 'muted small' }, '  ' + (avail.mode === 'release' ? { server: 'your server gets the new version', phone: '', desktop: 'downloads and restarts' } : { server: 'your server gets the new version', phone: 'builds and installs over USB', desktop: 'restarts with the new version' })[k])));
+      return h('label', { class: 'updrow' }, box, h('span', {}, LABEL[k], h('span', { class: 'muted small' }, '  ' + (avail.mode === 'release' ? { github: '', server: 'your server gets the new version', phone: '', desktop: 'downloads and restarts' } : { github: 'downloads from GitHub first', server: 'your server gets the new version', phone: 'builds and installs over USB', desktop: 'restarts with the new version' })[k])));
     });
     card = h('div', { class: 'updcard' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(22) }), h('h3', { class: 'grow' }, 'A new version is ready')),
       h('div', { class: 'small muted' }, avail.mode === 'release' ? 'Hearth ' + (avail.latest || '') + ' is available on GitHub.' : 'Your projects folder has newer code than what is installed.'), h('div', { class: 'stack', style: 'gap:6px;margin:10px 0' }, rows),
       h('div', { class: 'row' }, h('div', { class: 'grow' }), h('button', { class: 'ghost sm', onclick: () => { cm.updateLater(); remove(); } }, 'Later'),
         h('button', { class: 'primary sm', onclick: () => { run = {}; cm.updateRun(want); drawRun(); } }, 'Update now')));
-    document.body.append(card);
+    cardHost().append(card);
   }
 
   function drawRun(done) {
@@ -27,7 +27,7 @@
       h('div', { class: 'stack', style: 'gap:8px;margin:10px 0' }, lines.length ? lines : [h('div', { class: 'small muted' }, 'Starting…')]),
       done ? h('div', { class: 'row' }, h('div', { class: 'grow' }), failed ? h('button', { class: 'ghost sm', onclick: () => { cm.updateLater(); remove(); } }, 'Close') : null,
         failed ? h('button', { class: 'primary sm', onclick: async () => { avail = await cm.updateStatus(); if (avail) drawIdle(); else remove(); } }, 'Try again') : null) : null);
-    document.body.append(card);
+    cardHost().append(card);
     if (done && !failed) timer = setTimeout(remove, 4000);
   }
 

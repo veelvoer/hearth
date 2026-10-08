@@ -48,7 +48,7 @@ start({
   // zero setup: without a link file, use the server you connected in the desktop app
   const fromApp = () => {
     for (const p of [path.join(os.homedir(), '.config', 'Hearth', 'state.json'), path.join(process.env.APPDATA || '', 'Hearth', 'state.json')]) {
-      try { const m = (JSON.parse(fs.readFileSync(p, 'utf8')).machines || []).find((x) => x.secure && x.token); if (m) return JSON.stringify({ url: `https://${m.host}${m.port && m.port !== 443 ? ':' + m.port : ''}`, token: m.token }); } catch { /* next */ }
+      try { const m = (JSON.parse(fs.readFileSync(p, 'utf8')).machines || []).find((x) => x.secure && x.token); if (m) return JSON.stringify({ url: `https://${m.host}${m.port && m.port !== 443 ? ':' + m.port : ''}`, name: m.name, token: m.token }); } catch { /* next */ }
     }
     return '';
   };

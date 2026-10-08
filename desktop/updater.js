@@ -52,6 +52,15 @@ function create(d) {
     return { mode: 'release', latest: l && l.version, desktop: !!(l && gh.newer(l.version, cur)), phone: false, server, cur, sv, l };
   }
 
+  // a source checkout that came from GitHub can pull the newest code, then rebuild everything from it
+  const isRepo = hasSource && fs.existsSync(path.join(root, '.git'));
+  const git = (...args) => new Promise((resolve) => execFile('git', ['-C', root, ...args], { timeout: 25000 }, (e, out, err) => resolve({ ok: !e, out: String(out || '').trim(), err: String(err || (e && e.message) || '').trim() })));
+  async function behindGithub() {
+    if (!isRepo) return null;
+    const f = await git('fetch', '--quiet', 'origin'); if (!f.ok) return null;
+    const n = await git('rev-list', '--count', 'HEAD..origin/main'); return n.ok ? Number(n.out) || 0 : null;
+  }
+
   const loaded = hasSource ? sigs().desktop : '';   // what this running app was started from
   let running = false, dismissedAt = 0, last = '';
 
@@ -62,9 +71,10 @@ function create(d) {
     const srv = hasServer ? await d.relayBuild('server') : undefined;     // string = build, '' = older relay, null = unreachable, undefined = none
     const loc = await d.relayBuild('local');
     const localNeed = typeof loc === 'string' && loc !== rs;
-    return { desktop: sg.desktop !== loaded || localNeed, phone: hasAndroid && sg.phone !== dep.phone, server: typeof srv === 'string' && srv !== rs, sigs: sg, rs, srv, loc };
+    const behind = await behindGithub();
+    return { desktop: sg.desktop !== loaded || localNeed, phone: hasAndroid && sg.phone !== dep.phone, server: typeof srv === 'string' && srv !== rs, github: behind > 0, behind, sigs: sg, rs, srv, loc };
   }
-  const summary = (n) => (n && (n.desktop || n.phone || n.server) ? { desktop: n.desktop, phone: n.phone, server: n.server, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest } : null);
+  const summary = (n) => (n && (n.desktop || n.phone || n.server || n.github) ? { desktop: n.desktop, phone: n.phone, server: n.server, github: !!n.github, behind: n.behind, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest } : null);
 
   async function check(force = false) {
     if (running) return;
@@ -88,9 +98,10 @@ function create(d) {
       return { mode: 'release', checkedAt: Date.now(), desktop: { need: n.desktop, text: n.desktop ? `Version ${n.cur} · update to ${n.latest}` : `Version ${n.cur} · up to date` }, phone: { na: true, text: 'Update it inside the phone app (Settings → Updates)' }, server: srv };
     }
     const n = await compute(), dep = d.getState().deployed || {};
+    const gh1 = n.behind === null || n.behind === undefined ? undefined : { need: n.behind > 0, text: n.behind > 0 ? n.behind + (n.behind === 1 ? ' newer change' : ' newer changes') + ' on GitHub' : 'Up to date with GitHub' };
     const when = dep.phoneAt ? new Date(dep.phoneAt).toLocaleDateString() : '';
     return {
-      checkedAt: Date.now(),
+      checkedAt: Date.now(), ...(gh1 ? { github: gh1 } : {}),
       desktop: { need: n.desktop, text: n.desktop ? 'Update ready' : 'Up to date' },
       phone: !hasAndroid ? { na: true, text: 'Not set up on this computer (needs the project and the Android tools)' }
         : { need: n.phone, text: n.phone ? 'Update ready' + (when ? ' · last installed ' + when : ' · not installed from this computer yet') : 'Up to date' + (when ? ' · installed ' + when : '') },
@@ -185,7 +196,13 @@ function create(d) {
     const say = (step, text, state = 'run') => d.send('update-progress', { step, text, state });
     let failed = false;
     try {
+      if (want.github && isRepo) {
+        say('github', 'Getting the newest code from GitHub…');
+        const p = await git('pull', '--ff-only', 'origin', 'main');
+        if (p.ok) say('github', 'Newest code downloaded', 'ok'); else { failed = true; say('github', /local changes|overwritten/i.test(p.err) ? 'You have unsaved changes in this folder, so GitHub\'s code was not pulled.' : p.err.split('\n').slice(-2).join(' '), 'fail'); }
+      }
       const n = (await compute()) || { sigs: sigs() };
+      if (want.github) { want = { ...want, server: want.server || !!n.server, phone: want.phone || !!n.phone, desktop: want.desktop || !!n.desktop }; }   // after pulling, whatever is now out of date gets updated too
       const sg = n.sigs;
       if (want.server && hasServer) {
         say('server', 'Updating the server…');

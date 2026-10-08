@@ -128,11 +128,11 @@ let relayProc = null;
 function sendLink() {
   const srv = S.machines.find((m) => m.secure);
   if (relayInfo && relayInfo.inUse) {   // the always-on relay service owns the port: leave the link where it reads it
-    try { fs.writeFileSync(path.join(os.homedir(), '.config', 'hearth-node', 'link.json'), srv ? JSON.stringify({ url: `https://${srv.host}${srv.port && srv.port !== 443 ? ':' + srv.port : ''}`, token: srv.token }) : '', { mode: 0o600 }); } catch { /* service not installed */ }
+    try { fs.writeFileSync(path.join(os.homedir(), '.config', 'hearth-node', 'link.json'), srv ? JSON.stringify({ url: `https://${srv.host}${srv.port && srv.port !== 443 ? ':' + srv.port : ''}`, name: srv.name, token: srv.token }) : '', { mode: 0o600 }); } catch { /* service not installed */ }
     return;
   }
   if (!relayProc || !relayProc.connected) return;
-  try { relayProc.send({ t: 'link', link: srv ? { url: `https://${srv.host}${srv.port && srv.port !== 443 ? ':' + srv.port : ''}`, token: srv.token } : null }); } catch { /* relay gone */ }
+  try { relayProc.send({ t: 'link', link: srv ? { url: `https://${srv.host}${srv.port && srv.port !== 443 ? ':' + srv.port : ''}`, name: srv.name, token: srv.token } : null }); } catch { /* relay gone */ }
 }
 function startRelay() {
   return new Promise((resolve) => {
@@ -467,6 +467,23 @@ async function checkPending() {
   const fresh = lastPend.filter((p) => !pendSeen.has(p.name)); fresh.forEach((p) => pendSeen.add(p.name));
   if (fresh.length) notify(fresh.length === 1 ? 'New project: ' + fresh[0].name : fresh.length + ' new projects', 'Made on your server while this computer was off. Open Hearth to install ' + (fresh.length === 1 ? 'it' : 'them') + '.', () => showMain());
 }
+// a phone on your Wi-Fi asks to connect: tell the person, let them accept or decline
+let pairSeen = new Set(), lastPairReq = [];
+async function checkPairRequests() {
+  const m = machines().find((x) => x.local); if (!m) return;
+  const list = await relayJson(m, 'GET', '/pair/requests').catch(() => null); if (!list) return;
+  lastPairReq = list;
+  if (main && !main.isDestroyed()) main.webContents.send('pair-requests', list);
+  for (const r of list.filter((x) => !pairSeen.has(x.id))) {
+    pairSeen.add(r.id);
+    if (S.settings.pairNotify !== false) { notify(r.name + ' wants to connect', 'A phone on your Wi-Fi is asking to use Hearth with this computer. Open Hearth to accept or decline.', () => showMain()); if (main && !main.isDestroyed() && !main.isVisible()) showMain(); }
+  }
+}
+h('pair:requests', async () => { await checkPairRequests().catch(() => {}); return lastPairReq; });
+h('pair:decide', async (e, id, accept) => {
+  const m = machines().find((x) => x.local); if (!m) throw new Error('This computer is not running Hearth yet.');
+  await relayJson(m, 'POST', '/pair/decision', { id, accept: !!accept }); await checkPairRequests().catch(() => {}); return lastPairReq;
+});
 h('app:relaunch', () => { quitting = true; app.relaunch(); app.quit(); return true; });
 h('projects:pending', async () => { await checkPending().catch(() => {}); return lastPend; });
 h('projects:accept', async (e, names) => {
@@ -638,6 +655,7 @@ app.whenReady().then(async () => {
     notify: (t, b) => notify(t, b), windowHidden: () => !main || main.isDestroyed() || !main.isVisible(),
   });
   setTimeout(() => upd.check(), 15000); setInterval(() => upd.check(), 120000);
+  setInterval(() => checkPairRequests().catch(() => {}), 2500);
   setTimeout(() => checkPending().catch(() => {}), 8000); setInterval(() => checkPending().catch(() => {}), 20000);
   createMain();
   if (!process.env.CM_NO_TRAY) buildTray();

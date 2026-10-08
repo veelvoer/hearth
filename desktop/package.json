@@ -1,7 +1,7 @@
 {
   "name": "hearth-desktop",
   "productName": "Hearth",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Use Claude Code from your computer and your phone",
   "main": "main.js",
   "private": true,
@@ -11,7 +11,8 @@
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "test:layout": "electron test/layout.js",
-    "test:sync": "node test/sync.test.js"
+    "test:sync": "node test/sync.test.js",
+    "test:pair": "node test/pair.test.js"
   },
   "devDependencies": {
     "electron": "^44.5.1",

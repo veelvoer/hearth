@@ -11,6 +11,8 @@ jobs:
         with: { node-version: 22 }
       - name: Syntax check
         run: for f in desktop/*.js desktop/relay/*.js desktop/renderer/*.js server/*.js; do node --check "$f"; done
+      - name: Ask-to-connect test
+        run: node desktop/test/pair.test.js
       - name: Chat and file sync test
         run: node desktop/test/sync.test.js
       - uses: actions/setup-java@v4

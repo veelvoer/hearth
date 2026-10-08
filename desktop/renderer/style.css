@@ -306,3 +306,6 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in s
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
+#cardhost { position: fixed; right: 18px; bottom: 18px; z-index: 130; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; max-height: calc(100vh - 36px); overflow-y: auto; pointer-events: none; }
+#cardhost > * { pointer-events: auto; }
+#cardhost .updcard { position: static; max-width: calc(100vw - 36px); }

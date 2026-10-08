@@ -24,8 +24,6 @@ fun Welcome(finish: () -> Unit) {
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
     var connected by remember { mutableStateOf(Store.machines(c).isNotEmpty()) }
-    var found by remember { mutableStateOf<List<Machine>>(emptyList()) }
-    var scanning by remember { mutableStateOf(false) }
     val last = 3
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
@@ -55,28 +53,36 @@ fun Welcome(finish: () -> Unit) {
                     }
                 }
                 1 -> {
-                    Txt("First, set up your server", T.title)
+                    Txt("Connect to your computer", T.title)
                     Spacer(Modifier.height(10.dp))
-                    Txt("A server is a computer that is always on, far away, like a robot that never sleeps. Hearth lives there, so your phone works even when your laptop is closed.", T.body, muted = true)
-                    Spacer(Modifier.height(12.dp))
-                    listOf("On your server, open a terminal (for example with ssh).", "Paste this line and press Enter. It asks a few easy questions.", "It shows an address and a 6-digit code. Type them below.").forEachIndexed { i, t ->
-                        Txt("${i + 1}.  $t", T.body); Spacer(Modifier.height(6.dp))
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    val cmd = "curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash"
-                    Card {
-                        Txt(cmd, T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
-                        Spacer(Modifier.height(6.dp))
-                        TextAction("Copy the line") {
-                            (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Hearth", cmd))
-                            Toast.makeText(c, "Copied. Paste it on your server.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    Txt("Hearth on this phone talks to the computer (or server) where Claude Code runs. Easiest: put the phone on the same Wi-Fi as the computer and open Hearth there.", T.body, muted = true)
                     Spacer(Modifier.height(12.dp))
                     if (connected) {
                         Card { Txt("✓ Connected: ${Store.machines(c).joinToString { it.name }}", T.body) }
                     } else {
-                        androidx.compose.runtime.key(found.firstOrNull()?.host) { AddComputer(found.firstOrNull()) { m ->
+                        FindComputers { list ->
+                            val had = Store.machines(c)
+                            Store.saveMachines(c, had.filter { h -> list.none { it.host == h.host } } + list)
+                            if (had.isEmpty()) Store.setCallMe(c, true)
+                            CallService.sync(c); Ui.machinesRev++; connected = true
+                            Toast.makeText(c, "Connected to ${list.first().name}", Toast.LENGTH_SHORT).show()
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Txt("Or: use a server", T.h2)
+                        Spacer(Modifier.height(6.dp))
+                        Txt("A server is a computer that is always on, far away, like a robot that never sleeps. On the server, paste this line in a terminal and press Enter. It shows an address and a 6-digit code. Type them below.", T.small, muted = true)
+                        Spacer(Modifier.height(8.dp))
+                        val cmd = "curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash"
+                        Card {
+                            Txt(cmd, T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+                            Spacer(Modifier.height(6.dp))
+                            TextAction("Copy the line") {
+                                (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Hearth", cmd))
+                                Toast.makeText(c, "Copied. Paste it on your server.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        AddComputer(null) { m ->
                             if (m != null) {
                                 val had = Store.machines(c)
                                 Store.saveMachines(c, had.filter { it.host != m.host } + m)
@@ -84,10 +90,7 @@ fun Welcome(finish: () -> Unit) {
                                 CallService.sync(c); Ui.machinesRev++; connected = true
                                 Toast.makeText(c, "Connected to ${m.name}", Toast.LENGTH_SHORT).show()
                             }
-                        } }
-                        Spacer(Modifier.height(8.dp))
-                        Txt("No server? You can connect straight to your computer when both are on the same Wi-Fi. Open Hearth on the computer: it shows an address and a code.", T.small, muted = true)
-                        TextAction(if (scanning) "Looking…" else "Find my computer on this Wi-Fi") { if (!scanning) scope.launch { scanning = true; found = withContext(Dispatchers.IO) { Relay.discover() }; scanning = false; if (found.isEmpty()) Toast.makeText(c, "Nothing found. Type the address from the computer.", Toast.LENGTH_LONG).show() } }
+                        }
                     }
                 }
                 2 -> {

@@ -1,0 +1,30 @@
+// "Ask to connect": a phone asks, the computer accepts or declines. Run: node test/pair.test.js
+const { spawn } = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
+const T = path.join(os.homedir(), '.cache', 'hearth-pair-test'); fs.rmSync(T, { recursive: true, force: true }); fs.mkdirSync(T, { recursive: true });
+const p = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--lan', '--dir', T, '--port', '47796', '--host', '127.0.0.1'], { stdio: 'ignore' });
+const call = (method, url, tok, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47796, path: url, method, headers: { ...(tok ? { Authorization: 'Bearer ' + tok } : {}), ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (x) => { b += x; }); rs.on('end', () => { try { res({ code: rs.statusCode, j: JSON.parse(b) }); } catch { res({ code: rs.statusCode, j: {} }); } }); }); r.on('error', () => res({ code: 0, j: {} })); r.end(d || undefined); });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
+(async () => {
+  await sleep(1500); const tok = JSON.parse(fs.readFileSync(path.join(T, 'relay.json'))).token;
+  const a = await call('POST', '/pair/request', null, { name: 'Pixel 9 <script>' });
+  ok('1 a phone can ask without a code', a.code === 200 && a.j.id && a.j.id.length === 32);
+  ok('2 asking again right away is refused', (await call('POST', '/pair/request', null, { name: 'x' })).code === 429);
+  ok('3 the list needs the key', (await call('GET', '/pair/requests', null)).code === 401);
+  const l = await call('GET', '/pair/requests', tok);
+  ok('4 the computer sees the request, name cleaned', l.j.length === 1 && l.j[0].name === 'Pixel 9 script', JSON.stringify(l.j));
+  ok('5 pending until answered', (await call('GET', '/pair/request/' + a.j.id, null)).j.status === 'pending');
+  await call('POST', '/pair/decision', tok, { id: a.j.id, accept: true });
+  const got = await call('GET', '/pair/request/' + a.j.id, null);
+  ok('6 accepted: the phone gets the key', got.j.status === 'accepted' && got.j.token === tok, got.j.status);
+  ok('7 the key is handed out only once', (await call('GET', '/pair/request/' + a.j.id, null)).j.token === undefined);
+  await sleep(3200);
+  const b = await call('POST', '/pair/request', null, { name: 'Other' });
+  await call('POST', '/pair/decision', tok, { id: b.j.id, accept: false });
+  ok('8 declined: no key', (await call('GET', '/pair/request/' + b.j.id, null)).j.status === 'declined');
+  ok('9 a declined phone must wait', (await call('POST', '/pair/request', null, { name: 'Other' })).code === 429);
+  ok('10 unknown request id', (await call('GET', '/pair/request/' + 'a'.repeat(32), null)).j.status === 'expired');
+  p.kill(); fs.rmSync(T, { recursive: true, force: true });
+  console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
+})();

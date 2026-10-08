@@ -181,7 +181,9 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             Card {
                 Txt("Connect a computer", T.h2)
                 Spacer(Modifier.height(6.dp))
-                Txt("Open Hearth on your computer and pair this phone from Settings, or paste the pairing link from your server.", T.small, muted = true)
+                Txt("Put the phone on the same Wi-Fi as your computer and open Hearth there. Or use the address and code of your server.", T.small, muted = true)
+                Spacer(Modifier.height(10.dp))
+                FindComputers { list -> Store.setCallMe(c, true); save(list) }
                 Spacer(Modifier.height(10.dp))
                 AddComputerInline(machines) { save(it); if (machines.isEmpty()) Store.setCallMe(c, true) }
             }
@@ -262,14 +264,12 @@ fun ComputersCard() {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var machines by remember(Ui.machinesRev) { mutableStateOf(Store.machines(c)) }
-    var found by remember { mutableStateOf<List<Machine>>(emptyList()) }
-    var scanning by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
+    var manual by remember { mutableStateOf(false) }
     fun commit(l: List<Machine>) { machines = l; Store.saveMachines(c, l); Ui.machinesRev++; CallService.sync(c) }
     Card {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label("Computers and servers", Modifier.weight(1f))
-            TextAction(if (scanning) "Scanning…" else "Scan") { if (!scanning) scope.launch { scanning = true; found = withContext(Dispatchers.IO) { Relay.discover() }; scanning = false } }
         }
         machines.forEach { mm ->
             Spacer(Modifier.height(10.dp))
@@ -278,17 +278,18 @@ fun ComputersCard() {
                 TextAction("Remove") { commit(machines - mm) }
             }
         }
-        found.filter { f -> machines.none { it.host == f.host } }.forEach { f ->
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Txt(f.name, T.body); Txt("Found on your network", T.small, muted = true) }
-                TextAction("Pair") { adding = true }
-            }
-        }
         Spacer(Modifier.height(8.dp))
-        if (adding) AddComputer(found.firstOrNull { f -> machines.none { it.host == f.host } }) { r ->
-            if (r != null) { if (machines.isEmpty()) Store.setCallMe(c, true); commit(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show() }
-            adding = false
+        if (adding) {
+            FindComputers { list ->
+                if (machines.isEmpty()) Store.setCallMe(c, true)
+                commit(machines.filter { h -> list.none { it.host == h.host } } + list); adding = false
+                Toast.makeText(c, "Connected to ${list.first().name}", Toast.LENGTH_SHORT).show()
+            }
+            Spacer(Modifier.height(8.dp))
+            if (manual) AddComputer(null) { r ->
+                if (r != null) { if (machines.isEmpty()) Store.setCallMe(c, true); commit(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show(); adding = false }
+                manual = false
+            } else Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) { TextAction("Enter the address myself") { manual = true }; TextAction("Cancel") { adding = false } }
         } else TextAction("Add a computer or server") { adding = true }
     }
 }
