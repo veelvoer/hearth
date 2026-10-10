@@ -29,7 +29,7 @@ function info(text) {
   } }, icon('info'));
   return b;
 }
-const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label);
+const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: (e) => morph(() => fn(e)) }, label);
 const toggle = (on, fn) => h('button', { class: 'toggle' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(!!on), onclick: fn });
 
 let S = { signedIn: false, settings: {}, history: [] };
@@ -64,9 +64,19 @@ function renderNav() {
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
 }
 /** Runs a change of screen as one morphing transition (shared elements glide, the rest cross-fades). */
+/** The selected chip of every row gets its own transition name, so the highlight glides to the next chip instead of jumping. */
+function nameChips() {
+  let g = 0;
+  document.querySelectorAll('.row').forEach((row) => { const on = row.querySelector(':scope > .chip.on'); if (on) on.style.viewTransitionName = 'chipsel-' + (g++); });
+}
 function morph(fn) {
   if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return fn();
-  try { return document.startViewTransition(() => { fn(); }); } catch { return fn(); }
+  try {
+    nameChips();
+    const t = document.startViewTransition(async () => { await fn(); nameChips(); });
+    for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});   // a skipped transition is fine, not an error
+    return t;
+  } catch { return fn(); }
 }
 function setTab(t) { if (t === tab) return; morph(() => { tab = t; render(); }); }
 /** The first-run setup. Also tried again once every script has loaded: the state can arrive before onboarding.js has run. */

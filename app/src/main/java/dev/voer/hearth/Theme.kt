@@ -156,11 +156,14 @@ fun Spark(size: Dp, color: Color = MaterialTheme.colorScheme.primary) {
 fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val cs = MaterialTheme.colorScheme
+    // the highlight fades and the label recolors smoothly when the selection moves
+    val bg by androidx.compose.animation.animateColorAsState(if (selected) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
+    val line by androidx.compose.animation.animateColorAsState(if (selected) cs.primary else cs.outline, androidx.compose.animation.core.tween(220), label = "chipline")
+    val ink by androidx.compose.animation.animateColorAsState(if (selected) cs.onPrimary else cs.onSurface, androidx.compose.animation.core.tween(220), label = "chipink")
     Box(
-        Modifier.clip(shape).then(if (selected) Modifier.background(cs.primary) else Modifier.border(1.dp, cs.outline, shape))
-            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
+        Modifier.pressable(onClick).clip(shape).background(bg).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
-    ) { Txt(text, T.small, color = if (selected) cs.onPrimary else cs.onSurface) }
+    ) { Txt(text, T.small, color = ink) }
 }
 
 @Composable

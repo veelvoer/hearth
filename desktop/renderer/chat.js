@@ -146,7 +146,7 @@ function sessionsView() {
 
 function swapPane() { if (!SS.pane) return; SS.pane.classList.remove('swap'); void SS.pane.offsetWidth; SS.pane.classList.add('swap'); }
 function openSession(s, voice) {
-  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && SS.pane) { try { document.startViewTransition(() => openSessionNow(s, voice)); return; } catch { /* plain */ } }
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && SS.pane) { try { const t = document.startViewTransition(() => openSessionNow(s, voice)); [t.ready, t.finished, t.updateCallbackDone].forEach((x) => x.catch(() => {})); return; } catch { /* plain */ } }
   openSessionNow(s, voice);
 }
 function openSessionNow(s, voice) {

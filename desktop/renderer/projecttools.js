@@ -6,7 +6,7 @@ const tcall = (s, method, p, body) => cm.relay(s.mid, method, '/tools/' + p, bod
 function openTools(s, tab) {
   if (!s || !s.mid) return;
   PT.s = s; PT.tab = tab || PT.tab;
-  if (!PT.el && document.startViewTransition) { try { document.startViewTransition(() => openToolsNow(s, tab)); return; } catch { /* plain */ } }
+  if (!PT.el && document.startViewTransition) { try { const t = document.startViewTransition(() => openToolsNow(s, tab)); [t.ready, t.finished, t.updateCallbackDone].forEach((x) => x.catch(() => {})); return; } catch { /* plain */ } }
   openToolsNow(s, tab);
 }
 function openToolsNow(s, tab) {
