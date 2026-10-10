@@ -555,6 +555,7 @@ h('support:start', (e, email) => supportCall('POST', '/auth/start', { email }, f
 h('support:verify', async (e, email, code) => { const j = await supportCall('POST', '/auth/verify', { email, code }, false); S.settings.supportToken = j.token; S.settings.supportEmail = j.email; save(); return { email: j.email }; });
 h('support:logout', async () => { try { await supportCall('POST', '/auth/logout', {}); } catch { /* signed out anyway */ } S.settings.supportToken = ''; S.settings.supportEmail = ''; save(); return true; });
 h('support:call', (e, method, p, body) => supportCall(method, p, body));
+h('app:version', () => app.getVersion());
 h('app:relaunch', () => { quitting = true; app.relaunch(); app.quit(); return true; });
 h('projects:pending', async () => { await checkPending().catch(() => {}); return lastPend; });
 h('projects:accept', async (e, names) => {

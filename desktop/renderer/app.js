@@ -275,7 +275,8 @@ function updatesCard() {
   const rows = h('div', { class: 'stack', style: 'gap:10px' });
   const checkBtn = h('button', { class: 'ghost sm' }, 'Check for updates'), goBtn = h('button', { class: 'primary sm', style: 'display:none' }, 'Update now');
   const note = h('div', { class: 'small muted' });
-  const card = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Updates'), rows, h('div', { class: 'row' }, checkBtn, goBtn, h('div', { class: 'grow' }), note));
+  const ver = h('span', { class: 'small muted' }); cm.version().then((v) => { ver.textContent = 'Hearth ' + v; }).catch(() => {});
+  const card = h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Updates'), ver), rows, h('div', { class: 'row' }, checkBtn, goBtn, h('div', { class: 'grow' }), note));
   const NAMES = [['desktop', 'This computer', 'the app and its background service'], ['phone', 'Phone app', 'built here and installed over USB'], ['server', 'Server', 'your server']];
   let det = null;
   const draw = () => {
