@@ -150,7 +150,7 @@ fun UpdatesCard() {
     suspend fun look() { note = Updates.check(c) ?: ""; infos = servers.associate { it.host to Updates.serverInfo(it) } }
     LaunchedEffect(servers.size) { look() }
     val r = Updates.release
-    Card {
+    Card(Modifier.tourTarget("updates")) {
         Label("Updates")
         Spacer(Modifier.height(6.dp))
         Txt("Hearth ${Updates.current(c)}", T.body)

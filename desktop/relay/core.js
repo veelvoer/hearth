@@ -181,7 +181,7 @@ function parseUsage(file) {
   }
   return { cwd, msgs: [...msgs.values()], users, tools: [...toolIds.values()] };
 }
-const family = (m) => ['opus', 'sonnet', 'haiku'].find((f) => m.includes(f)) || 'other';
+const family = (m) => ['opus', 'sonnet', 'haiku', 'fable', 'mythos'].find((f) => m.includes(f)) || 'other';
 const dayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 function stats(days) {
@@ -215,4 +215,51 @@ function stats(days) {
   return { generated: now, days: outDays, models, tools: topTools, heat, projects: top };
 }
 
-module.exports = { messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };
+
+/** Everything /usage-style: totals, cost at API prices, per model, per day, per project. days = 0 means all time. */
+function report(days) {
+  const pricing = require('./pricing');
+  const now = Date.now(), cutoff = days ? now - days * 864e5 : 0;
+  const byModel = new Map(), perDay = new Map(), proj = new Map(), sessions = new Set(), active = new Set(), tools = {};
+  let first = 0, last = 0, prompts = 0, longest = 0, assistant = 0;
+  const tot = { in: 0, out: 0, cr: 0, cw: 0, cost: 0 };
+  for (const f of listFiles()) {
+    if (f.mtime < cutoff) continue;
+    let hit = statCache.get(f.file);
+    if (!hit || hit.mtime !== f.mtime || hit.size !== f.size) { hit = { mtime: f.mtime, size: f.size, d: parseUsage(f.file) }; statCache.set(f.file, hit); }
+    const d = hit.d, pk = d.cwd || 'unknown';
+    let lo = 0, hi = 0;
+    for (const m of d.msgs) {
+      const t = m.ts * 1000; if (t < cutoff) continue;
+      const cost = pricing.costOf(m.model, m), k = m.model || 'unknown';
+      const b = byModel.get(k) || { model: k, label: pricing.labelOf(k), in: 0, out: 0, cr: 0, cw: 0, msgs: 0, cost: 0 };
+      b.in += m.in; b.out += m.out; b.cr += m.cr; b.cw += m.cw; b.msgs++; b.cost += cost; byModel.set(k, b);
+      tot.in += m.in; tot.out += m.out; tot.cr += m.cr; tot.cw += m.cw; tot.cost += cost; assistant++;
+      const dk = dayKey(t), r = perDay.get(dk) || { date: dk, tokens: 0, cost: 0 }; r.tokens += m.in + m.out + m.cw; r.cost += cost; perDay.set(dk, r); active.add(dk);
+      const p = proj.get(pk) || { cwd: pk, tokens: 0, cost: 0, sessions: new Set() }; p.tokens += m.in + m.out + m.cw; p.cost += cost; p.sessions.add(f.id); proj.set(pk, p);
+      sessions.add(f.id); first = !first || t < first ? t : first; last = Math.max(last, t); lo = !lo || t < lo ? t : lo; hi = Math.max(hi, t);
+    }
+    longest = Math.max(longest, hi - lo);
+    for (const ts of d.users) if (ts * 1000 >= cutoff) prompts++;
+    if (d.msgs.length) for (const t of d.tools) tools[t] = (tools[t] || 0) + 1;
+  }
+  // streaks of days with activity
+  const keys = [...active].sort(); let bestStreak = 0, run = 0, prev = null;
+  for (const k of keys) { const t = Date.parse(k + 'T12:00:00'); run = prev && Math.round((t - prev) / 864e5) === 1 ? run + 1 : 1; bestStreak = Math.max(bestStreak, run); prev = t; }
+  let current = 0; for (let t = Date.parse(dayKey(now) + 'T12:00:00'); active.has(dayKey(t)); t -= 864e5) current++;
+  const span = Math.min(days || 365, 365), daysOut = [];
+  for (let i = span - 1; i >= 0; i--) { const k = dayKey(now - i * 864e5), r = perDay.get(k); daysOut.push({ date: k, tokens: r ? r.tokens : 0, cost: r ? r.cost : 0 }); }
+  const models = [...byModel.values()].sort((a, b) => b.cost - a.cost);
+  const cacheSaved = models.reduce((s, m) => { const p = pricing.priceOf(m.model); return s + m.cr * (p.in - p.cr) / 1e6; }, 0);
+  const work = tot.in + tot.out + tot.cw;
+  return {
+    range: days, generated: now,
+    totals: { ...tot, tokens: work, allTokens: work + tot.cr, messages: assistant, prompts, sessions: sessions.size, activeDays: active.size, longestStreak: bestStreak, currentStreak: current, first, last, longestSessionMs: longest, avgPerActiveDay: active.size ? Math.round(work / active.size) : 0, cacheSaved },
+    models, days: daysOut, favorite: models[0] ? models[0].label : '',
+    projects: [...proj.values()].sort((a, b) => b.cost - a.cost).slice(0, 12).map((p) => ({ cwd: p.cwd, tokens: p.tokens, cost: p.cost, sessions: p.sessions.size })),
+    tools: Object.fromEntries(Object.entries(tools).sort((a, b) => b[1] - a[1]).slice(0, 8)),
+    note: 'Cost is what these tokens would cost at Anthropic API prices. A Pro or Max subscription is not billed per token.',
+  };
+}
+
+module.exports = { report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };

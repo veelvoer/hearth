@@ -17,6 +17,8 @@ const HUB = process.env.CM_HUB === '1';   // chats on the server also get tools 
 const HUB_TOOLS = [
   { name: 'laptop_status', description: "Check whether the user's own laptop is online right now and which tasks are already waiting for it.", inputSchema: { type: 'object', properties: {} } },
   { name: 'run_on_laptop', description: "Hand a task to the user's own laptop. It runs there in this same project, continuing this conversation, as soon as the laptop is online (right away if it is online now; otherwise when the user next opens it). Use it for anything that must happen on the laptop itself: installing dependencies or tools, running or testing the app, using hardware, a GUI, or files that only exist there. Write the task as complete instructions. After this call, tell the user it is queued and stop; do not try to do the laptop part yourself.", inputSchema: { type: 'object', properties: { task: { type: 'string', description: 'Full instructions for Claude on the laptop.' } }, required: ['task'] } },
+  { name: 'list_computers', description: "List the user's own computers that are linked to this server (for example a laptop and a desktop PC) and whether each is online.", inputSchema: { type: 'object', properties: {} } },
+  { name: 'run_on_computer', description: "Hand a task to one of the user's own computers by name (see list_computers). It runs there in this same project, continuing this conversation, once this reply is finished (when that computer is online; otherwise as soon as the user opens it). Use it when the user asks you to set something up or run something on another PC.", inputSchema: { type: 'object', properties: { computer: { type: 'string', description: 'The name of the computer, exactly as list_computers shows it.' }, task: { type: 'string', description: 'What to do there, in full sentences.' } }, required: ['computer', 'task'] } },
 ];
 function hub(tool, args) {
   return new Promise((resolve) => {
@@ -53,7 +55,7 @@ process.stdin.on('data', (d) => {
     else if (m.method === 'tools/call') {
       const name = m.params && m.params.name, args = (m.params && m.params.arguments) || {};
       const reply = (text) => send({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text }] } });
-      if (HUB && (name === 'laptop_status' || name === 'run_on_laptop')) hub(name, args).then(reply);
+      if (HUB && ['laptop_status', 'run_on_laptop', 'list_computers', 'run_on_computer'].includes(name)) hub(name, args).then(reply);
       else ask(args).then((answer) => reply('The user answered: ' + answer));
     }
     else if (m.id !== undefined && m.method) send({ jsonrpc: '2.0', id: m.id, result: {} });

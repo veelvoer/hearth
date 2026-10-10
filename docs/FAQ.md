@@ -26,6 +26,20 @@
 
 If it still fails: the file may be incomplete. Download it again, and make sure your phone has at least 100 MB free.
 
+## Several computers
+
+Connect each computer to the same server (the tutorial or *Settings → Computers and servers*). In a chat, **Options → Run on** (and when you start a new chat) you pick: *Auto*, the *Server*, or one of your computers by name (● online, ○ off). A computer that is off starts the work when you switch it on. In any chat you can also tell Claude: "set this up on my desktop PC". Project files are kept the same on all of them.
+
+To show the code and link for another computer again, type `hearth-server code` on the server (`hearth-<name>-server code` if the server holds several Hearths).
+
+## What is "Usage and cost"?
+
+The dashboard counts the tokens in your Claude Code chats and prices them at Anthropic's published API prices. A Pro or Max plan is not billed per token, so read it as "what this work would cost on the API". Numbers come from the chats on that computer (the server has everything that was synced).
+
+## Does Hearth work with Claude Cowork?
+
+Not directly. Cowork lives inside the Claude desktop app and has no public interface that other apps can drive. What Hearth gives you instead is Claude Code with the same chats on every device, and plain-language *Talk* chats. If Anthropic opens Cowork up (for example through an API or remote connector), Hearth can follow.
+
 ## Several people, one server
 
 Two people can run Hearth on the same server: the installer notices an existing Hearth and sets up a separate copy (its own address, key and service, named `hearth-<name>`). It never overwrites the first one. Each person uses their own commands, for example `hearth-server code` or `hearth-<name>-server code`.

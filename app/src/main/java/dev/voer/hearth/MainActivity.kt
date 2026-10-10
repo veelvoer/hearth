@@ -77,7 +77,8 @@ private fun Root() {
     LaunchedEffect(Ui.tourRev) { if (Ui.tourRev != seenTour) tour = true }
     LaunchedEffect(tour) { if (tour) Store.setOnboarded(c, true) }   // the tutorial shows once; closing the app halfway must not bring it back
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (tour) Welcome { Store.setOnboarded(c, true); tour = false; (c as? MainActivity)?.askNotifications() } else Main()
+        if (tour) Welcome { Store.setOnboarded(c, true); tour = false; (c as? MainActivity)?.askNotifications(); if (it) Tour.start() } else Main()
+        TourOverlay()
     }
 }
 
@@ -99,7 +100,7 @@ private fun Main() {
             androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(240), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); else -> SettingsScreen() } }
         }
         if (!Ui.chatOpen) Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
-        if (!Ui.chatOpen) Row(Modifier.fillMaxWidth()) {
+        if (!Ui.chatOpen) Row(Modifier.fillMaxWidth().tourTarget("tabs")) {
             tabs.forEachIndexed { i, s ->
                 Column(Modifier.weight(1f).clickable { Ui.tab = i }.padding(top = 10.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Txt(s, T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i,

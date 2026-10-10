@@ -157,6 +157,7 @@ function dashboardView() {
 
   root.append(h('div', { class: 'g2' }, limitPanel('Session', '5-hour window', u && u.session, CMW.SESSION_MS), limitPanel('Week', '7-day window', u && u.week, CMW.WEEK_MS)));
 
+  if (typeof usageSection === 'function' && D.machineId) root.append(usageSection());
   if (D.err === 'norelay') {
     root.append(h('div', { class: 'card stack' }, h('h3', {}, 'Turn on activity stats'),
       h('p', { class: 'muted', style: 'margin:0' }, 'Token activity, projects, tools and live sessions come from your Claude Code logs through the relay. Run this once on this computer:'),

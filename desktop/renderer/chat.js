@@ -174,7 +174,7 @@ async function setCall(v) {
 }
 function newChat() {
   const mid = defaultMachineId() || SS.mid;
-  SS.sel = { id: null, isNew: true, title: 'New chat', cwd: '', mid };
+  SS.sel = { id: null, isNew: true, title: 'New chat', cwd: '', mid }; SS.runOn = 'vps';
   SS.mid = mid; SS.queue = []; SS.perms = [];
   const own = (SS.live[mid] || []).filter((x) => x.cwd).sort((a, b) => b.mtime - a.mtime)[0];
   SS.sel.cwd = (SS.lastCwdBy && SS.lastCwdBy[mid]) || (own && own.cwd) || '';
@@ -206,8 +206,8 @@ function drawPane() {
     s.id ? h('button', { class: 'ghost sm', onclick: () => { SS.opts = !SS.opts; drawPane(); } }, SS.opts ? 'Done' : 'Options') : null));
   if (SS.opts && s.id) pane.append(h('div', { class: 'opts' },
     SS.call !== null && (SS.machines.find((m) => m.id === s.mid) || {}).secure ? h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Run on'),
-      chip('Auto', (SS.run || 'auto') === 'auto', () => setRun('auto')), chip('Laptop', SS.run === 'laptop', () => setRun('laptop')), chip('Server only', SS.run === 'vps', () => setRun('vps')),
-      h('span', { class: 'small muted' }, 'Auto: your laptop when it is online, otherwise the server. Laptop: wait until it is online, e.g. for testing.')) : null,
+      ...runChips((SS.run || 'auto'), setRun),
+      h('span', { class: 'small muted' }, 'Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. A computer that is off starts when you turn it on. You can also just ask Claude to do something on another PC.')) : null,
     SS.call !== null ? h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Phone call'), chip("When it's done", SS.call === 'done', () => setCall('done')), chip('Also if it needs me', SS.call === 'attention', () => setCall('attention')),
       h('span', { class: 'small muted' }, 'You always get a message. A call only happens if you pick one here.')) : null,
     mach.local && s.cwd ? h('div', { class: 'row' }, h('span', { class: 'muted small grow ellip' }, s.cwd), h('button', { class: 'ghost sm', onclick: () => cm.openPath(s.cwd) }, 'Open folder')) : h('div', { class: 'small muted ellip' }, s.cwd),
@@ -310,6 +310,19 @@ function codingIntro() {
 }
 
 /** A server that manages one projects folder: pick a project in it, or create a new one. */
+/** The computers linked to the server, as buttons: Auto, the Server, and each of your own computers (with a dot when it is online). */
+function loadComputers(mid) { if (SS.computersFor === mid && Date.now() - (SS.computersAt || 0) < 15000) return; SS.computersFor = mid; SS.computersAt = Date.now(); cm.relay(mid, 'GET', '/computers').then((l) => { SS.computers = l || []; if (SS.sel && SS.sel.mid === mid && (SS.opts || (SS.sel && SS.sel.isNew))) drawPane(); }).catch(() => { SS.computers = []; }); }
+function runChips(cur, pick, withAuto = true) {
+  if (SS.sel) loadComputers(SS.sel.mid);
+  const pcs = (SS.computers || []).filter((c) => c.kind === 'computer');
+  return [withAuto ? chip('Auto', cur === 'auto', () => pick('auto')) : null, chip('Server', cur === 'vps', () => pick('vps')), ...pcs.map((c) => chip((c.online ? '● ' : '○ ') + c.name, cur === c.id || (cur === 'laptop' && false), () => pick(c.id)))].filter(Boolean);
+}
+function runOnPicker(s) {
+  const mm = SS.machines.find((x) => x.id === s.mid); if (!mm || !mm.secure) return null;
+  loadComputers(s.mid);
+  if (!(SS.computers || []).some((c) => c.kind === 'computer')) return null;
+  return h('div', { class: 'stack', style: 'align-items:center;gap:6px' }, h('div', { class: 'muted small' }, 'Which computer should work on it?'), h('div', { class: 'row wrap', style: 'justify-content:center' }, runChips(SS.runOn || 'vps', (v) => { SS.runOn = v; renderMsgs(); }, false)));
+}
 function serverIntro(s, info) {
   const nameIn = h('input', { placeholder: 'New project name, e.g. budget-app' }), err = h('div', { class: 'small err' });
   const go = async () => {
@@ -317,7 +330,7 @@ function serverIntro(s, info) {
     catch (e) { err.textContent = clean(e); }
   };
   nameIn.onkeydown = (e) => { if (e.key === 'Enter') go(); };
-  return h('div', { class: 'intro' }, h('div', { html: sparkSVG(46) }), h('h2', {}, 'What should we build?'), computerPicker(s),
+  return h('div', { class: 'intro' }, h('div', { html: sparkSVG(46) }), h('h2', {}, 'What should we build?'), computerPicker(s), runOnPicker(s),
     h('div', { class: 'muted small' }, 'Projects folder on ' + ((SS.machines.find((m) => m.id === s.mid) || {}).name || 'the server')),
     h('div', { class: 'row', style: 'width:100%;max-width:560px' }, h('div', { class: 'grow' }, nameIn), h('button', { class: 'primary', onclick: go }, 'Create')), err,
     h('div', { class: 'row wrap', style: 'justify-content:center;max-width:560px' }, info.projects.slice(0, 8).map((p) => chip(p.name, s.cwd === p.path, () => { s.cwd = p.path; SS.lastCwd = p.path; renderMsgs(); }))),
@@ -429,7 +442,7 @@ function sendMsg(text) {
     else if (ev.t === 'end') { finish(); return; }
     scheduleLive();
   };
-  cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
+  cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
     .catch((e) => { SS.chatErr = clean(e); finish(); });
 }
 

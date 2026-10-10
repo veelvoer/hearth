@@ -316,7 +316,7 @@ async function install() {
       if (!PREFIX) await must('Build and start Hearth (the first time takes a few minutes)', 'docker', ['compose', 'up', '-d', '--build'], { sudo: true, cwd: INSTALL_DIR });
     }
     await sudoWrite(path.join(INSTALL_DIR, 'install.json'), JSON.stringify(meta, null, 2));
-    if (!PREFIX) await sudoWrite('/usr/local/bin/' + binOf(INSTANCE), `#!/bin/sh\nexec node ${INSTALL_DIR}/installer/hearth-server.js --instance ${INSTANCE} "$@"\n`, '755');
+    if (!PREFIX) await sudoWrite('/usr/local/bin/' + binOf(INSTANCE), `#!/bin/sh\nexec node ${INSTALL_DIR}/installer/hearth-server.js ${INSTANCE === 'hearth' ? '' : '--instance ' + INSTANCE} "$@"\n`, '755');
   } catch (e) { gap(); bad('Something went wrong: ' + e.message); say('Nothing is broken that cannot be fixed. Read the message above, fix that one thing, and run the installer again. It is safe to run it twice.'); process.exit(1); }
 
   // wait until it answers
@@ -409,7 +409,7 @@ async function showCode(meta, first) {
   item(2, 'Open it. It asks for a server. Type the ' + bold('address') + ' and the ' + bold('code') + ' from the box above.');
   item(3, 'That is all. Your laptop and phone now share the same chats and project files.');
   gap();
-  say(dim('The code works for 10 minutes. If it ran out, type  ' + binOf(INSTANCE) + ' code  on this server to get a new one.'));
+  say(dim('The code works for 10 minutes. Type  ' + binOf(INSTANCE) + ' code  on this server any time to see the address, a new code and the link again, for example to connect another computer.'));
   say(dim('Or paste this one link on a device instead (keep it secret, it opens your server):'));
   console.log('  ' + dim(link));
   gap();
@@ -425,7 +425,7 @@ async function main() {
   const meta = (() => { try { return JSON.parse(fs.readFileSync(path.join(INSTALL_DIR, 'install.json'), 'utf8')); } catch { return null; } })();
   if (cmd === 'install') return install();
   if (!meta) { bad('Hearth is not installed here yet. Run the installer first.'); process.exit(1); }
-  if (cmd === 'code') { banner(); return showCode(meta, false); }
+  if (cmd === 'code' || cmd === 'link') { banner(); return showCode(meta, false); }
   if (cmd === 'status') {
     banner(); const up = await tcpUp(); (up ? ok : bad)(up ? 'Hearth is running at ' + meta.url : 'Hearth is not answering.');
     say(dim(meta.mode === 'docker' ? `Docker folder: ${INSTALL_DIR}` : `Logs: sudo journalctl -u ${INSTANCE} -n 30`)); return undefined;
@@ -440,6 +440,6 @@ async function main() {
     await run('Remove the program files', 'sh', ['-c', `rm -rf '${INSTALL_DIR}/relay' '${INSTALL_DIR}/installer' '${INSTALL_DIR}/install.json' /usr/local/bin/${binOf(INSTANCE)} /etc/caddy/${INSTANCE}.d`], { sudo: true });
     ok('Hearth is removed.'); return undefined;
   }
-  say('Commands:  install · code · status · update · uninstall'); return undefined;
+  say('Commands:  code (address, code and link for a new device) · status · update · uninstall'); return undefined;
 }
 main().then(() => process.exit(0), (e) => { bad(e.message); process.exit(1); });

@@ -51,6 +51,7 @@ object Ui {
     var profile by mutableStateOf<Profile?>(null)
     var signedIn by mutableStateOf(false)
     var tourRev by mutableStateOf(0)
+    var newRun by mutableStateOf("vps")   // which computer a brand-new chat should start on
     var error by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
     var history by mutableStateOf<List<Sample>>(emptyList())
@@ -327,7 +328,7 @@ fun UsageScreen() {
         Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Limits", view == 0) { view = 0 }; Chip("History", view == 1) { view = 1 }
         }
-        Box(Modifier.weight(1f)) { if (view == 0) NowScreen() else HistoryScreen() }
+        Box(Modifier.weight(1f).tourTarget("usage")) { if (view == 0) NowScreen() else HistoryScreen() }
     }
 }
 
@@ -356,7 +357,7 @@ fun SettingsScreen() {
         Header("Settings")
         ComputersCard()
         UpdatesCard()
-        Card { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Label("Help"); Txt("New here? The tutorial shows how to connect.", T.small, muted = true) }; TextAction("Show tutorial") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
+        Card { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Label("Help"); Txt("New here? Take the tour or run the tutorial again.", T.small, muted = true) }; Column(horizontalAlignment = Alignment.End) { TextAction("Take the tour") { Tour.start() }; Spacer(Modifier.height(6.dp)); TextAction("Show tutorial") { Store.setOnboarded(c, false); Ui.tourRev++ } } } }
         Card {
             Label("Notifications and calls")
             Spacer(Modifier.height(8.dp))

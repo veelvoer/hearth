@@ -189,7 +189,7 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             }
             return@Screen
         }
-        Button("New session", Modifier.fillMaxWidth()) { newSession() }
+        Button("New session", Modifier.fillMaxWidth().tourTarget("new")) { newSession() }
         val offline = machines.filter { lists.containsKey(it.host) && lists[it.host] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't be reached right now. It will reconnect on its own.", T.small, muted = true)
         // the server holds every chat, so its list is the list (same as on the desktop app); other computers only fill in what it lacks
@@ -199,7 +199,7 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
                 g.firstOrNull { (mm, _) -> mm === hub } ?: g.reduce { a, b -> if (a.second.running != b.second.running) (if (a.second.running) a else b) else if (b.second.mtime > a.second.mtime + 2500) b else a }
             }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
-        all.forEach { (mm, s) -> SessionCard(s, s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } }
+        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
     }
 }
 
@@ -267,7 +267,7 @@ fun ComputersCard() {
     var adding by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(false) }
     fun commit(l: List<Machine>) { machines = l; Store.saveMachines(c, l); Ui.machinesRev++; CallService.sync(c) }
-    Card {
+    Card(Modifier.tourTarget("computers")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label("Computers and servers", Modifier.weight(1f))
         }
@@ -328,7 +328,16 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 machines.sortedBy { it.secure }.forEach { mm -> Chip(mm.name, mm == m) { sel = mm } }
             }
-            if (m.secure) Txt("Runs on the server, so it keeps going when your computer is off.", T.small, muted = true)
+            if (m.secure) {
+                var pcs by remember(m) { mutableStateOf<List<Computer>>(emptyList()) }
+                LaunchedEffect(m) { Ui.newRun = "vps"; runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
+                if (pcs.isNotEmpty()) {
+                    Label("Which computer should work on it?")
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (listOf("Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, Ui.newRun == v) { Ui.newRun = v } }
+                    }
+                } else Txt("Runs on the server, so it keeps going when your computer is off.", T.small, muted = true)
+            }
         }
         err?.let { Card { Txt(it, T.small, color = MaterialTheme.colorScheme.primary) } }
         if (talk) {
@@ -443,7 +452,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model.ifBlank { null }, effort = effort.ifBlank { null }) { t, tx, e ->
+                    Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model.ifBlank { null }, effort = effort.ifBlank { null }, run = if (isNew && m.secure && Ui.newRun != "vps") Ui.newRun else null) { t, tx, e ->
                         when (t) {
                             "session" -> if (isNew && tx.isNotEmpty()) sess = sess.copy(id = tx, title = text.take(60))
                             "prefs" -> call = tx
@@ -483,10 +492,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
             if (mode == "bypassPermissions") Txt("Full auto lets Claude run any command on ${m.name} without asking.", T.small, color = cs.primary)
             if (m.secure) {
                 Label("Run on")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Auto" to "auto", "Laptop" to "laptop", "Server only" to "vps").forEach { (l, v) -> Chip(l, run == v) { run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } } }
+                var pcs by remember { mutableStateOf<List<Computer>>(emptyList()) }
+                LaunchedEffect(options) { runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, run == v) { run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } } }
                 }
-                Txt("Auto: your laptop when it is online, otherwise the server. Laptop: wait until it is online, for example to test things.", T.small, muted = true)
+                Txt("Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. A computer that is off starts when you turn it on. You can also just ask Claude to do something on another PC.", T.small, muted = true)
             }
             if (sess.kind != "talk") {
                 Label("Model")

@@ -178,7 +178,11 @@ function start(opts) {
   const answersFor = new Map();      // laptop name -> answers waiting to be fetched
   const waiters = new Set();         // laptops waiting on a long poll
   const AGENT_FRESH_MS = 45000, CLAIM_MS = 15 * 60000;
-  const laptopOnline = () => { let best = null; for (const [n, a] of agents) if (Date.now() - a.seen < AGENT_FRESH_MS) best = n; return best; };
+  const laptopOnline = () => { let best = null, at = 0; for (const [n, a] of agents) if (Date.now() - a.seen < AGENT_FRESH_MS && a.seen >= at) { best = n; at = a.seen; } return best; };   // the computer that was heard from most recently
+  const validRun = (r) => ['auto', 'laptop', 'vps'].includes(r) || /^pc:[\w .()-]{1,60}$/.test(String(r));
+  /** Which of your computers should run this? 'pc:Name' = that one (even if it is off: it waits), 'laptop'/'auto' = the one that is online. null = the server itself. */
+  const targetFor = (run) => (String(run).startsWith('pc:') ? String(run).slice(3) : run === 'laptop' || run === 'auto' ? laptopOnline() : null);
+  const computersList = () => [{ id: 'vps', name: opts.name || 'Server', online: true, kind: 'server' }, ...[...agents].map(([n, a]) => ({ id: 'pc:' + n, name: n, online: Date.now() - a.seen < AGENT_FRESH_MS, kind: 'computer' })).sort((a, b) => b.online - a.online || a.name.localeCompare(b.name))];
   const jobBusy = (k) => { const j = k && jobs.get(k); return !!(j && !j.done); };
   let chatEpoch = 1;   // bumped whenever the server's chats change, so linked computers sync at once instead of on their next timer
   const readyFor = (name) => ({
@@ -486,6 +490,7 @@ function start(opts) {
         if (!authed(req, res)) return undefined;
         if (parts[0] === 'status') return json(res, 200, { away: away(), build: BUILD, version: VERSION, canSelfUpdate: !!opts.selfUpdate, listeners: clients.size, root, allowBypass, moveRoot, laptop: laptopOnline(), queued: work.length });
         if (parts[0] === 'voice' && parts[1] === 'status') return proxyVoice(req, res);
+        if (parts[0] === 'usage-report') { const n = Number(u.searchParams.get('days')); return json(res, 200, core.report(n === 0 ? 0 : Math.max(1, Math.min(365, n || 30)))); }
         if (parts[0] === 'stats') return json(res, 200, core.stats(Math.max(1, Math.min(90, Number(u.searchParams.get('days')) || 30))));
         if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || inRoot(cwd)) ? cwd : '', findClaude())); }
         if (parts[0] === 'projects' && parts.length === 1) return json(res, 200, listProjects());
@@ -526,6 +531,7 @@ function start(opts) {
           catch (e) { return json(res, 502, { error: 'Could not look on GitHub: ' + e.message }); }
         }
         if (parts[0] === 'pair' && parts[1] === 'requests') return json(res, 200, pairPending());
+        if (parts[0] === 'computers') return json(res, 200, computersList());
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event));
         if (parts[0] === 'sessions' && parts.length === 1) {
@@ -595,16 +601,24 @@ function start(opts) {
           if (!isLocalDirect(req)) return json(res, 403, { error: 'local only' });
           const q = await bodyJson(req), job = jobs.get(String(q.job || ''));
           const on = laptopOnline();
+          if (q.tool === 'list_computers') { const l = computersList().filter((c) => c.kind === 'computer'); return json(res, 200, { text: l.length ? 'The user\'s computers:\n' + l.map((c) => `- ${c.name}: ${c.online ? 'online' : 'offline'}`).join('\n') : 'No computer of the user is linked to this server.' }); }
+          let chosen = on;
+          if (q.tool === 'run_on_computer') {
+            const want = String(q.computer || '').trim().toLowerCase(), hit = computersList().find((c) => c.kind === 'computer' && c.name.toLowerCase() === want);
+            if (!hit) return json(res, 200, { text: 'There is no computer called "' + q.computer + '". Use list_computers to see the names.' });
+            chosen = hit.name;
+          }
           if (q.tool === 'laptop_status') {
             const mine = work.filter((w) => !w.done).map((w) => '- ' + (w.rel || 'projects') + ': ' + String(w.text).slice(0, 80));
             return json(res, 200, { text: (on ? `The laptop (${on}) is online now.` : 'The laptop is offline; queued tasks run when it is next opened.') + (mine.length ? '\nWaiting tasks:\n' + mine.join('\n') : '\nNo tasks are waiting.') });
           }
           if (!job || !job.sid) return json(res, 200, { text: 'This only works inside a chat.' });
           const relp = root ? path.relative(root, job.cwd) : '';
-          work.push({ id: crypto.randomBytes(6).toString('hex'), session: job.sid, rel: relp, text: (root ? String(q.task || '').split(root).join(chathub.MARK) : String(q.task || '')).slice(0, 8000), mode: 'auto', model: '', call: getPrefs(job.sid).call, created: Date.now(), afterJob: job.key, fromServer: true });
+          work.push({ id: crypto.randomBytes(6).toString('hex'), session: job.sid, rel: relp, text: (root ? String(q.task || '').split(root).join(chathub.MARK) : String(q.task || '')).slice(0, 8000), mode: 'auto', model: '', call: getPrefs(job.sid).call, created: Date.now(), afterJob: job.key, fromServer: true, target: q.tool === 'run_on_computer' ? chosen : undefined });
           saveWork(); setTimeout(wake, 500);
-          publish({ ...baseFor(job.sid, job.cwd), kind: 'queued', call: false, text: on ? 'Handed to your laptop; it starts once this reply is finished.' : 'Waiting for your laptop: it starts when you open it.' });
-          return json(res, 200, { text: on ? `Queued. The laptop (${on}) is online and starts as soon as you finish this reply.` : 'Queued. The laptop is offline; it starts automatically the next time the user opens it. They get a notification when it is done.' });
+          const isOn = q.tool === 'run_on_computer' ? isOnline(chosen) : !!on;
+          publish({ ...baseFor(job.sid, job.cwd), kind: 'queued', call: false, text: isOn ? `Handed to ${chosen || 'your laptop'}; it starts once this reply is finished.` : `Waiting for ${chosen || 'your laptop'}: it starts when you open it.` });
+          return json(res, 200, { text: isOn ? `Queued. ${chosen || 'The laptop'} is online and starts as soon as you finish this reply.` : `Queued. ${chosen || 'The laptop'} is offline; it starts automatically the next time the user opens it. They get a notification when it is done.` });
         }
         if (parts[0] === 'question') {  // from the ask_user tool of a chat this relay started
           if (!isLocalDirect(req)) return json(res, 403, { error: 'local only' });
@@ -804,7 +818,7 @@ function start(opts) {
         if (parts[0] === 'sessions' && parts[2] === 'prefs') {
           const patch = {};
           if (['off', 'done', 'attention'].includes(b.call)) patch.call = b.call;
-          if (['auto', 'laptop', 'vps'].includes(b.run)) patch.run = b.run;
+          if (validRun(b.run)) patch.run = b.run;
           return json(res, 200, setPrefs(parts[1], patch));
         }
         if (parts[0] === 'sessions' && parts[2] === 'send') {
@@ -818,8 +832,18 @@ function start(opts) {
             return undefined;
           }
           const prefs0 = sidr === 'new' ? { run: 'vps' } : getPrefs(sidr);
-          const run = ['auto', 'laptop', 'vps'].includes(b.run) ? b.run : prefs0.run;   // a per-message choice wins over the chat's setting
-          if (publicMode && sidr !== 'new' && (run === 'laptop' || (run === 'auto' && laptopOnline()))) {
+          const run = validRun(b.run) ? b.run : prefs0.run;   // a per-message choice wins over the chat's setting
+          if (publicMode && sidr === 'new' && String(run).startsWith('pc:')) {   // a new chat that should start on one of your computers
+            const kind = b.kind === 'talk' ? 'talk' : 'code', cwd = String(b.cwd || '');
+            if (kind !== 'talk' && (!root || !inRoot(cwd))) return json(res, 400, { error: 'Choose a project folder inside the projects folder.' });
+            const target = targetFor(run);
+            work.push({ id: crypto.randomBytes(6).toString('hex'), session: '', newChat: true, kind, target, rel: kind === 'talk' ? 'Talks' : path.relative(root, cwd), text: (root ? String(b.text || '').split(root).join(chathub.MARK) : String(b.text || '')).slice(0, 20000), mode: MODES.includes(b.mode) ? b.mode : 'auto', model: b.model || '', effort: b.effort || '', call: 'off', created: Date.now() });
+            saveWork(); wake();
+            res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+            res.end(JSON.stringify({ t: 'queued', to: target, online: isOnline(target) }) + '\n' + JSON.stringify({ t: 'end' }) + '\n');
+            return undefined;
+          }
+          if (publicMode && sidr !== 'new' && (run === 'laptop' || String(run).startsWith('pc:') || (run === 'auto' && laptopOnline()))) {
             const f = core.findSession(sidr);
             if (!f) return json(res, 404, { error: 'no such session' });
             const s0 = core.summarize(f);
@@ -827,10 +851,10 @@ function start(opts) {
             const old = jobs.get(sidr);
             if (old && !old.done) return json(res, 409, { error: 'Claude is still working on this chat' });
             const relp = path.relative(root, s0.cwd);
-            work.push({ id: crypto.randomBytes(6).toString('hex'), session: sidr, rel: relp, text: String(b.text || ''), mode: MODES.includes(b.mode) ? b.mode : 'auto', model: b.model || '', effort: b.effort || '', call: getPrefs(sidr).call, chatMtime: f.mtime, kind: getPrefs(sidr).kind, created: Date.now() });
+            work.push({ id: crypto.randomBytes(6).toString('hex'), session: sidr, rel: relp, text: String(b.text || ''), mode: MODES.includes(b.mode) ? b.mode : 'auto', model: b.model || '', effort: b.effort || '', call: getPrefs(sidr).call, chatMtime: f.mtime, kind: getPrefs(sidr).kind, target: targetFor(run) || undefined, created: Date.now() });
             saveWork(); wake();
             res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
-            res.end(JSON.stringify({ t: 'queued', to: laptopOnline() || 'your laptop', online: !!laptopOnline() }) + '\n' + JSON.stringify({ t: 'end' }) + '\n');
+            res.end(JSON.stringify({ t: 'queued', to: targetFor(run) || 'your computer', online: !!isOnline(targetFor(run)) || (!String(run).startsWith('pc:') && !!laptopOnline()) }) + '\n' + JSON.stringify({ t: 'end' }) + '\n');
             return undefined;
           }
           const r = startJob(b, parts[1]);
@@ -857,6 +881,16 @@ function start(opts) {
   const doing = new Set();
   let lastEpoch = 0;
   async function runWork(w) {
+    if (w.newChat) {   // a brand-new chat that was asked to start on this computer
+      const dest = path.join(moveRoot || os.homedir(), w.rel || '');
+      try { fs.mkdirSync(dest, { recursive: true }); } catch { throw new Error('Could not make the folder ' + dest); }
+      publish({ ...baseFor('', dest), kind: 'started', call: false, text: 'Started on ' + os.hostname() + ': ' + String(w.text).slice(0, 140) });
+      const t0 = moveRoot ? String(w.text).split(chathub.MARK).join(moveRoot.replace(/\/$/, '')) : w.text;
+      const r0 = startJob({ text: t0, mode: w.mode, model: w.model, effort: w.effort, cwd: dest, kind: w.kind }, 'new');
+      if (r0.error) throw new Error(r0.message);
+      while (!r0.job.done) await sleep(1500);
+      return;
+    }
     const direct = !!w.cwd;   // a chat that lives only on this computer: no waiting for files to arrive
     const local = direct ? w.cwd : path.join(moveRoot || os.homedir(), w.rel || '');
     const deadline = Date.now() + 4 * 60000;

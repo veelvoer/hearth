@@ -21,6 +21,8 @@
 - 🔁 **Same chats, same files, everywhere.** Your laptop, your phone and your server always show the same chats and the same project folder.
 - 📥 **"A project was made while you were away."** If your laptop is off, Hearth asks next time: *Install* it here, or *Later*.
 - 🔔 **Get told when Claude is done or needs you.** A message, or even a phone call if you want one.
+- 💻 **Several computers, your choice.** Link a laptop and a desktop PC to your server and pick, per chat, which one works on it. You can also just ask Claude to do something on another PC.
+- 📈 **Usage and cost at a glance:** total tokens, estimated cost at API prices, per model and per project, streaks, cache savings. Like `/usage`, for all time.
 - 🧰 **Everything the terminal can do, without the terminal.** Slash commands, skills, plugins, connections, project notes, save & undo changes, model and effort pickers. (Talking by voice needs an optional voice engine, see `relay/install_voice.sh`.)
 - 🧭 **A setup that sets everything up with you, and a guided tour** that lights up each button and explains it.
 - 🎨 **Your colors, your icon.** Hearth follows your desktop's accent color (Windows, macOS, GNOME, KDE, Hyprland) or any color you pick, and the app icon changes with it.

@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 
 /** The first-run tutorial. Every step can be skipped; the same steps are reachable later from Settings. */
 @Composable
-fun Welcome(finish: () -> Unit) {
+fun Welcome(finish: (Boolean) -> Unit) {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
@@ -129,9 +129,9 @@ fun Welcome(finish: () -> Unit) {
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (step in 1 until last) { TextAction("Back") { step -= 1 }; Spacer(Modifier.width(20.dp)) }
-            if (step < last) TextAction("Skip tutorial") { finish() }
+            if (step < last) TextAction("Skip tutorial") { finish(false) } else TextAction("Skip the tour") { finish(false) }
             Spacer(Modifier.weight(1f))
-            Button(when (step) { 0 -> "Get started"; last -> "Open Hearth"; 1 -> if (connected) "Continue" else "Later"; else -> "Continue" }) { if (step == last) finish() else step += 1 }
+            Button(when (step) { 0 -> "Get started"; last -> "Show me around"; 1 -> if (connected) "Continue" else "Later"; else -> "Continue" }) { if (step == last) finish(true) else step += 1 }
         }
     }
 }

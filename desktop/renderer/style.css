@@ -334,3 +334,16 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in s
 .tcount { font-size: 11px; color: var(--muted); letter-spacing: .08em; }
 .trow { display: flex; gap: 8px; align-items: center; }
 .obnote > button { align-self: flex-start; }
+
+/* usage and cost */
+.urgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 900px) { .urgrid { grid-template-columns: repeat(2, 1fr); } }
+.urtile { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.urval { font: 600 24px/1.2 var(--serif, Georgia, serif); overflow-wrap: anywhere; }
+.urbars { display: flex; align-items: flex-end; gap: 3px; height: 110px; padding: 4px 0; }
+.urbar { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 2px; } .urbar i { display: block; width: 100%; background: var(--clay); border-radius: 3px 3px 0 0; transition: height .5s var(--ease); opacity: .85; } .urbar:hover i { opacity: 1; }
+.urtable { display: flex; flex-direction: column; gap: 6px; }
+.urrow { display: grid; grid-template-columns: minmax(80px, 150px) 1fr auto 72px; gap: 10px; align-items: center; }
+.urname { font-weight: 600; min-width: 0; } .urnum { white-space: nowrap; } .urmoney { text-align: right; }
+.urbarwrap { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; } .urbarwrap i { display: block; height: 100%; background: var(--clay); border-radius: 99px; transition: width .5s var(--ease); }
+@media (max-width: 760px) { .urrow { grid-template-columns: 1fr auto; } .urbarwrap, .urnum { display: none; } }

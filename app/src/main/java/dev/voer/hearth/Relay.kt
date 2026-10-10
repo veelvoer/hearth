@@ -16,6 +16,7 @@ data class Machine(val name: String, val host: String, val port: Int, val token:
 data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "")
 data class Msg(val role: String, val text: String, val name: String = "", val detail: String = "", val result: String? = null, val err: Boolean = false)
 data class Project(val name: String, val path: String)
+data class Computer(val id: String, val name: String, val online: Boolean, val kind: String)
 
 /** Turns a pairing link (hearth://pair?url=…&token=…) or a typed address into a computer to connect to. */
 fun parseMachine(input: String, name: String, token: String): Machine? {
@@ -167,6 +168,8 @@ object Relay {
     }
 
     /** "off", "done" (call me once when it's done) or "attention" (call me when it's done or needs me). */
+    /** The computers of the user that are linked to this server (and the server itself). */
+    fun computers(m: Machine): List<Computer> { val a = JSONArray(getJson(m, "/computers")); return List(a.length()) { val o = a.getJSONObject(it); Computer(o.getString("id"), o.getString("name"), o.optBoolean("online"), o.optString("kind")) } }
     fun prefs(m: Machine, id: String): String = JSONObject(getJson(m, "/sessions/$id/prefs")).optString("call", "off")
 
     /** Where this chat runs: "auto" (your laptop when it is online, else the server), "laptop" (wait for it) or "vps". */
@@ -203,7 +206,7 @@ object Relay {
     }
 
     /** Streams one turn. [onEvent] gets ("delta"|"tool"|"done", text, isError). Blocks until the turn ends. */
-    fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, onEvent: (String, String, Boolean) -> Unit) {
+    fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, run: String? = null, onEvent: (String, String, Boolean) -> Unit) {
         val c = open(m, "/sessions/${id.ifEmpty { "new" }}/send", post = true, read = 60 * 60_000)
         try {
             val body = JSONObject().put("text", text).put("mode", mode).put("brief", brief)
@@ -211,6 +214,7 @@ object Relay {
             if (id.isEmpty() && kind != null) body.put("kind", kind)
             if (model != null) body.put("model", model)
             if (effort != null) body.put("effort", effort)
+            if (run != null) body.put("run", run)
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             if (c.responseCode != 200) {
                 val msg = runCatching { JSONObject(c.errorStream?.bufferedReader()?.readText().orEmpty()).optString("error") }.getOrNull()

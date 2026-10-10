@@ -13,6 +13,8 @@ jobs:
         run: for f in desktop/*.js desktop/relay/*.js desktop/renderer/*.js server/*.js support/*.js; do node --check "$f"; done
       - name: Support desk test
         run: node support/test/support.test.js
+      - name: Several computers test
+        run: node desktop/test/computers.test.js
       - name: Ask-to-connect test
         run: node desktop/test/pair.test.js
       - name: Chat and file sync test
