@@ -17,7 +17,7 @@ const { spawn, spawnSync } = require('child_process');
 const REPO = path.resolve(__dirname, '..');
 const RELAY_SRC = path.join(REPO, 'desktop', 'relay');
 const RELAY_FILES = (() => { try { return fs.readdirSync(RELAY_SRC).filter((f) => f.endsWith('.js') && f !== 'embedded.js'); } catch { return []; } })();   // the program files of the server
-const VERSION = (() => { try { return require(path.join(RELAY_SRC, 'version.js')); } catch { return '1.0.0'; } })();
+const VERSION = (() => { for (const p of [path.join(RELAY_SRC, 'version.js'), path.join(__dirname, '..', 'relay', 'version.js')]) { try { return require(p); } catch { /* next */ } } return '1.0.0'; })();   // from the repository, or from the installed copy
 let PORT = 47601;
 
 // ───────────────────────── arguments ─────────────────────────
@@ -300,7 +300,7 @@ async function install() {
   try {
     if (!docker) {
       if (isRoot && !PREFIX && spawnSync('id', ['hearth']).status !== 0) await must('Create a user called "hearth"', 'useradd', ['-m', '-s', '/bin/bash', 'hearth']);
-      await must('Copy Hearth to ' + INSTALL_DIR, 'sh', ['-c', `mkdir -p '${relayDir}' && cp ${RELAY_FILES.map((f) => `'${RELAY_SRC}/${f}'`).join(' ')} '${relayDir}/' && mkdir -p '${INSTALL_DIR}/installer' && cp '${__dirname}/hearth-server.js' '${INSTALL_DIR}/installer/' && chmod -R a+rX '${INSTALL_DIR}' && chown -R ${user} '${relayDir}' 2>/dev/null || true`], { sudo: !PREFIX });
+      await must('Copy Hearth to ' + INSTALL_DIR, 'sh', ['-c', `mkdir -p '${relayDir}' && cp ${RELAY_FILES.map((f) => `'${RELAY_SRC}/${f}'`).join(' ')} '${relayDir}/' && mkdir -p '${INSTALL_DIR}/installer' && cp '${__dirname}/hearth-server.js' '${INSTALL_DIR}/installer/' && chmod -R a+rX '${INSTALL_DIR}' && chown -R ${user} '${relayDir}' '${INSTALL_DIR}/installer' 2>/dev/null || true`], { sudo: !PREFIX });
       await must('Make the projects folder', 'sh', ['-c', `mkdir -p '${projects}' '${cfgDir}' && chown -R ${user} '${projects}' '${cfgDir}' 2>/dev/null || true`], { sudo: !PREFIX });
       if (!claudeAlready && !PREFIX) await must('Install Claude Code (this is the part that does the thinking)', 'npm', ['install', '-g', '@anthropic-ai/claude-code'], { sudo: true });
       else ok('Claude Code is already installed');
