@@ -16,6 +16,19 @@ function h(tag, props, ...kids) {
 function cardHost() { let c = document.getElementById('cardhost'); if (!c) { c = h('div', { id: 'cardhost' }); document.body.append(c); } return c; }
 const clean = (e) => String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+/** Icon-only button with a hover label. */
+const ibtn = (name, title, fn, cls = 'ghost') => h('button', { class: cls + ' ib', title, 'aria-label': title, onclick: fn }, icon(name));
+/** The little (i): explains a setting in a popover instead of a paragraph of text. */
+function info(text) {
+  const b = h('button', { class: 'infob', title: 'More info', 'aria-label': 'More info', onclick: (e) => {
+    e.stopPropagation(); const open = document.querySelector('.infopop'); if (open) { const same = open.dataset.for === text; open.remove(); if (same) return; }
+    const r = b.getBoundingClientRect(), pop = h('div', { class: 'infopop', 'data-for': text }, text); document.body.append(pop);
+    const w = Math.min(300, innerWidth - 24); pop.style.width = w + 'px'; pop.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left - w / 2 + 9)) + 'px';
+    const below = r.bottom + pop.offsetHeight + 12 < innerHeight; pop.style.top = (below ? r.bottom + 8 : r.top - pop.offsetHeight - 8) + 'px';
+    setTimeout(() => document.addEventListener('click', function close() { pop.remove(); document.removeEventListener('click', close); }, { once: true }), 0);
+  } }, icon('info'));
+  return b;
+}
 const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label);
 const toggle = (on, fn) => h('button', { class: 'toggle' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(!!on), onclick: fn });
 
@@ -28,6 +41,14 @@ const ICONS = {
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
   history: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>', mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  addons: '<path d="M9 3h6v4a2 2 0 1 0 0 4h0v3h-4a2 2 0 1 0-4 0H3V9h4a2 2 0 1 0 0-4z" transform="translate(1 1)"/>', sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>', back: '<path d="M15 5l-7 7 7 7"/>', plus: '<path d="M12 5v14M5 12h14"/>', check: '<path d="M5 12l5 5L20 7"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
+  devices: '<rect x="3" y="5" width="13" height="10" rx="1.5"/><path d="M1 19h17"/><rect x="18" y="8" width="4" height="9" rx="1"/>', sync: '<path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2"/><path d="M20 4v4h-4M4 20v-4h4"/>',
+  support: '<path d="M4 12a8 8 0 0 1 16 0v4a2 2 0 0 1-2 2h-1v-6h3M4 12v4a2 2 0 0 0 2 2h1v-6H4"/>', paint: '<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 0 0 3-3c0-5-4-11-8-11z"/><circle cx="8" cy="11" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="10" r="1"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>', phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', server: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h0M7 17h0"/>',
+  folder: '<path d="M3 6h6l2 2h10v11H3z"/>', send: '<path d="M4 12l16-8-6 16-3-6z"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>', git: '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6h4a4 4 0 0 1 4 4"/>',
+  tour: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>', tool: '<path d="M14 6a4 4 0 0 0 4 4l-9 9a2 2 0 0 1-3-3l9-9a4 4 0 0 0-1-1z"/>',
 };
 const icon = (n) => h('span', { html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` });
 const TABS = [['sessions', 'Chats'], ['dashboard', 'Home'], ['history', 'History'], ['settings', 'Settings']];
@@ -48,6 +69,7 @@ function maybeTutorial() { if (S && S.settings && !S.settings.onboarded && typeo
 window.addEventListener('load', () => { if (S && S.settings) render(); });
 let lastTab = null;
 function render() {
+  lastSig = sigOf();
   renderNav();
   content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
@@ -152,48 +174,46 @@ function drawHistory() {
 }
 
 // ───────────────────────── Settings ─────────────────────────
+const ch = (ic, title, tip, ...right) => h('div', { class: 'row chead' }, icon(ic), h('div', { class: 'label grow' }, title), tip ? info(tip) : null, ...right);
 function settingsView() {
   const st = S.settings;
   const set = async (patch) => { S.settings = await cm.setSettings(patch); render(); };
   const p = page(head('Settings'));
   p.append(updatesCard());
   p.append(syncCard());
-  p.append(h('div', { class: 'card row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Help'), h('div', { class: 'small muted' }, 'New here? Take the tour, or run the setup again.')), h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: () => startTour() }, 'Take the tour'), h('button', { class: 'ghost sm', onclick: () => { OB.step = 0; startTutorial(); } }, 'Run setup again'))));
-  p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Appearance'),
-    h('div', { class: 'field' }, h('div', { class: 'small muted' }, 'Mode'), h('div', { class: 'row' }, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']].map(([v, l]) => chip(l, (st.theme || 'system') === v, () => set({ theme: v }))))),
-    h('div', { class: 'field' }, h('div', { class: 'small muted' }, 'Colors'), h('div', { class: 'row' }, [['claude', 'Hearth'], ['system', 'My desktop'], ['custom', 'Pick a color']].map(([v, l]) => chip(l, (st.palette || 'claude') === v, () => set({ palette: v })))),
-      st.palette === 'custom' ? h('div', { class: 'row' }, h('input', { type: 'color', value: st.customAccent || '#F0643C', style: 'width:52px;height:36px;padding:2px', onchange: (e) => set({ customAccent: e.target.value }) }), h('span', { class: 'small muted' }, 'Pick any color. The icon in the corner of the window changes with it.')) : null),
-    h('div', { class: 'small muted' }, 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop\'s accent color (it is found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.')));
-  p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Alerts'), h('div', {}, 'Notify when usage crosses'),
+  p.append(h('div', { class: 'card' }, ch('tour', 'Help', 'The tour lights up each button and explains it. The setup walks you through server, projects, voice, colors and phone again.',
+    ibtn('tour', 'Take the tour', () => startTour()), h('button', { class: 'ghost sm', onclick: () => { OB.step = 0; startTutorial(); } }, 'Setup'))));
+  p.append(h('div', { class: 'card stack' }, ch('paint', 'Appearance', 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop’s accent color (found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.'),
+    h('div', { class: 'row' }, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']].map(([v, l]) => chip(l, (st.theme || 'system') === v, () => set({ theme: v })))),
+    h('div', { class: 'row wrap' }, [['claude', 'Hearth'], ['system', 'My desktop'], ['custom', 'Pick a color']].map(([v, l]) => chip(l, (st.palette || 'claude') === v, () => set({ palette: v }))),
+      st.palette === 'custom' ? h('input', { type: 'color', value: st.customAccent || '#F0643C', style: 'width:52px;height:36px;padding:2px', onchange: (e) => set({ customAccent: e.target.value }) }) : null)));
+  p.append(h('div', { class: 'card stack' }, ch('bell', 'Alerts', 'You get a notification when your usage crosses these levels. “Session reset” tells you when a heavy 5-hour session rolls over and you have a fresh one.'),
     h('div', { class: 'row' }, [50, 75, 90, 100].map((v) => chip(v + '%', st.thresholds.includes(v), () => set({ thresholds: st.thresholds.includes(v) ? st.thresholds.filter((x) => x !== v) : [...st.thresholds, v] })))),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset', h('div', { class: 'small muted' }, 'Tell me when a heavy session rolls over')), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
-  p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Where the limits come from'),
-    h('div', { class: 'small muted' }, 'Your session and weekly limits are read from the real Claude Code on your computers, so this app never handles your Claude login. They refresh whenever Claude runs through this app, and when you press Refresh.')));
-  p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Call me'),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Ring on this computer', h('div', { class: 'small muted' }, 'A call window and sound when Claude finishes a task, asks a question, or needs permission. Needs relay/install_hooks.py run once.')), toggle(st.callMe, () => set({ callMe: !st.callMe }))),
-    h('div', { class: 'small muted' }, 'Calls follow the relay\'s away switch, shared with your phone. Turn it on while you\'re away from the keyboard.')));
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset'), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
+  p.append(h('div', { class: 'card stack' }, ch('phone', 'Call me', 'A call window and sound when Claude finishes a task, asks a question or needs permission. It follows the relay’s “away” switch, shared with your phone: turn it on while you are away from the keyboard. Needs relay/install_hooks.py run once.'),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Ring on this computer'), toggle(st.callMe, () => set({ callMe: !st.callMe })))));
   p.append(devicesCard(), computersCard(), hooksCard());
-  p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Startup'),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Keep running in the background', h('div', { class: 'small muted' }, 'Closing the window keeps your phone connected. Quit from the tray icon.')), toggle(st.background !== false, () => set({ background: st.background === false }))),
+  p.append(h('div', { class: 'card stack' }, ch('settings', 'Startup', 'Closing the window keeps your phone connected. Quit from the tray icon.'),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Keep running in the background'), toggle(st.background !== false, () => set({ background: st.background === false }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Start when I log in'), toggle(!!st.autostart, async () => { await cm.setAutostart(!st.autostart); S = await cm.state(); render(); }))));
-  const v = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Voice'), h('div', { class: 'small muted', id: 'vstat' }, 'Checking…'));
-  cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { $('#vstat') && ($('#vstat').textContent = s.stt && s.tts ? `${ms[0].name}: Whisper and Piper ready. Talk from any session.` : 'Run relay/install_voice.sh to enable local voice.'); }).catch(() => { $('#vstat') && ($('#vstat').textContent = 'The relay isn\'t reachable. Run relay/install.sh.'); }) : ($('#vstat').textContent = 'No relay found. Run relay/install.sh on this computer.'));
+  const v = h('div', { class: 'card stack' }, ch('mic', 'Voice', 'Talk to Claude and hear it answer. Local voices (Whisper and Piper) run on your own computer; run relay/install_voice.sh to add them.'), h('div', { class: 'row' }, h('span', { class: 'pill' }, h('i'), h('span', { id: 'vstat' }, 'Checking…'))));
+  cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
-  p.append(h('div', { class: 'card row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Support'), h('div', { class: 'small muted' }, 'Found a bug, have a question or an idea? Write to us. We answer by email.')), h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact support')));
+  p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
   return p;
 }
 
 /** Which computers and servers this app talks to. Chats pick from these; the first own computer is the default. */
 /** One place that shows how the server, this laptop, the synced projects folder and your phone fit together. */
 function devicesCard() {
-  const card = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Your devices'), h('div', { class: 'small muted' }, 'Checking…'));
+  const card = h('div', { class: 'card stack' }, ch('devices', 'Your devices', 'How the server, this computer, the synced projects folder and your phone fit together.'), h('div', { class: 'small muted' }, 'Checking…'));
   const dot = (ok) => h('span', { class: 'pill ' + (ok ? 'ok' : 'warn'), style: 'padding:2px 9px' }, h('i'), ok ? 'OK' : 'Check');
   const row = (name, ok, text) => h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, name), h('div', { class: 'small muted' }, text)), dot(ok));
   let showing = false;
   const draw = async () => {
     let st; try { st = await cm.hubStatus(); } catch { st = null; }
     card.innerHTML = '';
-    card.append(h('div', { class: 'label' }, 'Your devices'));
+    card.append(ch('devices', 'Your devices', 'How the server, this computer, the synced projects folder and your phone fit together.'));
     if (!st || !st.server) {
       card.append(h('div', { class: 'small muted' }, 'Connect your server below (paste the pairing link in “Computers and servers”). Then your laptop, the server and your phone work as one: chats and projects stay in sync, and work moves to your laptop whenever it is online.'));
       return;
@@ -223,10 +243,10 @@ function devicesCard() {
 
 /** Is everything in sync? Files and chats, in plain words, with a button to sync right now. */
 function syncCard() {
-  const card = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Sync'), h('div', { class: 'small muted' }, 'Checking…'));
+  const card = h('div', { class: 'card stack' }, ch('sync', 'Sync', 'Your project files and chats are kept the same on this computer, your server and your phone. “Sync now” checks right away.'), h('div', { class: 'small muted' }, 'Checking…'));
   const draw = async () => {
     let st = null; try { st = await cm.relay('local', 'GET', '/sync/status'); } catch { /* none */ }
-    card.innerHTML = ''; card.append(h('div', { class: 'label' }, 'Sync'));
+    card.innerHTML = ''; card.append(ch('sync', 'Sync', 'Your project files and chats are kept the same on this computer, your server and your phone. “Sync now” checks right away.'));
     if (!st || st.role === 'single' || !st.linked) { card.append(h('div', { class: 'small muted' }, 'Not connected to a server yet. Connect one under “Computers and servers” and your files and chats will stay the same everywhere.')); return; }
     const f = st.files && st.files.last, c = st.last;
     const ago = (t) => (t ? ago2(t) : 'not yet');
@@ -252,9 +272,7 @@ function computersCard() {
     const ms = await cm.machines();
     SS.machines = ms;
     card.innerHTML = '';
-    card.append(h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Computers and servers'),
-      h('button', { class: 'link', onclick: async () => { found = await cm.discover(); draw(); } }, 'Scan'),
-      h('button', { class: 'link', onclick: () => { pairing = pairing ? null : {}; draw(); } }, 'Add')));
+    card.append(ch('server', 'Computers and servers', 'The computers and servers this app talks to. Chats run on whichever you pick. Add a server with its address and 6-digit code, or scan your Wi-Fi.', ibtn('refresh', 'Scan the Wi-Fi', async () => { found = await cm.discover(); draw(); }, 'ghost sm'), ibtn('plus', 'Add a computer or server', () => { pairing = pairing ? null : {}; draw(); }, 'ghost sm')));
     for (const m of ms) card.append(h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, m.name), h('div', { class: 'small muted' }, (m.secure ? 'Server · ' : m.local ? 'This computer' : 'Computer · ') + (m.local ? '' : m.host))),
       m.local ? null : h('button', { class: 'link', onclick: async () => { SS.machines = await cm.removeMachine(m.id); if (SS.mid === m.id) SS.mid = null; draw(); } }, 'Remove')));
     for (const f of found.filter((x) => !ms.some((m) => m.host === x.host))) card.append(h('div', { class: 'row small' }, h('div', { class: 'grow' }, f.name + ' · found on your network'), h('button', { class: 'link', onclick: () => { pairing = f; draw(); } }, 'Pair')));
@@ -273,10 +291,10 @@ function computersCard() {
 /** Updates for this computer, your phone and the server, with a button to look for them right now. */
 function updatesCard() {
   const rows = h('div', { class: 'stack', style: 'gap:10px' });
-  const checkBtn = h('button', { class: 'ghost sm' }, 'Check for updates'), goBtn = h('button', { class: 'primary sm', style: 'display:none' }, 'Update now');
+  const checkBtn = h('button', { class: 'ghost sm' }, 'Check'), goBtn = h('button', { class: 'primary sm', style: 'display:none' }, 'Update now');
   const note = h('div', { class: 'small muted' });
   const ver = h('span', { class: 'small muted' }); cm.version().then((v) => { ver.textContent = 'Hearth ' + v; }).catch(() => {});
-  const card = h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Updates'), ver), rows, h('div', { class: 'row' }, checkBtn, goBtn, h('div', { class: 'grow' }), note));
+  const card = h('div', { class: 'card stack' }, ch('sync', 'Updates', 'Hearth looks on GitHub for a newer version. The app, your server and (on the phone) the phone app update themselves; press Update when it shows.', ver), rows, h('div', { class: 'row' }, checkBtn, goBtn, h('div', { class: 'grow' }), note));
   const NAMES = [['desktop', 'This computer', 'the app and its background service'], ['phone', 'Phone app', 'built here and installed over USB'], ['server', 'Server', 'your server']];
   let det = null;
   const draw = () => {
@@ -286,7 +304,7 @@ function updatesCard() {
     const names = det.mode === 'release' ? [['desktop', 'This app', 'downloads the new version from GitHub'], ['server', 'Server', 'your server'], ['phone', 'Phone app', 'updates itself']] : (det.github ? [['github', 'Code on GitHub', 'the newest version of Hearth'], ...NAMES] : NAMES);
     for (const [k, name, what] of names) {
       const r = det[k] || {};
-      rows.append(h('div', { class: 'row' }, h('span', { class: 'pill ' + (r.need ? 'warn' : r.na ? '' : 'ok') }, h('i')), h('div', { class: 'grow' }, h('div', {}, name, h('span', { class: 'small muted' }, '  ' + what)), h('div', { class: 'small ' + (r.need ? '' : 'muted') }, r.text || ''))));
+      rows.append(h('div', { class: 'row' }, h('span', { class: 'pill ' + (r.need ? 'warn' : r.na && k !== 'phone' ? '' : 'ok') }, h('i')), icon(k === 'server' ? 'server' : k === 'phone' ? 'phone' : k === 'github' ? 'git' : 'devices'), h('div', { class: 'grow' }, h('div', {}, name), h('div', { class: 'small ' + (r.need ? '' : 'muted') }, r.text || '')), info(what)));
     }
     const any = ['github', ...NAMES.map((x) => x[0])].some((k) => det[k] && det[k].need);
     goBtn.style.display = any ? '' : 'none';
@@ -295,7 +313,7 @@ function updatesCard() {
   const check = async () => {
     checkBtn.disabled = true; checkBtn.textContent = 'Checking…';
     try { det = await cm.updateCheck(); } catch (e) { det = { unavailable: clean(e) }; }
-    checkBtn.disabled = false; checkBtn.textContent = 'Check for updates'; draw();
+    checkBtn.disabled = false; checkBtn.textContent = 'Check'; draw();
   };
   checkBtn.onclick = check;
   goBtn.onclick = () => { const want = {}; for (const k of ['github', ...NAMES.map((x) => x[0])]) want[k] = !!(det && det[k] && det[k].need); cm.updateRun(want); };
@@ -304,10 +322,10 @@ function updatesCard() {
 }
 
 function pairCard() {
-  const card = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Connect your phone'), h('div', { class: 'small muted' }, 'Checking…'));
+  const card = h('div', { class: 'card stack' }, ch('phone', 'Connect your phone'), h('div', { class: 'small muted' }, 'Checking…'));
   cm.pairInfo().then(async (i) => {
     card.innerHTML = '';
-    card.append(h('div', { class: 'label' }, 'Connect your phone'));
+    card.append(ch('phone', 'Connect your phone'));
     if (i.error) { card.append(h('div', { class: 'small err' }, 'The phone connection could not start: ' + i.error)); return; }
     if (!i.claude) card.append(h('div', { class: 'small err' }, 'Claude Code was not found on this computer. Install it from claude.com/claude-code, then restart this app.'));
     card.append(h('ol', { class: 'oblist small' }, h('li', {}, 'Put your phone on the same Wi-Fi as this computer.'), h('li', {}, 'Open Hearth on the phone and tap “Find my computer”.'), h('li', {}, 'A card appears here. Press Accept. Done!')));
@@ -372,7 +390,11 @@ async function applyPalette() {
 setInterval(() => { if (S.settings && S.settings.palette === 'system') applyPalette(); }, 20000);
 
 // ───────────────────────── wiring ─────────────────────────
-cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) render(); else renderNav(); });
+/** Redraws a screen only when what it shows has changed: no flicker on every refresh. */
+let lastSig = '';
+const sigOf = () => JSON.stringify([tab, S.signedIn, S.usage, S.error, S.settings, S.history && S.history.length, typeof D !== 'undefined' ? [D.err, D.stats && { ...D.stats, generated: 0 }, D.live && D.live.length, D.voice] : 0, typeof UR !== 'undefined' ? UR.data && { ...UR.data, generated: 0 } : 0]);
+function softRender() { const sig = sigOf(); if (sig === lastSig) return; lastSig = sig; render(); }
+cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else renderNav(); });
 cm.on('goto', (t) => setTab(t));
 cm.on('open-session', async (o) => { SS.machines = await cm.machines(); SS.mid = o.machine; openSession({ id: o.session, title: o.title || 'Session', cwd: o.cwd, mid: o.machine, live: true }, o.voice); });
 setInterval(() => { if (tab === 'now' || tab === 'history') render(); }, 30000);

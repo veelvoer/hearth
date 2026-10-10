@@ -17,7 +17,7 @@ function drawSupport() {
   if (!SP.el) return;
   clearInterval(SP.timer);
   const card = h('div', { class: 'mcard sup' }), body = h('div', { class: 'mbody' });
-  const head = h('div', { class: 'row' }, h('div', { class: 'grow row' }, h('div', { html: sparkSVG(22) }), h('h3', { style: 'margin:0' }, 'Support')), SP.signedIn ? h('button', { class: 'link', onclick: async () => { await cm.supportLogout(); SP.signedIn = false; SP.view = 'login'; drawSupport(); } }, 'Sign out') : null, h('button', { class: 'ghost sm', onclick: closeSupport }, 'Close'));
+  const head = h('div', { class: 'row' }, h('div', { class: 'grow row' }, h('div', { html: sparkSVG(22) }), h('h3', { style: 'margin:0' }, 'Support')), SP.signedIn ? h('button', { class: 'link', onclick: async () => { await cm.supportLogout(); SP.signedIn = false; SP.view = 'login'; drawSupport(); } }, 'Sign out') : null, ibtn('close', 'Close', closeSupport, 'ghost sm'));
   card.append(head, body); SP.el.innerHTML = ''; SP.el.append(card);
   ({ login: viewLogin, home: viewHome, new: viewNew, thread: viewThread, sent: viewSent })[SP.view](body);
 }

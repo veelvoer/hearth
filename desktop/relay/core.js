@@ -217,14 +217,16 @@ function stats(days) {
 
 
 /** Everything /usage-style: totals, cost at API prices, per model, per day, per project. days = 0 means all time. */
-function report(days) {
+function report(days, extra = []) {
   const pricing = require('./pricing');
   const now = Date.now(), cutoff = days ? now - days * 864e5 : 0;
   const byModel = new Map(), perDay = new Map(), proj = new Map(), sessions = new Set(), active = new Set(), tools = {};
   let first = 0, last = 0, prompts = 0, longest = 0, assistant = 0;
   const tot = { in: 0, out: 0, cr: 0, cw: 0, cost: 0 };
-  for (const f of listFiles()) {
-    if (f.mtime < cutoff) continue;
+  const seenIds = new Set();   // the same chat can exist on several computers: count it once
+  for (const f of [...listFiles(), ...extra]) {
+    if (f.mtime < cutoff || seenIds.has(f.id)) continue;
+    seenIds.add(f.id);
     let hit = statCache.get(f.file);
     if (!hit || hit.mtime !== f.mtime || hit.size !== f.size) { hit = { mtime: f.mtime, size: f.size, d: parseUsage(f.file) }; statCache.set(f.file, hit); }
     const d = hit.d, pk = d.cwd || 'unknown';

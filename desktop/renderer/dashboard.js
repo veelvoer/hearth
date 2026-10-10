@@ -19,7 +19,7 @@ async function loadDashboard() {
     D.voice = await cm.relay(m.id, 'GET', '/voice/status').catch(() => null);
     D.err = null; D.loadedAt = Date.now();
   } catch (e) { D.err = clean(e); }
-  finally { D.loading = false; D.loadedAt = Date.now(); if (tab === 'dashboard') render(); }
+  finally { D.loading = false; D.loadedAt = Date.now(); if (tab === 'dashboard') softRender(); }
 }
 setInterval(() => { if (tab === 'dashboard' && S.signedIn) loadDashboard(); }, 45000);
 
@@ -38,7 +38,7 @@ function limitPanel(name, sub, l, ms) {
   const side = h('div', { class: 'grow stack', style: 'gap:8px' }, h('div', { class: 'row' }, h('h3', { class: 'grow' }, name), h('span', { class: 'label' }, sub)));
   if (!l) { side.append(h('div', { class: 'muted small' }, 'No data yet')); card.append(side); return card; }
   const r = l.resetsAt, pc = CMW.pace(l, ms, now), w = CMW.paceWord(l, pc);
-  side.append(h('div', {}, r && r > now ? 'Resets in ' + CMW.dur(r - now) : 'Fresh window', h('span', { class: 'muted small' }, r && r > now ? '  ·  ' + at(r, ms === CMW.WEEK_MS) : '')));
+  side.append(h('div', { 'data-resets': r || '' }, r && r > now ? 'Resets in ' + CMW.dur(r - now) : 'Fresh window', h('span', { class: 'muted small' }, r && r > now ? '  ·  ' + at(r, ms === CMW.WEEK_MS) : '')));
   if (w) side.append(h('div', { class: 'row wrap' }, h('span', { class: 'pill ' + (w === 'Ahead of pace' ? 'warn' : 'ok') }, h('i'), w),
     h('span', { class: 'small muted' }, pc.hitsAt ? 'Limit in ' + CMW.dur(pc.hitsAt - now) : pc.projected > 0 ? '~' + Math.min(100, Math.floor(pc.projected)) + '% by reset' : '')));
   if (ms === CMW.WEEK_MS && S.usage) for (const [n, x] of [['Opus', S.usage.opus], ['Sonnet', S.usage.sonnet]]) if (x) {
@@ -141,17 +141,17 @@ function dashboardView() {
   if (!D.stats && !D.loading && D.err == null) loadDashboard();
   else if (Date.now() - D.loadedAt > 60000 && !D.loading && D.err !== 'norelay') loadDashboard();
   const u = S.usage, now = Date.now();
-  const root = h('div', { class: 'dash fade' });
+  const root = h('div', { class: 'dash' });
 
   const pills = h('div', { class: 'row wrap' },
     h('span', { class: 'pill ' + (D.stats ? 'ok' : D.err ? 'warn' : '') }, h('i'), D.stats ? 'Relay online' : D.err === 'norelay' ? 'No relay' : D.err ? 'Relay unreachable' : 'Connecting…'),
     h('span', { class: 'pill ' + (D.voice && D.voice.stt && D.voice.tts ? 'ok' : '') }, h('i'), D.voice && D.voice.stt && D.voice.tts ? 'Voice ready' : 'Voice not installed'),
     h('span', { class: 'pill ' + (S.settings.callMe ? 'ok' : '') }, h('i'), S.settings.callMe ? 'Calls on' : 'Calls off'),
-    u ? h('span', { class: 'small muted' }, 'Usage updated ' + ago(u.at, now)) : null);
+    u ? h('span', { class: 'small muted', 'data-ago': u.at }, 'Usage updated ' + ago(u.at, now)) : null);
   root.append(h('div', { class: 'hero' }, h('div', { class: 'grow' }, h('h1', {}, greeting() + (S.profile && S.profile.email ? '' : '.')),
     h('div', { class: 'muted' }, new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }) + (S.profile && S.profile.plan ? '  ·  Claude ' + S.profile.plan : ''))),
-    h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: async () => { S = await cm.refresh(); loadDashboard(); render(); } }, 'Refresh'),
-      D.live[0] ? h('button', { class: 'primary', onclick: () => openSession(D.live[0], true) }, 'Talk to Claude') : null)));
+    h('div', { class: 'row' }, ibtn('refresh', 'Refresh the numbers now', async () => { S = await cm.refresh(); loadDashboard(); render(); }),
+      D.live[0] ? ibtn('mic', 'Talk to Claude', () => openSession(D.live[0], true), 'primary') : null)));
   root.append(pills);
   if (S.error) root.append(h('div', { class: 'card err small' }, S.error));
 
@@ -203,3 +203,10 @@ function dashboardView() {
   requestAnimationFrame(() => { drawTokens(tok, shown); drawSpark(spark); });
   return root;
 }
+
+/** Time labels tick by themselves, without redrawing the screen. */
+setInterval(() => {
+  const now = Date.now();
+  document.querySelectorAll('[data-ago]').forEach((e) => { e.textContent = 'Usage updated ' + ago(Number(e.dataset.ago), now); });
+  document.querySelectorAll('[data-resets]').forEach((e) => { const r = Number(e.dataset.resets); if (r && r > now && e.firstChild && e.firstChild.nodeType === 3) e.firstChild.nodeValue = 'Resets in ' + CMW.dur(r - now); });
+}, 15000);

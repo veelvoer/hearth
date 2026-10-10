@@ -14,7 +14,7 @@ function closeTools() { if (PT.el) PT.el.remove(); PT.el = null; }
 function drawTools() {
   const s = PT.s, card = h('div', { class: 'mcard' });
   const tabs = [['skills', 'Skills'], ['plugins', 'Plugins'], ['connections', 'Connections'], ['changes', 'Changes'], ['notes', 'Notes']];
-  card.append(h('div', { class: 'row' }, h('div', { class: 'grow row wrap' }, tabs.map(([k, l]) => chip(l, PT.tab === k, () => { PT.tab = k; drawTools(); }))), h('button', { class: 'ghost sm', onclick: closeTools }, 'Close')));
+  card.append(h('div', { class: 'row' }, h('div', { class: 'grow row wrap' }, tabs.map(([k, l]) => chip(l, PT.tab === k, () => { PT.tab = k; drawTools(); }))), ibtn('close', 'Close', closeTools, 'ghost sm')));
   const body = h('div', { class: 'mbody' }); card.append(body);
   PT.el.innerHTML = ''; PT.el.append(card);
   ({ changes: viewChanges, notes: viewNotes, connections: viewConnections, skills: viewSkills, plugins: viewPlugins })[PT.tab](body, s);

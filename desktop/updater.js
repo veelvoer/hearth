@@ -103,7 +103,7 @@ function create(d) {
     return {
       checkedAt: Date.now(), ...(gh1 ? { github: gh1 } : {}),
       desktop: { need: n.desktop, text: (n.desktop ? 'Update ready' : 'Up to date') + ' · version ' + d.version() },
-      phone: { na: true, text: 'Updates itself from GitHub: open Settings → Updates in the phone app' },
+      phone: { need: false, text: 'Updates itself from GitHub (Settings → Updates in the phone app)' },
       server: !hasServer ? { na: true, text: 'No server set up on this computer' } : n.srv === undefined ? { na: true, text: 'No server connected' } : n.srv === null ? { na: true, text: 'The server can\'t be reached right now' }
         : { need: n.server, text: n.server ? 'Update ready' + (n.srv === '' ? ' · running an older version' : '') : 'Up to date' },
     };

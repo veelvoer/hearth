@@ -151,7 +151,7 @@ fun UpdatesCard() {
     LaunchedEffect(servers.size) { look() }
     val r = Updates.release
     Card(Modifier.tourTarget("updates")) {
-        Label("Updates")
+        Head("sync", "Updates", "Hearth looks on GitHub for a newer version. Tap Update to download and install it; Android asks once to allow installing updates. If you are connected to a server, it can be updated here too.")
         Spacer(Modifier.height(6.dp))
         Txt("Hearth ${Updates.current(c)}", T.body)
         Txt(when {

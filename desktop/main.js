@@ -116,7 +116,12 @@ async function refreshUsage(ask = false) {
 let pollTimer = null;
 function startPolling() {
   clearInterval(pollTimer);
-  pollTimer = setInterval(() => refreshUsage(), 60000);  // cheap: reads what the relay already knows
+  pollTimer = setInterval(() => {
+    refreshUsage();
+    // keep the numbers live while you look at them: when the window is open and the data is older than 2 minutes, ask Claude Code again (one tiny request)
+    const stale = !S.usage || Date.now() - S.usage.at > 120000;
+    if (stale && main && !main.isDestroyed() && main.isVisible() && main.isFocused()) refreshUsage(true);
+  }, 30000);
   refreshUsage();
 }
 
@@ -319,7 +324,7 @@ function createMain() {
   main.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   if (process.env.CM_PROBE) runProbe(main, process.env.CM_PROBE);
   main.webContents.on('did-finish-load', () => { if (upd) setTimeout(() => upd.check(true), 2500); });
-  main.on('focus', () => { if (upd) upd.check(); });
+  main.on('focus', () => { if (upd) upd.check(); if (!S.usage || Date.now() - S.usage.at > 60000) refreshUsage(true); });
   main.on('show', () => { if (upd) upd.check(); });
   main.on('close', (e) => {
     if (quitting) return;

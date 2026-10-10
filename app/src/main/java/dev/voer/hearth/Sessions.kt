@@ -269,7 +269,7 @@ fun ComputersCard() {
     fun commit(l: List<Machine>) { machines = l; Store.saveMachines(c, l); Ui.machinesRev++; CallService.sync(c) }
     Card(Modifier.tourTarget("computers")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Label("Computers and servers", Modifier.weight(1f))
+            Head("server", "Computers and servers", "The computers and servers this phone talks to. Chats run on whichever you pick. Add one by tapping Connect next to a computer on your Wi-Fi, or with a server address and 6-digit code.", Modifier.weight(1f))
         }
         machines.forEach { mm ->
             Spacer(Modifier.height(10.dp))

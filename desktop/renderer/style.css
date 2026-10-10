@@ -347,3 +347,12 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in s
 .urname { font-weight: 600; min-width: 0; } .urnum { white-space: nowrap; } .urmoney { text-align: right; }
 .urbarwrap { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; } .urbarwrap i { display: block; height: 100%; background: var(--clay); border-radius: 99px; transition: width .5s var(--ease); }
 @media (max-width: 760px) { .urrow { grid-template-columns: 1fr auto; } .urbarwrap, .urnum { display: none; } }
+
+/* icon buttons and the (i) */
+button.ib { padding: 0; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 10px; }
+button.ib.sm, .ghost.sm.ib { width: 30px; height: 30px; }
+button.ib svg { width: 18px; height: 18px; }
+.infob { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; border-radius: 99px; flex: none; }
+.infob:hover { color: var(--clay); background: color-mix(in srgb, var(--clay) 12%, transparent); } .infob svg { width: 16px; height: 16px; }
+.infopop { position: fixed; z-index: 300; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: popin .16s var(--ease) both; }
+.urset { text-align: left; cursor: pointer; background: transparent; color: var(--ink); border-style: dashed; }

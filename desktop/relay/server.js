@@ -490,7 +490,8 @@ function start(opts) {
         if (!authed(req, res)) return undefined;
         if (parts[0] === 'status') return json(res, 200, { away: away(), build: BUILD, version: VERSION, canSelfUpdate: !!opts.selfUpdate, listeners: clients.size, root, allowBypass, moveRoot, laptop: laptopOnline(), queued: work.length });
         if (parts[0] === 'voice' && parts[1] === 'status') return proxyVoice(req, res);
-        if (parts[0] === 'usage-report') { const n = Number(u.searchParams.get('days')); return json(res, 200, core.report(n === 0 ? 0 : Math.max(1, Math.min(365, n || 30)))); }
+        if (parts[0] === 'usage-report') { const n = Number(u.searchParams.get('days')); const extra = []; if (hubSync) { const st = path.join(dir, 'elsewhere'); try { for (const m of fs.readdirSync(st)) for (const f of fs.readdirSync(path.join(st, m))) if (f.endsWith('.jsonl')) { const fp = path.join(st, m, f), ss = fs.statSync(fp); extra.push({ file: fp, id: f.slice(0, -6), mtime: ss.mtimeMs, size: ss.size }); } } catch { /* none */ } }
+          return json(res, 200, { ...core.report(n === 0 ? 0 : Math.max(1, Math.min(365, n || 30)), extra), scope: hubSync ? 'account' : 'device' }); }
         if (parts[0] === 'stats') return json(res, 200, core.stats(Math.max(1, Math.min(90, Number(u.searchParams.get('days')) || 30))));
         if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || inRoot(cwd)) ? cwd : '', findClaude())); }
         if (parts[0] === 'projects' && parts.length === 1) return json(res, 200, listProjects());

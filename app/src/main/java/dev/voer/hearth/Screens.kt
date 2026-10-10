@@ -357,9 +357,9 @@ fun SettingsScreen() {
         Header("Settings")
         ComputersCard()
         UpdatesCard()
-        Card { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Label("Help"); Txt("New here? Take the tour or run the tutorial again.", T.small, muted = true) }; Column(horizontalAlignment = Alignment.End) { TextAction("Take the tour") { Tour.start() }; Spacer(Modifier.height(6.dp)); TextAction("Show tutorial") { Store.setOnboarded(c, false); Ui.tourRev++ } } } }
+        Card { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Head("tour", "Help", "Take the tour to see what each part does, or run the tutorial again to set things up.") }; Column(horizontalAlignment = Alignment.End) { TextAction("Take the tour") { Tour.start() }; Spacer(Modifier.height(6.dp)); TextAction("Show tutorial") { Store.setOnboarded(c, false); Ui.tourRev++ } } } }
         Card {
-            Label("Notifications and calls")
+            Head("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.")
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
             Row2("Stay connected to Claude", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat.") {
@@ -382,10 +382,9 @@ fun SettingsScreen() {
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Txt("Tip: allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.", T.small, muted = true)
         }
         Card {
-            Label("Appearance")
+            Head("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.")
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -393,7 +392,6 @@ fun SettingsScreen() {
                 if (Build.VERSION.SDK_INT >= 31) Chip("System colors", sys) { ThemePrefs.system = true; Store.setThemeSystem(c, true) }
             }
             Spacer(Modifier.height(8.dp))
-            Txt(if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.", T.small, muted = true)
         }
         Card(Modifier.clickable { sub = "widgets" }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -405,7 +403,7 @@ fun SettingsScreen() {
         TextAction(if (adv) "Hide advanced settings" else "Advanced settings") { adv = !adv }
         if (adv) {
         Card {
-            Label("Alerts")
+            Head("bell", "Alerts")
             Spacer(Modifier.height(10.dp))
             Txt("Notify when usage crosses", T.body)
             Spacer(Modifier.height(8.dp))
@@ -426,7 +424,7 @@ fun SettingsScreen() {
             }
         }
         Card {
-            Label("Voice")
+            Head("voice", "Voice", "Replies are spoken in the language they are written in; you can switch during a call too. Same as typing sends exactly what you say and reads Claude's full reply aloud (code is skipped). Brief asks Claude for short spoken answers. Auto uses your computer's local voices when available (better, slower) and falls back to Android's built-in speech.")
             Spacer(Modifier.height(10.dp))
             var vlang by remember { mutableStateOf(Store.voiceLang(c)) }
             Txt("Language of calls", T.body)
@@ -436,7 +434,6 @@ fun SettingsScreen() {
                 Chip("Nederlands", vlang == "nl") { vlang = "nl"; Store.setVoiceLang(c, "nl") }
             }
             Spacer(Modifier.height(4.dp))
-            Txt("Replies are spoken in the language they are written in. You can switch during a call too.", T.small, muted = true)
             Spacer(Modifier.height(14.dp))
             var engine by remember { mutableStateOf(Store.voiceEngine(c)) }
             var info by remember { mutableStateOf("Checking…") }
@@ -460,12 +457,10 @@ fun SettingsScreen() {
                 Chip("Brief", brief) { brief = true; Store.setVoiceBrief(c, true) }
             }
             Spacer(Modifier.height(8.dp))
-            Txt("Same as typing sends exactly what you say and reads Claude's full reply aloud (code is skipped). Brief asks Claude for short spoken answers.", T.small, muted = true)
             Spacer(Modifier.height(10.dp))
-            Txt("Auto uses your computer's local models when available (better, slower) and falls back to Android's built-in speech. $info.", T.small, muted = true)
         }
         Card {
-            Label("Background refresh")
+            Head("clock", "Background refresh", "Android may delay background work to save battery. Opening the app always refreshes.")
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(15, 30, 60).forEach { m ->
@@ -473,12 +468,11 @@ fun SettingsScreen() {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Txt("Android may delay background work to save battery. Opening the app always refreshes.", T.small, muted = true)
         }
         }
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Label("Support"); Txt("Found a bug, have a question or an idea? Write to us. We answer by email.", T.small, muted = true) }
+                Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.", Modifier.weight(1f))
                 Button("Contact", Modifier) { support = true }
             }
         }

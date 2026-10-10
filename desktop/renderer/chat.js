@@ -201,9 +201,9 @@ function drawPane() {
   const mach = SS.machines.find((x) => x.id === s.mid) || {};
   pane.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
     h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : ''].filter(Boolean).join(' · '))),
-    s.id ? h('button', { class: 'ghost sm', onclick: startVoice }, 'Talk') : null,
-    s.id ? h('button', { class: 'ghost sm', onclick: () => openTools(s, 'skills') }, 'Add-ons') : null,
-    s.id ? h('button', { class: 'ghost sm', onclick: () => { SS.opts = !SS.opts; drawPane(); } }, SS.opts ? 'Done' : 'Options') : null));
+    s.id ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
+    s.id ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
+    s.id ? ibtn(SS.opts ? 'check' : 'sliders', SS.opts ? 'Close options' : 'Options: where it runs, phone calls', () => { SS.opts = !SS.opts; drawPane(); }, 'ghost sm') : null));
   if (SS.opts && s.id) pane.append(h('div', { class: 'opts' },
     SS.call !== null && (SS.machines.find((m) => m.id === s.mid) || {}).secure ? h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Run on'),
       ...runChips((SS.run || 'auto'), setRun),
@@ -255,8 +255,8 @@ function composer() {
       sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; }),
       sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; }),
       h('div', { class: 'grow' }),
-      SS.sending ? h('button', { class: 'ghost sm', id: 'stop', onclick: () => { SS.queue = []; if (s.id) cm.stop(s.mid, s.id); } }, 'Stop') : null,
-      h('button', { class: 'primary sm', id: 'send', onclick: submit }, SS.sending ? 'Queue' : 'Send'))));
+      SS.sending ? ibtn('stop', 'Stop Claude', () => { SS.queue = []; if (s.id) cm.stop(s.mid, s.id); }, 'ghost sm') : null,
+      (() => { const b = ibtn('send', SS.sending ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
   if (SS.mode === 'bypassPermissions') box.append(h('div', { class: 'small err', style: 'margin-top:6px' }, 'Full auto lets Claude run any command on this computer without asking.'));
   box.append(h('div', { class: 'small muted', style: 'margin-top:6px;text-align:center' }, 'Enter to send · Shift+Enter for a new line · drop or paste files and images'));
   box.ondragover = (e) => e.preventDefault();
