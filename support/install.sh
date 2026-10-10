@@ -21,12 +21,14 @@ echo "  Visitors write to you inside the app. You answer by replying to an email
 echo
 KEEP=""
 if [ -f /etc/hearth-support.env ] && [ -z "${SUPPORT_PASS:-}" ]; then
-  read -r -p "  The support mailbox is already set up. Keep it? [Y/n] " KEEP </dev/tty || KEEP=y
+  KEEP=y
+  if (: </dev/tty) 2>/dev/null; then read -r -p "  The support mailbox is already set up. Keep it? [Y/n] " KEEP </dev/tty || KEEP=y; fi
   case "$KEEP" in n|N) KEEP="" ;; *) KEEP=y ;; esac
 fi
 MAILBOX="${SUPPORT_USER:-}"
 if [ -z "$MAILBOX" ] && [ -z "$KEEP" ]; then read -r -p "  Support mailbox [hearth.support1@gmail.com]: " MAILBOX </dev/tty || true; MAILBOX="${MAILBOX:-hearth.support1@gmail.com}"; fi
-SUPPORT_PASS_GIVEN="${SUPPORT_PASS:-}"
+SUPPORT_PASS="${SUPPORT_PASS:-}"
+SUPPORT_PASS_GIVEN="$SUPPORT_PASS"
 if [ -z "${SUPPORT_PASS:-}" ] && [ -z "$KEEP" ]; then
   echo "  The app password is made in the Google account of that mailbox:"
   echo "  myaccount.google.com → Security → 2-Step Verification (turn on) → App passwords → create one."
