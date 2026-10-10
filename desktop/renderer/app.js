@@ -235,6 +235,8 @@ function syncCard() {
     card.append(row('Project files', !!(f && f.ok), f ? `${st.files.tracked || 0} files kept the same · last check ${ago(f.at)}` + (f.paused ? ' · ' + f.paused : '') + (f.errors && f.errors.length ? ' · ' + f.errors[0] : '') : 'Waiting for the first check'));
     card.append(row('Chats', !!(c && c.ok), c ? `${c.localChats || 0} chats · last check ${ago(c.at)}` + (c.errors && c.errors.length ? ' · ' + c.errors[0] : '') : 'Waiting for the first check'));
     if ((st.pending || []).length) card.append(h('div', { class: 'small' }, st.pending.length + ' project(s) from your server are waiting to be installed. Look for the card in the corner.'));
+    const rej = (st.files && st.files.rejected) || [];
+    if (rej.length) card.append(h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small muted' }, 'Projects you said no to (they are not copied to this computer):'), rej.map((n) => h('div', { class: 'row' }, h('div', { class: 'grow' }, n), h('button', { class: 'ghost sm', onclick: async () => { try { await cm.relay('local', 'POST', '/sync/projects/allow', { names: [n] }); } catch { /* shown on next refresh */ } draw(); } }, 'Offer again')))));
     const b = h('button', { class: 'ghost sm', onclick: async () => { b.textContent = 'Syncing…'; try { await cm.relay('local', 'POST', '/sync/now', {}); } catch { /* shown below */ } draw(); } }, 'Sync now');
     card.append(b);
   };

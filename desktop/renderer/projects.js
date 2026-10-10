@@ -10,12 +10,13 @@
     if (done) return drawDone();
     if (!list.length || later) return;
     const rows = list.map((p) => h('div', { class: 'row crow' }, h('div', { class: 'grow', style: 'min-width:0' }, h('b', { class: 'ellip', style: 'display:block' }, p.name), h('div', { class: 'small muted' }, p.files + (p.files === 1 ? ' file' : ' files') + ' · ' + size(p.bytes))),
-      h('button', { class: 'primary sm', onclick: () => install([p.name]) }, 'Install')));
+      h('button', { class: 'ghost sm', title: 'Never offer this project on this computer', onclick: () => reject([p.name]) }, 'Reject'), h('button', { class: 'primary sm', onclick: () => install([p.name]) }, 'Install')));
     card = h('div', { class: 'updcard' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(22) }), h('h3', { class: 'grow' }, list.length === 1 ? 'A new project is waiting' : list.length + ' new projects are waiting')),
       h('div', { class: 'small muted' }, 'Made on your server while this computer was off. Install copies it here so you can work on it.'), h('div', { class: 'stack', style: 'gap:2px;margin:8px 0;max-height:220px;overflow-y:auto;overflow-x:hidden' }, rows),
-      h('div', { class: 'row' }, h('div', { class: 'grow' }), h('button', { class: 'ghost sm', onclick: () => { later = true; remove(); } }, 'Later'), list.length > 1 ? h('button', { class: 'primary sm', onclick: () => install('all') }, 'Install all') : null));
+      h('div', { class: 'row' }, h('div', { class: 'grow' }), h('button', { class: 'ghost sm', onclick: () => { later = true; remove(); } }, 'Later'), list.length > 1 ? h('button', { class: 'ghost sm', title: 'Never offer these on this computer', onclick: () => reject('all') }, 'Reject all') : null, list.length > 1 ? h('button', { class: 'primary sm', onclick: () => install('all') }, 'Install all') : null));
     cardHost().append(card);
   }
+  async function reject(what) { try { list = await cm.rejectProjects(what); toast('Won’t be offered again. You can allow it later in Settings → Sync.'); } catch (e) { toast(clean(e)); } draw(); }
   async function install(what) {
     const names = what === 'all' ? list.map((p) => p.name) : what, paths = list.filter((p) => names.includes(p.name));
     remove(); card = h('div', { class: 'updcard' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(22) }), h('h3', { class: 'grow' }, 'Installing…')), h('div', { class: 'small muted' }, 'Copying the project to this computer.')); cardHost().append(card);

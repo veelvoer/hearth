@@ -85,8 +85,8 @@ function createHub({ root, onLog = () => {} }) {
 // ───────────────────────── computer side ─────────────────────────
 function createAgent({ root, stateFile, name, transport, onLog = () => {}, intervalMs = 12000, onPending = () => {} }) {
   let timer = null, inflight = null, dirty = false, last = null, pending = [], paused = null;
-  let state = { files: {}, accepted: [] };
-  try { state = { files: {}, accepted: [], ...JSON.parse(fs.readFileSync(stateFile, 'utf8')) }; } catch { /* first run */ }
+  let state = { files: {}, accepted: [], rejected: [] };
+  try { state = { files: {}, accepted: [], rejected: [], ...JSON.parse(fs.readFileSync(stateFile, 'utf8')) }; } catch { /* first run */ }
   const save = () => { try { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile + '.tmp', JSON.stringify(state)); fs.renameSync(stateFile + '.tmp', stateFile); } catch { /* next time */ } };
   const differs = (a, b) => !a || !b || a[0] !== b[0] || Math.abs(a[1] - b[1]) > SLACK;
   const topOf = (rel) => (rel.includes('/') ? rel.split('/')[0] : '');
@@ -119,6 +119,7 @@ function createAgent({ root, stateFile, name, transport, onLog = () => {}, inter
             if (B && !hc) plan.delHub.push(rel);
             else {
               const top = topOf(rel);
+              if (top && state.rejected.includes(top) && !fs.existsSync(path.join(root, top))) continue;   // "No thanks": never offered again, never copied
               if (top && !B && !state.accepted.includes(top) && !fs.existsSync(path.join(root, top))) { const p = pend.get(top) || { name: top, files: 0, bytes: 0, newest: 0 }; p.files++; p.bytes += H[0]; p.newest = Math.max(p.newest, H[1]); pend.set(top, p); }
               else plan.pull.push(rel);
             }
@@ -173,9 +174,16 @@ function createAgent({ root, stateFile, name, transport, onLog = () => {}, inter
     save(); pending = pending.filter((p) => !(all || (names || []).includes(p.name)));
     return syncOnce('accepted');
   }
+  /** The person said "No thanks" to a project that appeared on the server: it is never offered again (until they allow it in Settings). */
+  function reject(names) {
+    const all = names === 'all';
+    for (const p of pending) if (all || (names || []).includes(p.name)) { if (!state.rejected.includes(p.name)) state.rejected.push(p.name); }
+    save(); pending = pending.filter((p) => !(all || (names || []).includes(p.name)));
+  }
+  function allow(names) { state.rejected = state.rejected.filter((n) => !(names || []).includes(n)); save(); return syncOnce('allowed'); }
   const start = () => { stop(); timer = setInterval(() => syncOnce('timer').catch(() => {}), intervalMs); syncOnce('start').catch(() => {}); };
   const stop = () => { if (timer) clearInterval(timer); timer = null; };
-  return { start, stop, syncOnce, accept, kick: (why) => syncOnce(why || 'kick').catch(() => {}), status: () => ({ last, pending, paused, tracked: Object.keys(state.files).length }) };
+  return { start, stop, syncOnce, accept, reject, allow, kick: (why) => syncOnce(why || 'kick').catch(() => {}), status: () => ({ last, pending, paused, rejected: state.rejected, tracked: Object.keys(state.files).length }) };
 }
 
 module.exports = { scan, createHub, createAgent, safeRel, SLACK };

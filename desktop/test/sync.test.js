@@ -112,6 +112,13 @@ let pass = 0, fail = 0; const ok = (name, cond, extra = '') => { (cond ? pass++ 
   await call(47792, ltok, 'POST', '/sync/projects/accept', { all: true }); await syncNow();
   for (let i = 0; i < 30; i++) fs.unlinkSync(lapRoot + '/bulk/f' + i + '.txt'); await syncNow();
   ok('16 safety brake: mass delete is held back', fs.existsSync(srvRoot + '/bulk/f5.txt'), JSON.stringify((await call(47792, ltok, 'GET', '/sync/status')).files && (await call(47792, ltok, 'GET', '/sync/status')).files.paused));
+  W(srvRoot + '/nope/a.txt', 'not wanted here'); await until(() => fs.existsSync(srvRoot + '/nope/a.txt'), 2); await new Promise((r) => setTimeout(r, 1500)); await syncNow(); await syncNow();
+  const s17 = await call(47792, ltok, 'GET', '/sync/status'); ok('17 another server project shows up as waiting', (s17.pending || []).some((p) => p.name === 'nope'), JSON.stringify(s17.files && s17.files.last && s17.files.last.errors) + JSON.stringify(s17.pending));
+  await call(47792, ltok, 'POST', '/sync/projects/reject', { names: ['nope'] }); await syncNow(); await syncNow();
+  const st17 = await call(47792, ltok, 'GET', '/sync/status');
+  ok('18 Reject: never offered again and never copied', !(st17.pending || []).some((p) => p.name === 'nope') && !fs.existsSync(lapRoot + '/nope') && (st17.files.rejected || []).includes('nope'));
+  await call(47792, ltok, 'POST', '/sync/projects/allow', { names: ['nope'] }); await syncNow();
+  ok('19 "Offer again" brings it back', ((await call(47792, ltok, 'GET', '/sync/status')).pending || []).some((p) => p.name === 'nope'));
   for (const p of procs) p.kill();
   console.log(`\n${pass} passed, ${fail} failed`);
   fs.rmSync(T, { recursive: true, force: true }); process.exit(fail ? 1 : 0);

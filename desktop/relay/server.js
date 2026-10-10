@@ -776,6 +776,11 @@ function start(opts) {
           } catch (e) { return json(res, 500, { error: e.message }); }
           return undefined;
         }
+        if (parts[0] === 'sync' && parts[1] === 'projects' && (parts[2] === 'reject' || parts[2] === 'allow')) {   // "No thanks" / "offer it again"
+          if (!fileAgent) return json(res, 400, { error: 'this computer is not linked to a server' });
+          if (parts[2] === 'reject') { fileAgent.reject(b.all ? 'all' : (Array.isArray(b.names) ? b.names.map(String) : [])); pendingProjects = fileAgent.status().pending; } else await fileAgent.allow(Array.isArray(b.names) ? b.names.map(String) : []);
+          return json(res, 200, await syncOverview());
+        }
         if (parts[0] === 'sync' && parts[1] === 'projects' && parts[2] === 'accept') {   // "Install": this computer now keeps these project folders too
           if (!fileAgent) return json(res, 400, { error: 'this computer is not linked to a server' });
           await fileAgent.accept(b.all ? 'all' : (Array.isArray(b.names) ? b.names.map(String) : []));

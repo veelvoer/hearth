@@ -562,6 +562,11 @@ h('projects:accept', async (e, names) => {
   await relayJson(m, 'POST', '/sync/projects/accept', names === 'all' ? { all: true } : { names });
   await checkPending().catch(() => {}); return lastPend;
 });
+h('projects:reject', async (e, names) => {
+  const m = machines().find((x) => x.local); if (!m) throw new Error('This computer is not running Hearth yet.');
+  await relayJson(m, 'POST', '/sync/projects/reject', names === 'all' ? { all: true } : { names });
+  await checkPending().catch(() => {}); return lastPend;
+});
 h('relay', async (e, id, method, p, body) => {
   const m = machineById(id);
   if (!m) throw new Error('Unknown computer');
