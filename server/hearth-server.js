@@ -18,7 +18,7 @@ const REPO = path.resolve(__dirname, '..');
 const RELAY_SRC = path.join(REPO, 'desktop', 'relay');
 const RELAY_FILES = (() => { try { return fs.readdirSync(RELAY_SRC).filter((f) => f.endsWith('.js') && f !== 'embedded.js'); } catch { return []; } })();   // the program files of the server
 const VERSION = (() => { try { return require(path.join(RELAY_SRC, 'version.js')); } catch { return '1.0.0'; } })();
-const PORT = 47601;
+let PORT = 47601;
 
 // ───────────────────────── arguments ─────────────────────────
 const argv = process.argv.slice(2);
@@ -27,7 +27,18 @@ const opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 && argv[
 const VALUED = ['mode', 'address', 'name', 'prefix'];
 const cmd = argv.find((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && VALUED.includes(argv[i - 1].slice(2)))) || 'install';
 const YES = flag('yes'), DRY = flag('dry-run'), PREFIX = opt('prefix', '');   // PREFIX: write into a folder instead of the real system (for tests)
-const INSTALL_DIR = PREFIX ? path.join(PREFIX, 'opt', 'hearth') : '/opt/hearth';
+const OPT = PREFIX ? path.join(PREFIX, 'opt') : '/opt';
+// One server can hold several Hearth installs (one per person). "hearth" is the first; later people get "hearth-<name>".
+let INSTANCE = 'hearth', INSTALL_DIR = path.join(OPT, INSTANCE);
+const binOf = (i) => (i === 'hearth' ? 'hearth-server' : i + '-server');
+const caddyFileOf = (i) => sysPath('/etc/caddy/' + i + '.caddy'), caddyDirOf = (i) => sysPath('/etc/caddy/' + i + '.d');
+function findInstances() {
+  const out = [];
+  try { for (const d of fs.readdirSync(OPT)) if (/^hearth(-[a-z0-9]+)?$/.test(d)) { try { out.push({ instance: d, meta: JSON.parse(fs.readFileSync(path.join(OPT, d, 'install.json'), 'utf8')) }); } catch { /* not an install */ } } } catch { /* none */ }
+  return out;
+}
+const setInstance = (i) => { INSTANCE = i; INSTALL_DIR = path.join(OPT, i); };
+const portFree = (p) => new Promise((res) => { const s = require('net').createServer(); s.once('error', () => res(false)); s.listen(p, '127.0.0.1', () => s.close(() => res(true))); });
 
 // ───────────────────────── looks ─────────────────────────
 const tty = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -155,14 +166,14 @@ ProtectControlGroups=yes
 [Install]
 WantedBy=multi-user.target
 `;
-const caddyText = (domain, upstream) => `# Written by the Hearth installer
+const caddyText = (domain, upstream, dir) => `# Written by the Hearth installer
 ${domain} {
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		-Server
 	}
-	import /etc/caddy/hearth.d/*.caddy
+	import ${dir}/*.caddy
 	reverse_proxy ${upstream} {
 		flush_interval -1
 	}
@@ -211,6 +222,21 @@ async function install() {
   gap(); say('You only need to answer a few easy questions. If you are not sure, just press ' + bold('Enter') + ': I pick the easy choice for you.');
   gap(); await pause();
 
+  // 0 ── is Hearth already here? Never overwrite someone else's
+  const who = isRoot && !PREFIX ? 'hearth' : (process.env.SUDO_USER || os.userInfo().username);
+  const here = findInstances(), mine = here.find((i) => i.meta.user === who);
+  if (opt('instance')) setInstance(opt('instance'));
+  else if (mine) setInstance(mine.instance);
+  else if (here.length) { setInstance('hearth-' + who.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)); }
+  const existing = here.find((i) => i.instance === INSTANCE);
+  if (here.length && !mine && !opt('instance')) {
+    gap(); warn('Hearth is already installed on this server for ' + bold(here.map((i) => i.meta.user + ' (' + i.meta.url + ')').join(', ')) + '.');
+    say('I will not touch it. I set up a separate copy for ' + bold(who) + ' next to it, with its own address, its own service and its own key.');
+    gap();
+  }
+  if (existing && !mine && opt('instance')) { bad('That Hearth belongs to ' + existing.meta.user + ', not to you. Choose another --instance name.'); process.exit(1); }
+  PORT = existing ? existing.meta.port : await (async () => { const used = new Set(here.map((i) => i.meta.port)); for (let p = 47601; p < 47700; p++) if (!used.has(p) && (PREFIX || await portFree(p))) return p; return 47601; })();
+
   // 1 ── look around
   step(1, 6, 'Looking around');
   const info = osInfo(), TOTAL_OK = [];
@@ -257,6 +283,7 @@ async function install() {
   if (addrChoice === 'auto') { if (!defaultFree) { bad('I could not find your internet address, so I cannot make a free one. Use your own domain instead.'); process.exit(1); } domain = defaultFree; }
   else if (addrChoice === 'none') domain = '';
   else { domain = addrChoice !== 'domain' ? addrChoice : (await ask('Type your domain name', '')).replace(/^https?:\/\//, '').replace(/\/.*$/, ''); if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) { bad('That does not look like a domain name.'); process.exit(1); } }
+  { const clash = findInstances().find((i) => i.instance !== INSTANCE && domain && i.meta.domain === domain); if (clash) { bad('The address ' + domain + ' already belongs to the Hearth of ' + clash.meta.user + '. Choose another address.'); process.exit(1); } }
   const url = domain ? 'https://' + domain : `http://${ip || os.hostname()}:${PORT}`;
   ok('Address: ' + bold(url));
   if (domain) say(dim('Ports 80 and 443 must be open to the internet (many hosting companies call this the "firewall"). I will open them on this server too.'));
@@ -265,11 +292,11 @@ async function install() {
 
   // 4 ── install
   step(4, 6, 'Installing');
-  const user = isRoot && !PREFIX ? 'hearth' : (process.env.SUDO_USER || os.userInfo().username);
+  const user = who;
   let home = isRoot && !PREFIX ? '/home/hearth' : os.homedir();
   if (PREFIX) home = path.join(PREFIX, 'home', user);
   const relayDir = path.join(INSTALL_DIR, 'relay'), cfgDir = docker ? '/data/config' : path.join(home, '.config', 'hearth'), projects = path.join(home, 'projects');
-  const meta = { mode: docker ? 'docker' : 'direct', url, domain, name, user, home, projects, cfgDir: docker ? path.join(INSTALL_DIR, 'data', 'config') : cfgDir, version: VERSION, port: PORT };
+  const meta = { instance: INSTANCE, bin: binOf(INSTANCE), mode: docker ? 'docker' : 'direct', url, domain, name, user, home, projects, cfgDir: docker ? path.join(INSTALL_DIR, 'data', 'config') : cfgDir, version: VERSION, port: PORT };
   try {
     if (!docker) {
       if (isRoot && !PREFIX && spawnSync('id', ['hearth']).status !== 0) await must('Create a user called "hearth"', 'useradd', ['-m', '-s', '/bin/bash', 'hearth']);
@@ -277,19 +304,19 @@ async function install() {
       await must('Make the projects folder', 'sh', ['-c', `mkdir -p '${projects}' '${cfgDir}' && chown -R ${user} '${projects}' '${cfgDir}' 2>/dev/null || true`], { sudo: !PREFIX });
       if (!claudeAlready && !PREFIX) await must('Install Claude Code (this is the part that does the thinking)', 'npm', ['install', '-g', '@anthropic-ai/claude-code'], { sudo: true });
       else ok('Claude Code is already installed');
-      await sudoWrite(sysPath('/etc/systemd/system/hearth.service'), unitText({ user, home, node: nodePath(), url, name, relayDir, cfgDir, projects, host: domain ? '127.0.0.1' : '0.0.0.0' }));
-      if (!PREFIX) await must('Start Hearth, now and every time the server starts', 'sh', ['-c', 'systemctl daemon-reload && systemctl enable --now hearth && systemctl restart hearth'], { sudo: true });
+      await sudoWrite(sysPath('/etc/systemd/system/' + INSTANCE + '.service'), unitText({ user, home, node: nodePath(), url, name, relayDir, cfgDir, projects, host: domain ? '127.0.0.1' : '0.0.0.0' }));
+      if (!PREFIX) await must('Start Hearth, now and every time the server starts', 'sh', ['-c', `systemctl daemon-reload && systemctl enable --now ${INSTANCE} && systemctl restart ${INSTANCE}`], { sudo: true });
       if (domain) await setupCaddy(info, domain, '127.0.0.1:' + PORT);
     } else {
       await must('Copy Hearth to ' + INSTALL_DIR, 'sh', ['-c', `mkdir -p '${INSTALL_DIR}/relay' '${INSTALL_DIR}/data/projects' '${INSTALL_DIR}/data/config' '${INSTALL_DIR}/data/claude' '${INSTALL_DIR}/data/caddy' '${INSTALL_DIR}/installer' && cp ${RELAY_FILES.map((f) => `'${RELAY_SRC}/${f}'`).join(' ')} '${INSTALL_DIR}/relay/' && cp '${__dirname}/hearth-server.js' '${INSTALL_DIR}/installer/' && { [ -s '${INSTALL_DIR}/data/claude.json' ] || echo '{}' > '${INSTALL_DIR}/data/claude.json'; } && chown -R 1000:1000 '${INSTALL_DIR}/data'`], { sudo: !PREFIX });
       await sudoWrite(path.join(INSTALL_DIR, 'Dockerfile'), dockerfileText());
       await sudoWrite(path.join(INSTALL_DIR, 'docker-compose.yml'), composeText({ url, name, withCaddy: !!domain }));
-      if (domain) await sudoWrite(path.join(INSTALL_DIR, 'Caddyfile'), caddyText(domain, 'hearth:' + PORT));
+      if (domain) await sudoWrite(path.join(INSTALL_DIR, 'Caddyfile'), caddyText(domain, 'hearth:' + PORT, '/nonexistent').replace(/\timport .*\n/, ''));
       if (domain && !PREFIX) await openFirewall();
       if (!PREFIX) await must('Build and start Hearth (the first time takes a few minutes)', 'docker', ['compose', 'up', '-d', '--build'], { sudo: true, cwd: INSTALL_DIR });
     }
     await sudoWrite(path.join(INSTALL_DIR, 'install.json'), JSON.stringify(meta, null, 2));
-    if (!PREFIX) await sudoWrite('/usr/local/bin/hearth-server', `#!/bin/sh\nexec node ${INSTALL_DIR}/installer/hearth-server.js "$@"\n`, '755');
+    if (!PREFIX) await sudoWrite('/usr/local/bin/' + binOf(INSTANCE), `#!/bin/sh\nexec node ${INSTALL_DIR}/installer/hearth-server.js --instance ${INSTANCE} "$@"\n`, '755');
   } catch (e) { gap(); bad('Something went wrong: ' + e.message); say('Nothing is broken that cannot be fixed. Read the message above, fix that one thing, and run the installer again. It is safe to run it twice.'); process.exit(1); }
 
   // wait until it answers
@@ -322,12 +349,13 @@ async function setupCaddy(info, domain, upstream) {
     else if (info.pm === 'dnf') await must('Install Caddy (it makes the safe padlock)', 'dnf', ['install', '-y', 'caddy'], { sudo: true });
     else throw new Error('I do not know how to install Caddy on this system. Install it from caddyserver.com, or choose the Docker option');
   } else ok('Caddy is already installed');
-  await sudoWrite(sysPath('/etc/caddy/hearth.d/00-hearth.caddy'), '# extra routes for this server (the support desk adds one here)\n');
-  await sudoWrite(sysPath('/etc/caddy/hearth.caddy'), caddyText(domain, upstream));
+  await sudoWrite(caddyDirOf(INSTANCE) + '/00-hearth.caddy', '# extra routes for this Hearth (the support desk adds one here)\n');
+  await sudoWrite(caddyFileOf(INSTANCE), caddyText(domain, upstream, '/etc/caddy/' + INSTANCE + '.d'));
   const main = sysPath('/etc/caddy/Caddyfile');
   if (!PREFIX) {
     const has = fs.existsSync(main) ? fs.readFileSync(main, 'utf8') : '';
-    if (!/import\s+\/etc\/caddy\/hearth\.caddy/.test(has)) await sudoWrite(main, (has ? has.replace(/\s*$/, '\n\n') : '') + 'import /etc/caddy/hearth.caddy\n');
+    const line = 'import /etc/caddy/' + INSTANCE + '.caddy';
+    if (!has.split('\n').some((l) => l.trim() === line)) await sudoWrite(main, (has ? has.replace(/\s*$/, '\n\n') : '') + line + '\n');
   }
   await openFirewall();
   if (!PREFIX) await must('Turn on the padlock', 'sh', ['-c', 'systemctl enable caddy && systemctl restart caddy'], { sudo: true });
@@ -359,7 +387,7 @@ async function showCode(meta, first) {
     } catch { /* below */ }
   }
   if (DRY || PREFIX) code = '123456';
-  if (!code) { bad('I could not make a code. Is Hearth running?  Try:  hearth-server status'); return; }
+  if (!code) { bad('I could not make a code. Is Hearth running?  Try:  ' + binOf(INSTANCE) + ' status'); return; }
   const pretty = code.replace(/(\d{3})(\d{3})/, '$1 $2');
   const link = `hearth://pair?${new URLSearchParams({ url: meta.url, token: token || '', name: meta.name })}`;
   gap();
@@ -376,7 +404,7 @@ async function showCode(meta, first) {
   item(2, 'Open it. It asks for a server. Type the ' + bold('address') + ' and the ' + bold('code') + ' from the box above.');
   item(3, 'That is all. Your laptop and phone now share the same chats and project files.');
   gap();
-  say(dim('The code works for 10 minutes. If it ran out, type  hearth-server code  on this server to get a new one.'));
+  say(dim('The code works for 10 minutes. If it ran out, type  ' + binOf(INSTANCE) + ' code  on this server to get a new one.'));
   say(dim('Or paste this one link on a device instead (keep it secret, it opens your server):'));
   console.log('  ' + dim(link));
   gap();
@@ -384,13 +412,18 @@ async function showCode(meta, first) {
 }
 
 async function main() {
+  if (cmd !== 'install') {   // which Hearth on this server? the one named by --instance, else the one of this user, else the only one
+    const all = findInstances(), me = process.env.SUDO_USER || os.userInfo().username;
+    const pick = opt('instance') ? all.find((i) => i.instance === opt('instance')) : all.find((i) => i.meta.user === me) || (all.length === 1 ? all[0] : null);
+    if (pick) { setInstance(pick.instance); PORT = pick.meta.port || PORT; }
+  }
   const meta = (() => { try { return JSON.parse(fs.readFileSync(path.join(INSTALL_DIR, 'install.json'), 'utf8')); } catch { return null; } })();
   if (cmd === 'install') return install();
   if (!meta) { bad('Hearth is not installed here yet. Run the installer first.'); process.exit(1); }
   if (cmd === 'code') { banner(); return showCode(meta, false); }
   if (cmd === 'status') {
     banner(); const up = await tcpUp(); (up ? ok : bad)(up ? 'Hearth is running at ' + meta.url : 'Hearth is not answering.');
-    say(dim(meta.mode === 'docker' ? `Docker folder: ${INSTALL_DIR}` : 'Logs: sudo journalctl -u hearth -n 30')); return undefined;
+    say(dim(meta.mode === 'docker' ? `Docker folder: ${INSTALL_DIR}` : `Logs: sudo journalctl -u ${INSTANCE} -n 30`)); return undefined;
   }
   if (cmd === 'update') {
     banner(); say('To update, run the installer again from the newest version:'); gap(); say('curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash'); return undefined;
@@ -398,8 +431,8 @@ async function main() {
   if (cmd === 'uninstall') {
     banner(); say('This removes the Hearth server program. Your projects and chats stay where they are.'); if (!(await confirm('Remove Hearth from this server?', false))) return undefined;
     if (meta.mode === 'docker') await run('Stop Hearth', 'docker', ['compose', 'down'], { sudo: true, cwd: INSTALL_DIR });
-    else await run('Stop Hearth', 'sh', ['-c', 'systemctl disable --now hearth; rm -f /etc/systemd/system/hearth.service /etc/caddy/hearth.caddy; systemctl daemon-reload; systemctl restart caddy 2>/dev/null; true'], { sudo: true });
-    await run('Remove the program files', 'sh', ['-c', `rm -rf '${INSTALL_DIR}/relay' '${INSTALL_DIR}/installer' '${INSTALL_DIR}/install.json' /usr/local/bin/hearth-server`], { sudo: true });
+    else await run('Stop Hearth', 'sh', ['-c', `systemctl disable --now ${INSTANCE}; rm -f /etc/systemd/system/${INSTANCE}.service /etc/caddy/${INSTANCE}.caddy; sed -i "\\|^import /etc/caddy/${INSTANCE}.caddy$|d" /etc/caddy/Caddyfile; systemctl daemon-reload; systemctl restart caddy 2>/dev/null; true`], { sudo: true });
+    await run('Remove the program files', 'sh', ['-c', `rm -rf '${INSTALL_DIR}/relay' '${INSTALL_DIR}/installer' '${INSTALL_DIR}/install.json' /usr/local/bin/${binOf(INSTANCE)} /etc/caddy/${INSTANCE}.d`], { sudo: true });
     ok('Hearth is removed.'); return undefined;
   }
   say('Commands:  install · code · status · update · uninstall'); return undefined;
