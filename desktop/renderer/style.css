@@ -356,3 +356,43 @@ button.ib svg { width: 18px; height: 18px; }
 .infob:hover { color: var(--clay); background: color-mix(in srgb, var(--clay) 12%, transparent); } .infob svg { width: 16px; height: 16px; }
 .infopop { position: fixed; z-index: 300; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: popin .16s var(--ease) both; }
 .urset { text-align: left; cursor: pointer; background: transparent; color: var(--ink); border-style: dashed; }
+
+/* ───────── polish: alignment ───────── */
+.ic { display: inline-flex; align-items: center; justify-content: center; line-height: 0; flex: none; }
+.ic svg, button svg { display: block; }
+.chead { gap: 10px; min-height: 28px; } .chead > .ic { color: var(--muted); width: 20px; }
+.chead .label { line-height: 1; }
+button.ib { padding: 0; width: 36px; height: 36px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+button.ib.sm { width: 32px; height: 32px; border-radius: 10px; }
+button.ib.ghost:hover { background: color-mix(in srgb, var(--clay) 10%, transparent); border-color: color-mix(in srgb, var(--clay) 45%, var(--line)); color: var(--clay); }
+button.ib.primary:hover { filter: brightness(1.06); }
+.infob { width: 26px; height: 26px; border-radius: 8px; } .infob:hover { background: color-mix(in srgb, var(--clay) 12%, transparent); }
+.row > .infob { margin-left: -4px; }
+.navtoggle, #nav button { display: flex; align-items: center; }
+#nav button .ic { width: 22px; }
+.pill { line-height: 1; } .pill i { flex: none; }
+select, input { min-height: 36px; box-sizing: border-box; }
+.chip { display: inline-flex; align-items: center; line-height: 1.2; }
+
+/* ───────── polish: tiles ───────── */
+.urtile, .kpi { background: color-mix(in srgb, var(--bg) 55%, var(--card)); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; justify-content: center; min-height: 92px; box-sizing: border-box; transition: border-color .2s ease, transform .2s var(--ease); }
+.urtile:hover, .kpi:hover { border-color: color-mix(in srgb, var(--clay) 40%, var(--line)); transform: translateY(-1px); }
+.urtile .small, .kpi .small { line-height: 1.3; }
+.urval { font-size: 26px; letter-spacing: -.01em; line-height: 1.1; }
+.urgrid { gap: 12px; }
+.card { border-radius: 18px; }
+.card.stack { gap: 14px; }
+.page { gap: 16px; }
+.urbars { height: 120px; gap: 4px; }
+.urbar i { border-radius: 4px 4px 0 0; background: linear-gradient(to top, var(--clay), color-mix(in srgb, var(--clay) 65%, #fff)); }
+
+/* ───────── morphing ───────── */
+::view-transition-group(*) { animation-duration: .42s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; }
+#nav button.on { view-transition-name: navactive; }
+.chat-head h3 { view-transition-name: chattitle; }
+.modal .mcard, .obcard { view-transition-name: sheet; }
+.infopop { transition: opacity .15s ease; }
+.mcard, .obcard, .ttip { transition: height .35s var(--ease); }
+.obbody { transition: opacity .2s ease; }
+@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }

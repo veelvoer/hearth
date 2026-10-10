@@ -6,6 +6,11 @@ const tcall = (s, method, p, body) => cm.relay(s.mid, method, '/tools/' + p, bod
 function openTools(s, tab) {
   if (!s || !s.mid) return;
   PT.s = s; PT.tab = tab || PT.tab;
+  if (!PT.el && document.startViewTransition) { try { document.startViewTransition(() => openToolsNow(s, tab)); return; } catch { /* plain */ } }
+  openToolsNow(s, tab);
+}
+function openToolsNow(s, tab) {
+  PT.s = s; PT.tab = tab || PT.tab;
   if (!PT.el) { PT.el = h('div', { class: 'modal', onclick: (e) => { if (e.target === PT.el) closeTools(); } }); document.body.append(PT.el); }
   drawTools();
 }

@@ -146,6 +146,10 @@ function sessionsView() {
 
 function swapPane() { if (!SS.pane) return; SS.pane.classList.remove('swap'); void SS.pane.offsetWidth; SS.pane.classList.add('swap'); }
 function openSession(s, voice) {
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && SS.pane) { try { document.startViewTransition(() => openSessionNow(s, voice)); return; } catch { /* plain */ } }
+  openSessionNow(s, voice);
+}
+function openSessionNow(s, voice) {
   SS.call = 'off';
   SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = []; SS.parts = []; SS.sending = false;
   if (tab !== 'sessions') setTab('sessions');
