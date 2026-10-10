@@ -26,6 +26,10 @@
 
 If it still fails: the file may be incomplete. Download it again, and make sure your phone has at least 100 MB free.
 
+## Several people, one server
+
+Two people can run Hearth on the same server: the installer notices an existing Hearth and sets up a separate copy (its own address, key and service, named `hearth-<name>`). It never overwrites the first one. Each person uses their own commands, for example `hearth-server code` or `hearth-<name>-server code`.
+
 ## Updates
 
 **How do I update?** Open Hearth → *Settings → Updates → Check for updates* (on the phone: *Settings → Updates*). Hearth looks at the newest release on GitHub. If there is one, press **Update**: the app downloads it and installs it. On the phone, Android asks you once to allow Hearth to install updates, then shows an *Update* button. If you are connected to a server, the same screen can update the server too.

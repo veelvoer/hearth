@@ -9,4 +9,5 @@ out = here / "assets"
 out.mkdir(exist_ok=True)
 for svg, png, size in (("hearth.svg", "icon.png", 512), ("flame.svg", "tray.png", 32)):
     subprocess.run(["magick", "-background", "none", "-density", "384", str(brand / svg), "-resize", f"{size}x{size}", str(out / png)], check=True)
+subprocess.run(["magick", str(out / "icon.png"), "-define", "icon:auto-resize=256,128,64,48,32,16", str(out / "icon.ico")], check=True)
 print("icons written")

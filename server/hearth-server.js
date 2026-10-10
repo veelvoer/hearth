@@ -357,6 +357,11 @@ async function setupCaddy(info, domain, upstream) {
     const line = 'import /etc/caddy/' + INSTANCE + '.caddy';
     if (!has.split('\n').some((l) => l.trim() === line)) await sudoWrite(main, (has ? has.replace(/\s*$/, '\n\n') : '') + line + '\n');
   }
+  if (!PREFIX && !DRY) {   // Caddy sometimes stops by itself (older versions); make the system start it again within seconds
+    await sudoWrite('/etc/systemd/system/caddy.service.d/hearth.conf', '[Service]\nRestart=always\nRestartSec=3\n');
+    const cv = (spawnSync('caddy', ['version'], { encoding: 'utf8' }).stdout || '').match(/v?(\d+)\.(\d+)/);
+    if (cv && (Number(cv[1]) < 2 || (Number(cv[1]) === 2 && Number(cv[2]) < 7))) warn('Your Caddy is old (' + cv[0] + '). It can crash now and then; Hearth restarts it automatically. Updating Caddy (caddyserver.com/docs/install) is recommended.');
+  }
   await openFirewall();
   if (!PREFIX) await must('Turn on the padlock', 'sh', ['-c', 'systemctl enable caddy && systemctl restart caddy'], { sudo: true });
 }

@@ -316,3 +316,21 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in s
 .spmsg { padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 92%; }
 .spmsg.user { align-self: flex-end; background: var(--bg); }
 .spmsg.support { align-self: flex-start; border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); background: color-mix(in srgb, var(--clay) 8%, transparent); }
+.ob.leaving { animation: fadeout .25s ease both; } @keyframes fadeout { to { opacity: 0; } }
+.obbody pre.out { max-height: 90px; overflow: hidden; margin: 0; white-space: pre-wrap; }
+
+/* ───────── guided tour ───────── */
+.tour { position: fixed; inset: 0; z-index: 200; animation: fadein .25s ease both; }
+.tour.out { animation: fadeout .25s ease both; }
+.tdim { position: absolute; inset: 0; }
+.tspot { position: absolute; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(8, 7, 6, .66); border: 2px solid var(--clay); pointer-events: none; transition: left .45s var(--ease), top .45s var(--ease), width .45s var(--ease), height .45s var(--ease), opacity .3s ease; animation: tglow 1.8s ease-in-out infinite; }
+@keyframes tglow { 0%, 100% { box-shadow: 0 0 0 9999px rgba(8, 7, 6, .66), 0 0 0 0 color-mix(in srgb, var(--clay) 60%, transparent); } 50% { box-shadow: 0 0 0 9999px rgba(8, 7, 6, .66), 0 0 0 10px color-mix(in srgb, var(--clay) 0%, transparent); } }
+.tspot[data-hint="click"]::after, .tspot[data-hint="type"]::after, .tspot[data-hint="/"]::after { position: absolute; right: 10px; bottom: -14px; background: var(--clay); color: var(--onclay); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; animation: nudge 1.2s ease-in-out infinite; }
+.tspot[data-hint="click"]::after { content: "click here"; } .tspot[data-hint="type"]::after { content: "type here"; } .tspot[data-hint="/"]::after { content: "try typing /"; }
+@keyframes nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+.ttip { position: absolute; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; box-shadow: 0 14px 40px rgba(0, 0, 0, .4); opacity: 0; transform: translateY(8px) scale(.98); transition: left .45s var(--ease), top .45s var(--ease), opacity .25s ease, transform .3s var(--ease); }
+.ttip.in { opacity: 1; transform: none; }
+.ttip h3 { margin: 4px 0 6px; font-size: 19px; } .ttip p { margin: 0 0 12px; line-height: 1.5; color: var(--muted); }
+.tcount { font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+.trow { display: flex; gap: 8px; align-items: center; }
+.obnote > button { align-self: flex-start; }

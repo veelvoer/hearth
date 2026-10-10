@@ -73,7 +73,8 @@ class MainActivity : ComponentActivity() {
 private fun Root() {
     val c = androidx.compose.ui.platform.LocalContext.current
     var tour by remember { mutableStateOf(!Store.onboarded(c)) }
-    LaunchedEffect(Ui.tourRev) { if (Ui.tourRev > 0) tour = true }
+    val seenTour = remember { Ui.tourRev }   // "Show tutorial" in Settings counts up; a new screen must not replay an old press
+    LaunchedEffect(Ui.tourRev) { if (Ui.tourRev != seenTour) tour = true }
     LaunchedEffect(tour) { if (tour) Store.setOnboarded(c, true) }   // the tutorial shows once; closing the app halfway must not bring it back
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (tour) Welcome { Store.setOnboarded(c, true); tour = false; (c as? MainActivity)?.askNotifications() } else Main()

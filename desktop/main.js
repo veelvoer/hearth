@@ -7,11 +7,12 @@ const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
 const dgram = require('dgram');
-const { execFile, fork } = require('child_process');
+const { execFile, fork, spawn } = require('child_process');
 const relayMod = require('./relay/server');
 const updater = require('./updater');
 
 app.setName('Hearth');
+if (process.platform === 'win32') app.setAppUserModelId('dev.voer.hearth');   // so the taskbar shows Hearth's own icon, not Electron's
 { // carry over the settings of the app under its former name ("Hearth"), also when Electron already made the new folder
   const here = app.getPath('userData'), oldDir = path.join(path.dirname(here), 'Hearth');
   const read = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
@@ -271,7 +272,7 @@ function ring(m, ev) {
 }
 
 // ───────────────────────── windows ─────────────────────────
-const iconPath = path.join(__dirname, 'assets', 'icon.png');
+const iconPath = path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 let main = null, tray = null, quitting = false;
 
 function showMain(tab) {
@@ -359,7 +360,7 @@ h('refresh', async () => { await refreshUsage(true); return publicState(); });
 h('settings:set', (e, patch) => {
   S.settings = { ...S.settings, ...patch }; save();
   if ('callMe' in patch) setCallMe(patch.callMe);
-  if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system';
+  if ('theme' in patch) { nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; setTimeout(() => syncAutoTheme().catch(() => {}), 300); }
   broadcast('usage', publicState());
   return S.settings;
 });
@@ -400,19 +401,53 @@ function hooksRemove() {
 const GNOME_ACCENT = { blue: '#3584e4', teal: '#2190a4', green: '#3a944a', yellow: '#c88800', orange: '#ed5b00', red: '#e62d42', pink: '#d56199', purple: '#9141ac', slate: '#6f8396' };
 const run = (cmd, args) => new Promise((resolve) => execFile(cmd, args, { timeout: 1500 }, (err, out) => resolve(err ? '' : String(out))));
 let accentCache = { at: 0, v: null };
+const hex2 = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+const GNOME_DESKTOP = () => /gnome|unity|budgie|cinnamon|pantheon|ubuntu/i.test(process.env.XDG_CURRENT_DESKTOP || '');
+/** The accent color of this desktop. Windows and macOS say it directly; on Linux every desktop does it differently, so we ask the places in turn. */
 async function systemAccent() {
   if (Date.now() - accentCache.at < 15000) return accentCache.v;
   let v = null;
   if (process.platform === 'win32' || process.platform === 'darwin') {
     try { const c = require('electron').systemPreferences.getAccentColor(); if (c) v = '#' + c.slice(0, 6); } catch { /* none */ }
   } else {
+    // 1. the standard desktop portal (GNOME 47+, KDE 6, most others)
     const o = await run('gdbus', ['call', '--session', '--dest', 'org.freedesktop.portal.Desktop', '--object-path', '/org/freedesktop/portal/desktop', '--method', 'org.freedesktop.portal.Settings.Read', 'org.freedesktop.appearance', 'accent-color']);
-    const m = /\(\s*(-?[\d.e-]+),\s*(-?[\d.e-]+),\s*(-?[\d.e-]+)\s*\)/.exec(o);
-    if (m && Number(m[1]) >= 0) v = '#' + [m[1], m[2], m[3]].map((x) => Math.round(Math.min(1, Number(x)) * 255).toString(16).padStart(2, '0')).join('');
-    if (!v) { const g = (await run('gsettings', ['get', 'org.gnome.desktop.interface', 'accent-color'])).replace(/['\s]/g, ''); v = GNOME_ACCENT[g] || null; }
+    const pm = /\(\s*(-?[\d.e-]+),\s*(-?[\d.e-]+),\s*(-?[\d.e-]+)\s*\)/.exec(o);
+    if (pm && Number(pm[1]) >= 0) v = '#' + [pm[1], pm[2], pm[3]].map((x) => hex2(Math.min(1, Number(x)) * 255)).join('');
+    // 2. KDE Plasma
+    if (!v) { try { const t = fs.readFileSync(path.join(os.homedir(), '.config', 'kdeglobals'), 'utf8'), km = /^AccentColor=(\d+),(\d+),(\d+)/m.exec(t); if (km) v = '#' + [km[1], km[2], km[3]].map((x) => hex2(Number(x))).join(''); } catch { /* not KDE */ } }
+    // 3. Hyprland: the color of the focused window border is the closest thing it has
+    if (!v && process.env.HYPRLAND_INSTANCE_SIGNATURE) { const hj = await run('hyprctl', ['getoption', 'general:col.active_border', '-j']); const hm = /"gradient":\s*"([0-9a-f]{8})/i.exec(hj); if (hm) v = '#' + hm[1].slice(2); }
+    // 4. GNOME's own setting (only on GNOME-like desktops: elsewhere it always says "blue")
+    if (!v && GNOME_DESKTOP()) { const g = (await run('gsettings', ['get', 'org.gnome.desktop.interface', 'accent-color'])).replace(/['\s]/g, ''); v = GNOME_ACCENT[g] || null; }
+    // 5. the GTK theme's own selection / accent color
+    if (!v) {
+      for (const f of ['gtk-4.0/gtk.css', 'gtk-3.0/colors.css', 'gtk-3.0/gtk.css', 'gtk-4.0/colors.css']) {
+        try { const t = fs.readFileSync(path.join(os.homedir(), '.config', f), 'utf8'); const gm = /@define-color\s+(?:accent_bg_color|accent_color|theme_selected_bg_color)\s+(#[0-9a-fA-F]{6})/.exec(t); if (gm) { v = gm[1].toLowerCase(); break; } } catch { /* next */ }
+      }
+    }
   }
   accentCache = { at: Date.now(), v };
   return v;
+}
+/** Dark or light, for desktops that do not tell Electron (a window manager without a settings daemon). null = unknown. */
+async function systemDark() {
+  if (process.platform !== 'linux') return null;
+  const o = await run('gdbus', ['call', '--session', '--dest', 'org.freedesktop.portal.Desktop', '--object-path', '/org/freedesktop/portal/desktop', '--method', 'org.freedesktop.portal.Settings.Read', 'org.freedesktop.appearance', 'color-scheme']);
+  const pm = /uint32 (\d)/.exec(o); if (pm) return pm[1] === '1' ? true : pm[1] === '2' ? false : null;
+  const cs = (await run('gsettings', ['get', 'org.gnome.desktop.interface', 'color-scheme'])).replace(/['\s]/g, '');
+  if (cs === 'prefer-dark') return true; if (cs === 'prefer-light') return false;
+  const th = (await run('gsettings', ['get', 'org.gnome.desktop.interface', 'gtk-theme'])).toLowerCase();
+  if (th) { if (/dark|black|night/.test(th)) return true; if (/light|white/.test(th)) return false; }
+  try { const t = fs.readFileSync(path.join(os.homedir(), '.config', 'gtk-3.0', 'settings.ini'), 'utf8'); const dm = /gtk-application-prefer-dark-theme\s*=\s*(\w+)/i.exec(t); if (dm) return /1|true/i.test(dm[1]); const tm = /gtk-theme-name\s*=\s*(.+)/i.exec(t); if (tm) return /dark|black|night/i.test(tm[1]); } catch { /* none */ }
+  return null;
+}
+/** "Auto" should follow the desktop even where the desktop does not tell Electron. */
+async function syncAutoTheme() {
+  if (S.settings.theme !== 'system' && S.settings.theme !== undefined) return;
+  const dark = await systemDark(); if (dark === null) return;
+  const want = dark ? 'dark' : 'light';
+  if (nativeTheme.themeSource !== want) nativeTheme.themeSource = want;
 }
 function setAutostart(on) {
   if (process.platform === 'linux') {
@@ -431,6 +466,27 @@ h('pair:newcode', () => (relayInfo && relayInfo.ok ? relayInfo.newPairCode() : n
 h('hooks:install', () => hooksInstall());
 h('hooks:remove', () => hooksRemove());
 h('system:accent', () => systemAccent());
+h('system:dark', () => systemDark());
+h('setup:paths', () => { const projects = path.join(os.homedir(), 'projects'); try { fs.mkdirSync(projects, { recursive: true }); } catch { /* shown by the setup */ } return { home: os.homedir(), projects, platform: process.platform }; });
+// the better local voices (Linux): runs the installer script and reports each line while it works
+let voiceJob = null;
+h('voice:install', async (e) => {
+  if (process.platform !== 'linux') throw new Error('The extra voices are for Linux. On this system Hearth uses the voices of your computer.');
+  if (voiceJob) return { running: true };
+  const send = (d) => { if (!e.sender.isDestroyed()) e.sender.send('voice-install', d); };
+  let script = path.join(__dirname, '..', 'relay', 'install_voice.sh');
+  if (!fs.existsSync(script)) {
+    send({ line: 'Downloading the voice installer…' });
+    script = path.join(os.tmpdir(), 'hearth-install-voice.sh');
+    try { const r = await fetch('https://raw.githubusercontent.com/veelvoer/hearth/main/relay/install_voice.sh', { signal: AbortSignal.timeout(30000) }); if (!r.ok) throw new Error(); fs.writeFileSync(script, await r.text()); } catch { throw new Error('Could not download the voice installer. Check your internet connection.'); }
+  }
+  voiceJob = spawn('bash', [script], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const feed = (b) => String(b).split(/\r?\n|\r/).map((l) => l.trim()).filter(Boolean).forEach((l) => send({ line: l.slice(0, 160) }));
+  voiceJob.stdout.on('data', feed); voiceJob.stderr.on('data', feed);
+  voiceJob.on('close', (code) => { voiceJob = null; send({ done: true, ok: code === 0 }); });
+  return { running: true };
+});
+h('app:icon', (e, dataUrl) => { try { const img = nativeImage.createFromDataURL(String(dataUrl)); if (img.isEmpty()) return false; if (main && !main.isDestroyed()) main.setIcon(img); if (tray) tray.setImage(img.resize({ width: 32, height: 32 })); return true; } catch { return false; } });
 h('autostart:set', (e, on) => { setAutostart(on); S.settings.autostart = !!on; save(); return true; });
 h('machines', () => machines().map(pub));
 h('machines:add', async (e, m) => {
@@ -655,7 +711,7 @@ app.whenReady().then(async () => {
     let last = Date.now(), worst = 0;
     setInterval(() => { const n = Date.now(); worst = Math.max(worst, n - last - 200); last = n; fs.writeFileSync(process.env.CM_HEARTBEAT, `alive ${n} worst_block_ms ${worst}\n`); }, 200);
   }
-  if (!process.env.CM_NO_THEME) nativeTheme.themeSource = ['light', 'dark'].includes(S.settings.theme) ? S.settings.theme : 'system';
+  if (!process.env.CM_NO_THEME) { nativeTheme.themeSource = ['light', 'dark'].includes(S.settings.theme) ? S.settings.theme : 'system'; syncAutoTheme().catch(() => {}); setInterval(() => syncAutoTheme().catch(() => {}), 30000); }
   relayInfo = process.env.CM_NO_RELAY ? { ok: false, inUse: true } : await startRelay();
   sendLink();
   upd = updater.create({

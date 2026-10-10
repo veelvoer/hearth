@@ -72,7 +72,7 @@ function create(d) {
     const loc = await d.relayBuild('local');
     const localNeed = typeof loc === 'string' && loc !== rs;
     const behind = await behindGithub();
-    return { desktop: sg.desktop !== loaded || localNeed, phone: hasAndroid && sg.phone !== dep.phone, server: typeof srv === 'string' && srv !== rs, github: behind > 0, behind, sigs: sg, rs, srv, loc };
+    return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: typeof srv === 'string' && srv !== rs, github: behind > 0, behind, sigs: sg, rs, srv, loc };
   }
   const summary = (n) => (n && (n.desktop || n.phone || n.server || n.github) ? { desktop: n.desktop, phone: n.phone, server: n.server, github: !!n.github, behind: n.behind, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest } : null);
 
@@ -103,8 +103,7 @@ function create(d) {
     return {
       checkedAt: Date.now(), ...(gh1 ? { github: gh1 } : {}),
       desktop: { need: n.desktop, text: n.desktop ? 'Update ready' : 'Up to date' },
-      phone: !hasAndroid ? { na: true, text: 'Not set up on this computer (needs the project and the Android tools)' }
-        : { need: n.phone, text: n.phone ? 'Update ready' + (when ? ' · last installed ' + when : ' · not installed from this computer yet') : 'Up to date' + (when ? ' · installed ' + when : '') },
+      phone: { na: true, text: 'Updates itself from GitHub: open Settings → Updates in the phone app' },
       server: !hasServer ? { na: true, text: 'No server set up on this computer' } : n.srv === undefined ? { na: true, text: 'No server connected' } : n.srv === null ? { na: true, text: 'The server can\'t be reached right now' }
         : { need: n.server, text: n.server ? 'Update ready' + (n.srv === '' ? ' · running an older version' : '') : 'Up to date' },
     };

@@ -22,6 +22,8 @@
 - 📥 **"A project was made while you were away."** If your laptop is off, Hearth asks next time: *Install* it here, or *Later*.
 - 🔔 **Get told when Claude is done or needs you.** A message, or even a phone call if you want one.
 - 🧰 **Everything the terminal can do, without the terminal.** Slash commands, skills, plugins, connections, project notes, save & undo changes, model and effort pickers. (Talking by voice needs an optional voice engine, see `relay/install_voice.sh`.)
+- 🧭 **A setup that sets everything up with you, and a guided tour** that lights up each button and explains it.
+- 🎨 **Your colors, your icon.** Hearth follows your desktop's accent color (Windows, macOS, GNOME, KDE, Hyprland) or any color you pick, and the app icon changes with it.
 - 🔄 **Updates itself from GitHub.** Press *Check for updates*: the phone app, the desktop app and your server all update, no cable needed.
 - 📊 **See your Claude limit.** Usage on your desktop and as a phone widget.
 

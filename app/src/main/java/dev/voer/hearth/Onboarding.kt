@@ -24,7 +24,7 @@ fun Welcome(finish: () -> Unit) {
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
     var connected by remember { mutableStateOf(Store.machines(c).isNotEmpty()) }
-    val last = 3
+    val last = 4
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
             repeat(last + 1) { i ->
@@ -94,6 +94,19 @@ fun Welcome(finish: () -> Unit) {
                     }
                 }
                 2 -> {
+                    var lang by remember { mutableStateOf(Store.voiceLang(c)) }
+                    Txt("Voice", T.title)
+                    Spacer(Modifier.height(10.dp))
+                    Txt("You can talk to Claude and hear it answer. Which language do you speak?", T.body, muted = true)
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("English", lang == "en") { lang = "en"; Store.setVoiceLang(c, "en") }
+                        Chip("Nederlands", lang == "nl") { lang = "nl"; Store.setVoiceLang(c, "nl") }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Txt("The phone uses its own voices. If your computer has the better voices installed (Hearth on the computer can do that), the phone uses those automatically. You can change this later in Settings.", T.small, muted = true)
+                }
+                3 -> {
                     Txt("Stay in the loop", T.title)
                     Spacer(Modifier.height(10.dp))
                     Txt("Allow notifications so Hearth can tell you when Claude is finished or waiting for you. You can also get a phone call for the important moments; choose that per chat, inside the chat.", T.body, muted = true)

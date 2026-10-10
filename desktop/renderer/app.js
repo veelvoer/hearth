@@ -43,12 +43,15 @@ function renderNav() {
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
 }
 function setTab(t) { tab = t; render(); }
+/** The first-run setup. Also tried again once every script has loaded: the state can arrive before onboarding.js has run. */
+function maybeTutorial() { if (S && S.settings && !S.settings.onboarded && typeof startTutorial === 'function') startTutorial(); }
+window.addEventListener('load', () => { if (S && S.settings) render(); });
 let lastTab = null;
 function render() {
   renderNav();
   content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
-  if (S.settings && !S.settings.onboarded && typeof startTutorial === 'function') startTutorial();
+  maybeTutorial();
   if (!S.signedIn) return content.append(loginView());
   const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
@@ -155,11 +158,12 @@ function settingsView() {
   const p = page(head('Settings'));
   p.append(updatesCard());
   p.append(syncCard());
-  p.append(h('div', { class: 'card row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Help'), h('div', { class: 'small muted' }, 'New here? The tutorial shows how to connect your phone and a server.')), h('button', { class: 'ghost sm', onclick: () => { OB.step = 0; startTutorial(); } }, 'Show tutorial')));
+  p.append(h('div', { class: 'card row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Help'), h('div', { class: 'small muted' }, 'New here? Take the tour, or run the setup again.')), h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: () => startTour() }, 'Take the tour'), h('button', { class: 'ghost sm', onclick: () => { OB.step = 0; startTutorial(); } }, 'Run setup again'))));
   p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Appearance'),
     h('div', { class: 'field' }, h('div', { class: 'small muted' }, 'Mode'), h('div', { class: 'row' }, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']].map(([v, l]) => chip(l, (st.theme || 'system') === v, () => set({ theme: v }))))),
-    h('div', { class: 'field' }, h('div', { class: 'small muted' }, 'Colors'), h('div', { class: 'row' }, [['claude', 'Hearth'], ['system', 'System colors']].map(([v, l]) => chip(l, (st.palette || 'claude') === v, () => set({ palette: v }))))),
-    h('div', { class: 'small muted' }, 'Auto follows your desktop and switches between light and dark by itself. System colors uses your desktop\'s accent color across the whole app.')));
+    h('div', { class: 'field' }, h('div', { class: 'small muted' }, 'Colors'), h('div', { class: 'row' }, [['claude', 'Hearth'], ['system', 'My desktop'], ['custom', 'Pick a color']].map(([v, l]) => chip(l, (st.palette || 'claude') === v, () => set({ palette: v })))),
+      st.palette === 'custom' ? h('div', { class: 'row' }, h('input', { type: 'color', value: st.customAccent || '#F0643C', style: 'width:52px;height:36px;padding:2px', onchange: (e) => set({ customAccent: e.target.value }) }), h('span', { class: 'small muted' }, 'Pick any color. The icon in the corner of the window changes with it.')) : null),
+    h('div', { class: 'small muted' }, 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop\'s accent color (it is found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.')));
   p.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Alerts'), h('div', {}, 'Notify when usage crosses'),
     h('div', { class: 'row' }, [50, 75, 90, 100].map((v) => chip(v + '%', st.thresholds.includes(v), () => set({ thresholds: st.thresholds.includes(v) ? st.thresholds.filter((x) => x !== v) : [...st.thresholds, v] })))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset', h('div', { class: 'small muted' }, 'Tell me when a heavy session rolls over')), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
@@ -337,15 +341,30 @@ function hooksCard() {
 }
 
 // system colors: follow the desktop's accent color
+const FLAME_OUT = 'M256 96c10 52 78 86 78 170a78 78 0 0 1-156 0c0-34 18-58 34-76 2 24 14 38 28 44-8-50 4-98 16-138z';
+const FLAME_IN = 'M256 262c6 26 38 40 38 72a38 38 0 0 1-76 0c0-20 10-30 20-42 2 12 8 18 14 20-4-24 0-38 4-50z';
+const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16); const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((x) => Math.max(0, Math.min(255, Math.round(f >= 0 ? x + (255 - x) * f : x * (1 + f))))); return '#' + c.map((x) => x.toString(16).padStart(2, '0')).join(''); };
+/** The app's icon (window corner, taskbar, tray) in the colors you picked. */
+function updateAppIcon(accent) {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'), a = accent || '#F0643C';
+    const grad = g.createLinearGradient(0, 0, 256, 256); grad.addColorStop(0, accent ? shade(a, .14) : '#FF8A4C'); grad.addColorStop(1, accent ? shade(a, -.18) : '#E5484D');
+    g.fillStyle = grad; g.beginPath(); g.roundRect(0, 0, 256, 256, 56); g.fill();
+    g.save(); g.scale(.5, .5); g.fillStyle = '#fff'; g.fill(new Path2D(FLAME_OUT)); g.fillStyle = '#FFD3A8'; g.fill(new Path2D(FLAME_IN)); g.strokeStyle = '#fff'; g.lineWidth = 24; g.lineCap = 'round'; g.beginPath(); g.moveTo(150, 392); g.lineTo(362, 392); g.stroke(); g.restore();
+    cm.setIcon(c.toDataURL('image/png'));
+  } catch { /* keep the default icon */ }
+}
+/** Colors: Hearth's own, the desktop's accent color, or one you pick. */
 async function applyPalette() {
-  const root = document.documentElement;
-  if ((S.settings && S.settings.palette) !== 'system') { root.removeAttribute('data-palette'); ['--accent', '--onclay'].forEach((v) => root.style.removeProperty(v)); return; }
-  const a = await cm.accent();
-  if (!a) { root.removeAttribute('data-palette'); return; }
+  const root = document.documentElement, pal = (S.settings && S.settings.palette) || 'claude';
+  let a = null;
+  if (pal === 'system') a = await cm.accent(); else if (pal === 'custom') a = (S.settings && S.settings.customAccent) || '#F0643C';
+  if (!a) { root.removeAttribute('data-palette'); ['--accent', '--onclay'].forEach((v) => root.style.removeProperty(v)); updateAppIcon(null); return; }
   const n = parseInt(a.slice(1), 16), lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
   root.dataset.palette = 'system';
   root.style.setProperty('--accent', a);
   root.style.setProperty('--onclay', lum > 0.62 ? '#111111' : '#ffffff');
+  updateAppIcon(a);
 }
 setInterval(() => { if (S.settings && S.settings.palette === 'system') applyPalette(); }, 20000);
 
