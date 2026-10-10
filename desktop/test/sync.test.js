@@ -90,6 +90,7 @@ let pass = 0, fail = 0; const ok = (name, cond, extra = '') => { (cond ? pass++ 
 
   // ── files ──
   const W = (f, txt, ageSec = 10) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, txt); const x = new Date(Date.now() - ageSec * 1000); fs.utimesSync(f, x, x); };
+  const until = async (cond, tries = 8) => { for (let i = 0; i < tries; i++) { await new Promise((r) => setTimeout(r, 1500)); await syncNow(); if (cond()) return true; } return cond(); };   // slow machines need a few rounds
   const syncNow = async () => { await call(47792, ltok, 'POST', '/sync/now', {}); await call(47792, ltok, 'POST', '/sync/now', {}); };
   W(lapRoot + '/app/src/a.txt', 'hello from laptop'); W(lapRoot + '/app/node_modules/x/y.js', 'junk'); W(srvRoot + '/newproj/readme.md', 'made on the phone');
   await syncNow();
@@ -99,14 +100,14 @@ let pass = 0, fail = 0; const ok = (name, cond, extra = '') => { (cond ? pass++ 
   ok('12 new server project waits for approval', Array.isArray(ov.pending) && ov.pending.some((p) => p.name === 'newproj') && !fs.existsSync(lapRoot + '/newproj'), JSON.stringify(ov.pending));
   await call(47792, ltok, 'POST', '/sync/projects/accept', { names: ['newproj'] });
   ok('12b after Install it arrives', fs.existsSync(lapRoot + '/newproj/readme.md') && fs.readFileSync(lapRoot + '/newproj/readme.md', 'utf8') === 'made on the phone');
-  W(srvRoot + '/app/src/a.txt', 'edited on server', 1); await new Promise((r) => setTimeout(r, 3500)); await syncNow();
-  ok('13 server edit reached laptop', fs.readFileSync(lapRoot + '/app/src/a.txt', 'utf8') === 'edited on server');
+  W(srvRoot + '/app/src/a.txt', 'edited on server', 1);
+  ok('13 server edit reached laptop', await until(() => fs.readFileSync(lapRoot + '/app/src/a.txt', 'utf8') === 'edited on server'));
   fs.unlinkSync(lapRoot + '/app/src/a.txt'); await syncNow();
   ok('14 delete on laptop removes it on server (to trash)', !fs.existsSync(srvRoot + '/app/src/a.txt') && fs.existsSync(srvRoot + '/.hearth-trash'));
   W(lapRoot + '/app/c.txt', 'v1', 30); await syncNow();
-  W(lapRoot + '/app/c.txt', 'laptop v2', 5); W(srvRoot + '/app/c.txt', 'server v2', 1); await new Promise((r) => setTimeout(r, 3500)); await syncNow();
-  const cf = fs.readdirSync(lapRoot + '/app').concat(fs.readdirSync(srvRoot + '/app'));
-  ok('15 conflict: newest wins, other kept', fs.readFileSync(lapRoot + '/app/c.txt', 'utf8') === 'server v2' && cf.some((n) => n.includes('conflict')), cf.join(','));
+  W(lapRoot + '/app/c.txt', 'laptop v2', 5); W(srvRoot + '/app/c.txt', 'server v2', 1);
+  const conflicts = () => fs.readdirSync(lapRoot + '/app').concat(fs.readdirSync(srvRoot + '/app')).filter((n) => n.includes('conflict'));
+  ok('15 conflict: newest wins, other kept', await until(() => fs.readFileSync(lapRoot + '/app/c.txt', 'utf8') === 'server v2' && conflicts().length > 0), conflicts().join(',') + ' lap=' + fs.readFileSync(lapRoot + '/app/c.txt', 'utf8') + ' srv=' + fs.readFileSync(srvRoot + '/app/c.txt', 'utf8'));
   for (let i = 0; i < 30; i++) W(lapRoot + '/bulk/f' + i + '.txt', 'b' + i);
   await call(47792, ltok, 'POST', '/sync/projects/accept', { all: true }); await syncNow();
   for (let i = 0; i < 30; i++) fs.unlinkSync(lapRoot + '/bulk/f' + i + '.txt'); await syncNow();

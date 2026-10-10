@@ -62,12 +62,15 @@ function conflictName(rel, who) {
 // ───────────────────────── server side ─────────────────────────
 function createHub({ root, onLog = () => {} }) {
   let cache = null, cacheAt = 0;
-  const manifest = () => { if (!cache || Date.now() - cacheAt > 3000) { cache = scan(root); cacheAt = Date.now(); } return cache; };
+  const manifest = () => { if (!cache || Date.now() - cacheAt > 1000) { cache = scan(root); cacheAt = Date.now(); } return cache; };
   const touch = () => { cache = null; };
-  function put(rel, buf, mtime, mode, keepOld, who) {
+  /** base: what the sending computer believes the server's copy looked like ([size, mtime] or null when it thinks there is none). If the real file is different, somebody changed it in between: that copy is kept as a conflict file, never overwritten silently. */
+  function put(rel, buf, mtime, mode, keepOld, who, base) {
     if (!safeRel(rel)) return { error: 'bad path' };
     const f = abs(root, rel);
-    if (keepOld && fs.existsSync(f)) { try { fs.copyFileSync(f, abs(root, conflictName(rel, who))); } catch { /* best effort */ } }
+    let changedMeanwhile = false;
+    try { const st = fs.statSync(f); changedMeanwhile = base === undefined ? false : (!base || st.size !== base[0] || Math.abs(Math.floor(st.mtimeMs) - base[1]) > SLACK) && !(st.size === buf.length && Math.abs(Math.floor(st.mtimeMs) - mtime) <= SLACK); } catch { /* nothing there yet */ }
+    if ((keepOld || changedMeanwhile) && fs.existsSync(f)) { try { fs.copyFileSync(f, abs(root, conflictName(rel, who))); } catch { /* best effort */ } }
     writeAtomic(f, buf, mtime, mode); touch();
     return { ok: true };
   }
@@ -133,7 +136,8 @@ function createAgent({ root, stateFile, name, transport, onLog = () => {}, inter
             const buf = fs.readFileSync(abs(root, rel)), s2 = fs.statSync(abs(root, rel));
             if (s2.size !== L[0] || Math.floor(s2.mtimeMs) !== L[1]) { stat.waiting++; continue; }   // changed while we read it
             const keep = plan.conflict.some((c) => c[0] === rel && c[1] === 'hub');
-            const r = await transport.put('/agent/files/put?' + new URLSearchParams({ rel, mtime: String(L[1]), mode: String(L[2]), keepOld: keep ? '1' : '0', who: name || '' }), zlib.gzipSync(buf, { level: 3 }));
+            const bh = base[rel] && base[rel].h;   // what we believe the server has: it checks that against the real file
+            const r = await transport.put('/agent/files/put?' + new URLSearchParams({ rel, mtime: String(L[1]), mode: String(L[2]), keepOld: keep ? '1' : '0', who: name || '', ...(bh ? { baseSize: String(bh[0]), baseMtime: String(bh[1]) } : { baseNone: '1' }) }), zlib.gzipSync(buf, { level: 3 }));
             if (r.error) throw new Error(r.error);
             state.files[rel] = { l: L, h: [L[0], L[1]] }; stat.pushed++; if (keep) stat.conflicts++;
           } catch (e) { stat.errors.push(`send ${rel}: ${e.message}`); }

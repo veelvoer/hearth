@@ -637,7 +637,7 @@ function start(opts) {
           if (!hubFiles) return json(res, 404, { error: 'this is not the server' });
           let data; try { data = await readBody(req, 260e6); } catch { return json(res, 413, { error: 'too large' }); }
           let body; try { body = req.headers['x-gzip'] ? zlib.gunzipSync(data) : data; } catch { return json(res, 400, { error: 'bad body' }); }
-          const q = u.searchParams, out = hubFiles.put(String(q.get('rel') || ''), body, Number(q.get('mtime')) || Date.now(), Number(q.get('mode')) || 0o644, q.get('keepOld') === '1', String(q.get('who') || ''));
+          const q = u.searchParams, out = hubFiles.put(String(q.get('rel') || ''), body, Number(q.get('mtime')) || Date.now(), Number(q.get('mode')) || 0o644, q.get('keepOld') === '1', String(q.get('who') || ''), q.has('baseSize') ? [Number(q.get('baseSize')), Number(q.get('baseMtime'))] : q.has('baseNone') ? null : undefined);
           return json(res, out.error ? 400 : 200, out);
         }
         if (parts[0] === 'agent' && parts[1] === 'chats' && parts[2] === 'put') {   // a computer uploads a chat (or the new end of one)
