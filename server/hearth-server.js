@@ -24,7 +24,7 @@ let PORT = 47601;
 const argv = process.argv.slice(2);
 const flag = (k) => argv.includes('--' + k);
 const opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
-const VALUED = ['mode', 'address', 'name', 'prefix'];
+const VALUED = ['mode', 'address', 'name', 'prefix', 'instance'];
 const cmd = argv.find((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && VALUED.includes(argv[i - 1].slice(2)))) || 'install';
 const YES = flag('yes'), DRY = flag('dry-run'), PREFIX = opt('prefix', '');   // PREFIX: write into a folder instead of the real system (for tests)
 const OPT = PREFIX ? path.join(PREFIX, 'opt') : '/opt';
