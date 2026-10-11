@@ -29,7 +29,7 @@ function info(text) {
   } }, icon('info'));
   return b;
 }
-const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: (e) => morph(() => fn(e)) }, label);
+const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label);
 const toggle = (on, fn) => h('button', { class: 'toggle' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(!!on), onclick: fn });
 
 let S = { signedIn: false, settings: {}, history: [] };
@@ -64,27 +64,22 @@ function renderNav() {
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
 }
 /** Runs a change of screen as one morphing transition (shared elements glide, the rest cross-fades). */
-/** The selected chip of every row gets its own transition name, so the highlight glides to the next chip instead of jumping. */
-function nameChips() {
-  let g = 0;
-  document.querySelectorAll('.row').forEach((row) => { const on = row.querySelector(':scope > .chip.on'); if (on) on.style.viewTransitionName = 'chipsel-' + (g++); });
-}
 function morph(fn) {
   if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return fn();
   try {
-    nameChips();
-    const t = document.startViewTransition(async () => { await fn(); nameChips(); });
+    const t = document.startViewTransition(async () => { await fn(); });
     for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});   // a skipped transition is fine, not an error
     return t;
   } catch { return fn(); }
 }
-function setTab(t) { if (t === tab) return; morph(() => { tab = t; render(); }); }
+function setTab(t) { if (t === tab) return; tab = t; render(); }
 /** The first-run setup. Also tried again once every script has loaded: the state can arrive before onboarding.js has run. */
 function maybeTutorial() { if (S && S.settings && !S.settings.onboarded && typeof startTutorial === 'function') startTutorial(); }
 window.addEventListener('load', () => { if (S && S.settings) render(); });
 let lastTab = null;
 function render() {
   lastSig = sigOf();
+  const keepScroll = lastTab === tab ? content.scrollTop : 0;   // changing a setting must not move the page
   renderNav();
   content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
@@ -92,6 +87,7 @@ function render() {
   if (!S.signedIn) return content.append(loginView());
   const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
+  if (keepScroll) { content.scrollTop = keepScroll; requestAnimationFrame(() => { content.scrollTop = keepScroll; }); }
   if (tab === 'history') requestAnimationFrame(drawHistory);
 }
 const page = (...k) => h('div', { class: 'page' }, ...k);
@@ -415,3 +411,30 @@ cm.on('open-session', async (o) => { SS.machines = await cm.machines(); SS.mid =
 setInterval(() => { if (tab === 'now' || tab === 'history') render(); }, 30000);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
 cm.state().then(async (s) => { S = s; await applyPalette(); render(); });
+
+/** The highlight of a selected chip or menu item is its own element that glides to the next one. The buttons never move. */
+const HL = new Map();   // group number -> where its highlight was
+function placeHighlights() {
+  const groups = new Map();
+  document.querySelectorAll('.chip.on, #nav button.on:not(.navtoggle)').forEach((on) => { const p = on.parentElement; if (p && !p.closest('.ttip, .infopop')) groups.set(p, on); });
+  let g = 0;
+  for (const [parent, on] of groups) {
+    const key = g++, nav = parent.id === 'nav';
+    if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+    let pill = parent.querySelector(':scope > .hl');
+    const rect = { l: on.offsetLeft, t: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };
+    const sig = parent.children.length + ':' + (nav ? 'nav' : (parent.firstElementChild && parent.firstElementChild.textContent));
+    if (!pill) {
+      pill = document.createElement('i'); pill.className = 'hl' + (nav ? ' navhl' : ''); parent.prepend(pill); parent.classList.add('hlready');
+      const old = HL.get(key);
+      const from = old && old.sig === sig && matchMedia('(prefers-reduced-motion: no-preference)').matches ? old.rect : rect;
+      pill.style.transition = 'none'; pill.style.cssText += `;left:${from.l}px;top:${from.t}px;width:${from.w}px;height:${from.h}px`;
+      void pill.offsetWidth; pill.style.transition = '';
+    }
+    pill.style.left = rect.l + 'px'; pill.style.top = rect.t + 'px'; pill.style.width = rect.w + 'px'; pill.style.height = rect.h + 'px';
+    HL.set(key, { rect, sig });
+  }
+}
+let hlQueued = false;
+new MutationObserver(() => { if (hlQueued) return; hlQueued = true; setTimeout(() => { hlQueued = false; placeHighlights(); }, 0); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+window.addEventListener('resize', () => placeHighlights());

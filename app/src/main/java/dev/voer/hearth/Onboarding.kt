@@ -99,7 +99,7 @@ fun Welcome(finish: (Boolean) -> Unit) {
                     Spacer(Modifier.height(10.dp))
                     Txt("You can talk to Claude and hear it answer. Which language do you speak?", T.body, muted = true)
                     Spacer(Modifier.height(14.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Chip("English", lang == "en") { lang = "en"; Store.setVoiceLang(c, "en") }
                         Chip("Nederlands", lang == "nl") { lang = "nl"; Store.setVoiceLang(c, "nl") }
                     }

@@ -319,13 +319,13 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
     fun go(path: String) { if (!m.secure) Store.setLastMachine(c, m.host); start(m, path, "code") }
     Screen {
         Header("New session") { TextAction("Back", back) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Coding", !talk) { talk = false }
             Chip("Talk", talk) { talk = true }
         }
         if (machines.size > 1) {
             Label("Where should it run?")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 machines.sortedBy { it.secure }.forEach { mm -> Chip(mm.name, mm == m) { sel = mm } }
             }
             if (m.secure) {
@@ -333,7 +333,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
                 LaunchedEffect(m) { Ui.newRun = "vps"; runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
                 if (pcs.isNotEmpty()) {
                     Label("Which computer should work on it?")
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         (listOf("Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, Ui.newRun == v) { Ui.newRun = v } }
                     }
                 } else Txt("Runs on the server, so it keeps going when your computer is off.", T.small, muted = true)
@@ -486,7 +486,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Label("How much can Claude do on its own?")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v } }
             }
             if (mode == "bypassPermissions") Txt("Full auto lets Claude run any command on ${m.name} without asking.", T.small, color = cs.primary)
@@ -494,24 +494,24 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
                 Label("Run on")
                 var pcs by remember { mutableStateOf<List<Computer>>(emptyList()) }
                 LaunchedEffect(options) { runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, run == v) { run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } } }
                 }
                 Txt("Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. A computer that is off starts when you turn it on. You can also just ask Claude to do something on another PC.", T.small, muted = true)
             }
             if (sess.kind != "talk") {
                 Label("Model")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, v) } }
                 }
                 Label("Effort")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max").forEach { (l, v) -> Chip(l, effort == v) { effort = v; Store.setChatEffort(appCtx, v) } }
                 }
                 Txt("More effort means deeper thinking and more tokens. Talk sessions always use Haiku.", T.small, muted = true)
             }
             Label("Phone call")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("When it's done", call == "done") { setCall("done") }
                 Chip("Also if it needs me", call == "attention") { setCall("attention") }
             }

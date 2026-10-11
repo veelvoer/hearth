@@ -41,28 +41,28 @@ class WidgetConfigActivity : ComponentActivity() {
                 Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
                     Screen {
                         Header("Customize widget", if (id == 0) "Default for new widgets" else null)
-                        if (id == 0) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (id == 0) ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Shape.entries.forEach { s -> Chip(s.label, sh == s) { sh = s } }
                         }
                         Card { Preview(cfg, sh, u) }
                         Card {
                             Label("Style"); Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Look.entries.forEach { l -> Chip(l.label, cfg.look == l) { cfg = cfg.copy(look = l) } } }
+                            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Look.entries.forEach { l -> Chip(l.label, cfg.look == l) { cfg = cfg.copy(look = l) } } }
                             if (sh == Shape.TINY) {
                                 Spacer(Modifier.height(16.dp)); Label("Mini content"); Spacer(Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     listOf("Ring + %", "Ring", "%").forEachIndexed { i, s -> Chip(s, cfg.tiny == i) { cfg = cfg.copy(tiny = i) } }
                                 }
                             }
                             Spacer(Modifier.height(16.dp)); Label("Show"); Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Show.entries.forEach { s -> Chip(s.label, cfg.show == s) { cfg = cfg.copy(show = s) } } }
+                            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Show.entries.forEach { s -> Chip(s.label, cfg.show == s) { cfg = cfg.copy(show = s) } } }
                             Spacer(Modifier.height(16.dp)); Label("Value"); Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Chip("Used", !cfg.remaining) { cfg = cfg.copy(remaining = false) }
                                 Chip("Remaining", cfg.remaining) { cfg = cfg.copy(remaining = true) }
                             }
                             Spacer(Modifier.height(16.dp)); Label("Colors"); Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf("Auto", "Dark", "Light").forEachIndexed { i, s -> Chip(s, cfg.mode == i) { cfg = cfg.copy(mode = i) } }
                             }
                             Spacer(Modifier.height(16.dp)); Label("Accent"); Spacer(Modifier.height(8.dp))

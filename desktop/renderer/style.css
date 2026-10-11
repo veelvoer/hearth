@@ -389,10 +389,18 @@ select, input { min-height: 36px; box-sizing: border-box; }
 /* ───────── morphing ───────── */
 ::view-transition-group(*) { animation-duration: .42s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; }
-#nav button.on { view-transition-name: navactive; }
 .chat-head h3 { view-transition-name: chattitle; }
 .modal .mcard, .obcard { view-transition-name: sheet; }
 .infopop { transition: opacity .15s ease; }
 .mcard, .obcard, .ttip { transition: height .35s var(--ease); }
 .obbody { transition: opacity .2s ease; }
 @media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+
+/* the gliding highlight */
+.hl { position: absolute; z-index: 0; pointer-events: none; border-radius: 999px; background: var(--clay); transition: left .38s var(--ease), top .38s var(--ease), width .38s var(--ease), height .38s var(--ease); }
+.hl.navhl { border-radius: 10px; background: color-mix(in srgb, var(--clay) 12%, transparent); }
+.hlready > .chip, .hlready > button { position: relative; z-index: 1; }
+.hlready > .chip.on { background: transparent; border-color: transparent; transition: color .2s ease, border-color .2s ease; }
+#nav.hlready > button.on { background: transparent; }
+.chip { transition: color .2s ease, border-color .2s ease, background-color .2s ease; }
+#content, main { overflow-anchor: none; }

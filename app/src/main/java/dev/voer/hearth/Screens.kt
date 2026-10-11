@@ -222,7 +222,7 @@ fun HistoryScreen() {
     val data = Ui.history.filter { it.t >= from }
     Screen {
         Header("History", "Sampled every time the app or a widget refreshes")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("24h", "7d", "30d").forEachIndexed { i, s -> Chip(s, range == i) { range = i } }
         }
         Card {
@@ -325,7 +325,7 @@ fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
 fun UsageScreen() {
     var view by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChipRow(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Limits", view == 0) { view = 0 }; Chip("History", view == 1) { view = 1 }
         }
         Box(Modifier.weight(1f).tourTarget("usage")) { if (view == 0) NowScreen() else HistoryScreen() }
@@ -387,7 +387,7 @@ fun SettingsScreen() {
             Head("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.")
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Claude", !sys) { ThemePrefs.system = false; Store.setThemeSystem(c, false) }
                 if (Build.VERSION.SDK_INT >= 31) Chip("System colors", sys) { ThemePrefs.system = true; Store.setThemeSystem(c, true) }
             }
@@ -429,7 +429,7 @@ fun SettingsScreen() {
             var vlang by remember { mutableStateOf(Store.voiceLang(c)) }
             Txt("Language of calls", T.body)
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("English", vlang == "en") { vlang = "en"; Store.setVoiceLang(c, "en") }
                 Chip("Nederlands", vlang == "nl") { vlang = "nl"; Store.setVoiceLang(c, "nl") }
             }
@@ -445,14 +445,14 @@ fun SettingsScreen() {
                     }, { "${m.name} unreachable" })
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("auto" to "Auto", "phone" to "This phone").forEach { (v, l) -> Chip(l, engine == v) { engine = v; Store.setVoiceEngine(c, v) } }
             }
             Spacer(Modifier.height(12.dp))
             var brief by remember { mutableStateOf(Store.voiceBrief(c)) }
             Txt("Spoken replies", T.body)
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Same as typing", !brief) { brief = false; Store.setVoiceBrief(c, false) }
                 Chip("Brief", brief) { brief = true; Store.setVoiceBrief(c, true) }
             }
@@ -462,7 +462,7 @@ fun SettingsScreen() {
         Card {
             Head("clock", "Background refresh", "Android may delay background work to save battery. Opening the app always refreshes.")
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(15, 30, 60).forEach { m ->
                     Chip(if (m == 60) "1 h" else "$m min", interval == m) { interval = m; Store.setInterval(c, m); Sched.ensure(c, replace = true) }
                 }

@@ -43,6 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -156,14 +160,38 @@ fun Spark(size: Dp, color: Color = MaterialTheme.colorScheme.primary) {
 fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val cs = MaterialTheme.colorScheme
-    // the highlight fades and the label recolors smoothly when the selection moves
-    val bg by androidx.compose.animation.animateColorAsState(if (selected) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
-    val line by androidx.compose.animation.animateColorAsState(if (selected) cs.primary else cs.outline, androidx.compose.animation.core.tween(220), label = "chipline")
+    val group = LocalChipGroup.current
+    val line by androidx.compose.animation.animateColorAsState(if (selected) (if (group != null) Color.Transparent else cs.primary) else cs.outline, androidx.compose.animation.core.tween(220), label = "chipline")
     val ink by androidx.compose.animation.animateColorAsState(if (selected) cs.onPrimary else cs.onSurface, androidx.compose.animation.core.tween(220), label = "chipink")
+    val solid by androidx.compose.animation.animateColorAsState(if (selected && group == null) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
     Box(
-        Modifier.pressable(onClick).clip(shape).background(bg).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
+        Modifier.pressable(onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c.boundsInRoot()) }
+            .clip(shape).background(solid).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) { Txt(text, T.small, color = ink) }
+}
+
+/** The selected chip's highlight is one shape that glides to the next chip; the chips themselves never move. */
+class ChipGroupState { var origin by mutableStateOf(Offset.Zero); var sel by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+    fun select(r: androidx.compose.ui.geometry.Rect) { if (sel != r) sel = r } }
+val LocalChipGroup = androidx.compose.runtime.compositionLocalOf<ChipGroupState?> { null }
+
+@Composable
+fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp), content: @Composable RowScope.() -> Unit) {
+    val st = remember { ChipGroupState() }
+    val primary = MaterialTheme.colorScheme.primary
+    androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides st) {
+        Box(modifier.onGloballyPositioned { st.origin = it.boundsInRoot().topLeft }) {
+            val r = st.sel
+            if (r != null) {
+                val spec = androidx.compose.animation.core.tween<Float>(380, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                val x by animateFloatAsState(r.left - st.origin.x, spec, label = "hlx"); val y by animateFloatAsState(r.top - st.origin.y, spec, label = "hly")
+                val w by animateFloatAsState(r.width, spec, label = "hlw"); val hh by animateFloatAsState(r.height, spec, label = "hlh")
+                Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), y.roundToInt()) }.size(with(LocalDensity.current) { w.toDp() }, with(LocalDensity.current) { hh.toDp() }).clip(RoundedCornerShape(50)).background(primary))
+            }
+            Row(horizontalArrangement = horizontalArrangement, content = content)
+        }
+    }
 }
 
 @Composable

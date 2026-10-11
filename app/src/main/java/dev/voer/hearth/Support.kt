@@ -171,7 +171,7 @@ private fun SupportNew(email: String, back: () -> Unit, sent: (String) -> Unit) 
     Screen {
         TextAction("‹ Back", back)
         Txt("What is it about?", T.small, muted = true)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { CATS.forEach { (k, l, _) -> Chip(l, cat == k) { cat = k } } }
+        ChipRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { CATS.forEach { (k, l, _) -> Chip(l, cat == k) { cat = k } } }
         Field(title, { title = it.take(120) }, "A few words, e.g. “The app closes when I open it”")
         Field(text, { text = it.take(5000) }, CATS.first { it.first == cat }.third, singleLine = false, modifier = Modifier.heightIn(min = 140.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
