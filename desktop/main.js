@@ -266,7 +266,7 @@ function ring(m, ev) {
   notify('Claude ' + what, ev.text || ev.title);
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   const w = new BrowserWindow({ width: 380, height: 360, x: width - 400, y: 40, frame: false, alwaysOnTop: true, resizable: false, skipTaskbar: true,
-    backgroundColor: '#1F1E1D', icon: iconPath,
+    backgroundColor: '#1B1A19', icon: iconPath,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, autoplayPolicy: 'no-user-gesture-required' } });
   w.setAlwaysOnTop(true, 'screen-saver');
   const key = m.id + ':' + ev.id;
@@ -317,7 +317,7 @@ function runProbe(win, file) {
 }
 
 function createMain() {
-  main = new BrowserWindow({ show: !process.argv.includes('--hidden'), width: 1120, height: 780, minWidth: 820, minHeight: 560, title: 'Hearth', icon: iconPath, backgroundColor: '#1F1E1D',
+  main = new BrowserWindow({ show: !process.argv.includes('--hidden'), width: 1120, height: 780, minWidth: 820, minHeight: 560, title: 'Hearth', icon: iconPath, backgroundColor: '#1B1A19',
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, autoplayPolicy: 'no-user-gesture-required' } });
   main.setMenuBarVisibility(false);

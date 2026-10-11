@@ -57,8 +57,10 @@ function renderNav() {
   const nav = $('#nav');
   const collapsed = localStorage.getItem('cm.navCollapsed') === '1';
   const built = (collapsed ? 'c' : 'o') + (S.signedIn ? 'in' : 'out') + TABS.length;
+  const navStatus = () => { const f = nav.querySelector('.navfoot'); if (!f) return; const ok = typeof D !== 'undefined' && D.stats; f.classList.toggle('ok', !!ok); f.querySelector('.lbl').textContent = ok ? 'Server online' : (typeof D !== 'undefined' && D.err ? 'Server unreachable' : 'Connecting…'); };
   if (nav.dataset.built === built) {   // same menu: only move the highlight (rebuilding it would cut the glide short)
     nav.querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    navStatus();
     return;
   }
   nav.dataset.built = built;
@@ -67,7 +69,10 @@ function renderNav() {
   nav.append(h('div', { class: 'brand-row' }, h('div', { class: 'brand' }, h('span', { class: 'logo', html: sparkSVG(18, '#fff') }), h('span', { class: 'lbl' }, ' Hearth')),
     h('button', { class: 'navtoggle', title: collapsed ? 'Show menu names' : 'Shrink menu to icons', 'aria-label': collapsed ? 'Expand menu' : 'Collapse menu', onclick: () => { localStorage.setItem('cm.navCollapsed', collapsed ? '0' : '1'); renderNav(); } }, collapsed ? '›' : '‹')));
   if (!S.signedIn) return;
+  nav.append(h('button', { class: 'newchat', title: 'New chat', onclick: () => { setTab('sessions'); newChat(); } }, '+', h('span', { class: 'lbl' }, ' New chat')));
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
+  nav.append(h('div', { class: 'sp' }), h('div', { class: 'navfoot' }, h('i'), h('span', { class: 'lbl' }, '')));
+  navStatus();
 }
 /** Runs a change of screen as one morphing transition (shared elements glide, the rest cross-fades). */
 function morph(fn) {

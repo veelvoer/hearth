@@ -1,9 +1,9 @@
 :root {
-  --bg: #F0EEE6; --card: #FAF9F5; --ink: #3D3929; --muted: #83827D; --line: #DDD9CB; --clay: #C15F3C; --clay-soft: #F0643C; --onclay: #FAF9F5; --side: #EEEAE0; --active: #E6DDCB;
+  --bg: #F4F1EA; --card: #FBFAF6; --ink: #2F2B20; --muted: #7F7A6D; --line: #E2DCCD; --clay: #C15F3C; --clay-soft: #F0643C; --onclay: #FBFAF6; --side: #EEEAE0; --active: #E6DDCB; --bubble: #E9E2D2;
   --serif: "Tiempos Headline", Georgia, "DejaVu Serif", serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1F1E1D; --card: #2B2A28; --ink: #FAF9F5; --muted: #9C9A92; --line: #3F3E3A; --clay: #F0643C; --onclay: #1F1E1D; --side: #161514; --active: #2E2A26; }
+  :root { --bg: #1B1A19; --card: #252422; --ink: #F4F2EC; --muted: #9A968C; --line: #34322E; --clay: #F0643C; --onclay: #1B1A19; --side: #161514; --active: #2E2A26; --bubble: #2E2A26; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -432,3 +432,11 @@ button.primary { border-radius: 14px; }
 input, textarea, select { background: var(--card); border-radius: 14px; }
 h1 { font-size: 32px; }
 .big { letter-spacing: -1px; }
+
+.msg.user { background: var(--bubble); border-color: transparent; }
+#nav button.newchat { background: var(--clay); color: var(--onclay); font-weight: 600; border-radius: 14px; padding: 11px 14px; margin-bottom: 14px; justify-content: center; }
+#nav.collapsed button.newchat { padding: 10px 0; }
+#nav .navfoot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+#nav .navfoot i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+#nav .navfoot.ok i { background: #4CAF7D; }
+#nav.collapsed .navfoot { justify-content: center; padding: 10px 0; }

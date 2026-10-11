@@ -71,8 +71,8 @@ private fun palette(c: Context, cfg: WCfg): Pal {
             else Pal(col(android.R.color.system_neutral1_10), col(android.R.color.system_neutral1_900),
                 col(android.R.color.system_accent1_600), col(android.R.color.system_accent1_100))
         }
-        else -> if (dark) Pal(0xFF262624.toInt(), 0xFFFAF9F5.toInt(), CLAY, 0xFF3F3E3A.toInt())
-        else Pal(0xFFF0EEE6.toInt(), 0xFF3D3929.toInt(), 0xFFC15F3C.toInt(), 0xFFDDD9CB.toInt())
+        else -> if (dark) Pal(0xFF252422.toInt(), 0xFFF4F2EC.toInt(), CLAY, 0xFF34322E.toInt())
+        else Pal(0xFFFBFAF6.toInt(), 0xFF2F2B20.toInt(), 0xFFC15F3C.toInt(), 0xFFE2DCCD.toInt())
     }
 }
 

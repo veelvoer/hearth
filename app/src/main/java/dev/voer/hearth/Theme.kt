@@ -198,7 +198,7 @@ fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Ho
 fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Box(
-        modifier.pressable(onClick).clip(RoundedCornerShape(12.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
+        modifier.pressable(onClick).clip(RoundedCornerShape(14.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) { Txt(text, T.body.copy(fontWeight = FontWeight.Medium), color = cs.onPrimary) }
 }

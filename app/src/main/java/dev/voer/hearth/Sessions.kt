@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -39,8 +41,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
-    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surface)
-        .border(1.dp, cs.outline, RoundedCornerShape(12.dp)).padding(14.dp)) {
+    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceVariant)
+        .border(1.dp, cs.outline, RoundedCornerShape(16.dp)).padding(14.dp)) {
         if (value.isEmpty()) Txt(hint, T.body, muted = true)
         BasicTextField(value, onChange, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
             keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text),
@@ -523,7 +525,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
               Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
                 when (msg.role) {
                     "user" -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(14.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(14.dp)).padding(12.dp)) { Txt(msg.text, T.body) }
+                        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }
                     }
                     "tool" -> ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err)
                     "meta" -> Txt(msg.text, T.small, muted = true)
