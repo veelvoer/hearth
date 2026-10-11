@@ -404,3 +404,13 @@ select, input { min-height: 36px; box-sizing: border-box; }
 #nav.hlready > button.on { background: transparent; }
 .chip { transition: color .2s ease, border-color .2s ease, background-color .2s ease; }
 #content, main { overflow-anchor: none; }
+
+/* data morphs */
+[data-ring] { transition: stroke-dasharray .9s var(--ease); }
+.urgrow .urbar i { animation: growbar .7s var(--ease) both; transform-origin: bottom; } @keyframes growbar { from { transform: scaleY(0); } to { transform: none; } }
+.urgrow .urbarwrap i { animation: growx .7s var(--ease) both; transform-origin: left; } @keyframes growx { from { transform: scaleX(0); } to { transform: none; } }
+.meter i, .meter.thin i { transition: width .8s var(--ease); }
+
+/* screens slide in from the side they are on in the menu */
+.entering.fwd .page > .card, .entering.fwd .page > .head { animation-name: fromright2; } .entering.back .page > .card, .entering.back .page > .head { animation-name: fromleft2; }
+@keyframes fromright2 { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } } @keyframes fromleft2 { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }

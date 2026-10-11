@@ -357,7 +357,7 @@ fun SettingsScreen() {
         Header("Settings")
         ComputersCard()
         UpdatesCard()
-        Card { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Head("tour", "Help", "Take the tour to see what each part does, or run the tutorial again to set things up.") }; Column(horizontalAlignment = Alignment.End) { TextAction("Take the tour") { Tour.start() }; Spacer(Modifier.height(6.dp)); TextAction("Show tutorial") { Store.setOnboarded(c, false); Ui.tourRev++ } } } }
+        Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; Spacer(Modifier.width(14.dp)); TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
         Card {
             Head("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.")
             Spacer(Modifier.height(8.dp))

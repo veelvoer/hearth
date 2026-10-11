@@ -68,11 +68,14 @@ function create(d) {
   async function compute() {
     if (releaseMode) return computeRelease();
     const sg = sigs(), dep = d.getState().deployed || {}, rs = relaySig();
-    const srv = hasServer ? await d.relayBuild('server') : undefined;     // string = build, '' = older relay, null = unreachable, undefined = none
+    const srv = await d.relayBuild('server');     // string = build, '' = older relay, null = unreachable, undefined = none
+    const sv = await d.relayStatus('server').catch(() => null);   // {version, canSelfUpdate}, null, or undefined
+    const lat = await latest();
+    const selfUpd = !!(sv && sv.version && sv.canSelfUpdate);   // a server that updates itself from the newest GitHub release
     const loc = await d.relayBuild('local');
     const localNeed = typeof loc === 'string' && loc !== rs;
     const behind = await behindGithub();
-    return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: typeof srv === 'string' && srv !== rs, github: behind > 0, behind, sigs: sg, rs, srv, loc };
+    return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: selfUpd ? !!(lat && gh.newer(lat.version, sv.version)) : (hasServer && typeof srv === 'string' && srv !== rs), selfUpd, sv, latestV: lat && lat.version, github: behind > 0, behind, sigs: sg, rs, srv, loc };
   }
   const summary = (n) => (n && (n.desktop || n.phone || n.server || n.github) ? { desktop: n.desktop, phone: n.phone, server: n.server, github: !!n.github, behind: n.behind, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest } : null);
 
@@ -104,8 +107,9 @@ function create(d) {
       checkedAt: Date.now(), ...(gh1 ? { github: gh1 } : {}),
       desktop: { need: n.desktop, text: (n.desktop ? 'Update ready' : 'Up to date') + ' · version ' + d.version() },
       phone: { need: false, text: 'Updates itself from GitHub (Settings → Updates in the phone app)' },
-      server: !hasServer ? { na: true, text: 'No server set up on this computer' } : n.srv === undefined ? { na: true, text: 'No server connected' } : n.srv === null ? { na: true, text: 'The server can\'t be reached right now' }
-        : { need: n.server, text: n.server ? 'Update ready' + (n.srv === '' ? ' · running an older version' : '') : 'Up to date' },
+      server: n.srv === undefined ? { na: true, text: 'No server connected' } : n.srv === null ? { na: true, text: 'The server can\'t be reached right now' }
+        : n.selfUpd ? { need: n.server, text: n.server ? `Version ${n.sv.version} · update to ${n.latestV}` : `Version ${n.sv.version} · up to date` }
+        : !hasServer ? { na: true, text: 'Older server: run the install line on it again to update' } : { need: n.server, text: n.server ? 'Update ready' + (n.srv === '' ? ' · running an older version' : '') : 'Up to date' },
     };
   }
 
@@ -203,11 +207,15 @@ function create(d) {
       const n = (await compute()) || { sigs: sigs() };
       if (want.github) { want = { ...want, server: want.server || !!n.server, phone: want.phone || !!n.phone, desktop: want.desktop || !!n.desktop }; }   // after pulling, whatever is now out of date gets updated too
       const sg = n.sigs;
-      if (want.server && hasServer) {
+      if (want.server) {
         say('server', 'Updating the server…');
         try {
           if (await d.serverBusy()) throw new Error('Claude is working on the server right now. Try again when it has finished.');
-          await sh('bash', [path.join(root, 'server', 'deploy.sh')], { cwd: root, env: { ...process.env, SSH_ASKPASS_REQUIRE: 'never' } });
+          if (n.selfUpd) {   // the server downloads the newest release itself and restarts
+            const r = await d.relayPost('server', '/admin/update', {});
+            if (r && r.restarting) { for (let i = 0; i < 40; i++) { await sleep(1500); const s2 = await d.relayStatus('server').catch(() => null); if (s2 && s2.version === r.to) break; } }
+          } else if (hasServer && process.env.HEARTH_HOST) await sh('bash', [path.join(root, 'server', 'deploy.sh')], { cwd: root, env: { ...process.env, SSH_ASKPASS_REQUIRE: 'never' } });
+          else throw new Error('This server cannot update itself yet. On the server run the install line again, or: hearth-server update.');
           say('server', 'Server updated', 'ok');
         } catch (e) { failed = true; say('server', e.message, 'fail'); }
       }

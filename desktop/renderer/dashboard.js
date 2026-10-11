@@ -23,18 +23,18 @@ async function loadDashboard() {
 }
 setInterval(() => { if (tab === 'dashboard' && S.signedIn) loadDashboard(); }, 45000);
 
-function ringSVG(pct, size, stroke) {
+function ringSVG(pct, size, stroke, key) {
   const r = size / 2 - stroke / 2 - 1, c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, pct)) / 100;
   const hot = pct >= 90;
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${stroke}"/>` +
-    `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${hot ? '#B3402A' : 'var(--clay)'}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})" style="transition:stroke-dasharray .6s"/></svg>`;
+    `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${hot ? '#B3402A' : 'var(--clay)'}" stroke-width="${stroke}" stroke-linecap="round" data-ring="${key || ''}" data-dash="${c * p} ${c}" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})" style="transition:stroke-dasharray .6s"/></svg>`;
 }
 
 function limitPanel(name, sub, l, ms) {
   const now = Date.now();
   const card = h('div', { class: 'card ringcard' });
   const pct = l ? CMW.usedAt(l, now) : 0;
-  card.append(h('div', { class: 'ringbox', html: ringSVG(pct, 150, 12) + `<div class="mid"><b>${l ? Math.floor(pct) : '–'}</b><span>%</span></div>` }));
+  card.append(h('div', { class: 'ringbox', html: ringSVG(pct, 150, 12, 'ring-' + name) + `<div class="mid"><b ${l ? `data-num="${pct}" data-fmt="pct" data-key="pct-${name}"` : ''}>${l ? Math.floor(pct) : '–'}</b><span>%</span></div>` }));
   const side = h('div', { class: 'grow stack', style: 'gap:8px' }, h('div', { class: 'row' }, h('h3', { class: 'grow' }, name), h('span', { class: 'label' }, sub)));
   if (!l) { side.append(h('div', { class: 'muted small' }, 'No data yet')); card.append(side); return card; }
   const r = l.resetsAt, pc = CMW.pace(l, ms, now), w = CMW.paceWord(l, pc);

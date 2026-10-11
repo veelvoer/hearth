@@ -72,23 +72,40 @@ function morph(fn) {
     return t;
   } catch { return fn(); }
 }
-function setTab(t) { if (t === tab) return; tab = t; render(); }
+const TAB_ORDER = ['sessions', 'dashboard', 'now', 'history', 'settings'];
+function setTab(t) { if (t === tab) return; slideDir = TAB_ORDER.indexOf(t) >= TAB_ORDER.indexOf(tab) ? ' fwd' : ' back'; tab = t; render(); }
+let slideDir = '';
 /** The first-run setup. Also tried again once every script has loaded: the state can arrive before onboarding.js has run. */
 function maybeTutorial() { if (S && S.settings && !S.settings.onboarded && typeof startTutorial === 'function') startTutorial(); }
 window.addEventListener('load', () => { if (S && S.settings) render(); });
 let lastTab = null;
 function render() {
   lastSig = sigOf();
-  const keepScroll = lastTab === tab ? content.scrollTop : 0;   // changing a setting must not move the page
+  const keepScroll = lastTab === tab ? content.scrollTop : 0, prevH = content.scrollHeight;   // changing a setting must not move the page
   renderNav();
-  content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' : ''); lastTab = tab;   // only a new screen glides in, not every refresh
+  content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' + slideDir : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
   maybeTutorial();
   if (!S.signedIn) return content.append(loginView());
   const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
-  if (keepScroll) { content.scrollTop = keepScroll; requestAnimationFrame(() => { content.scrollTop = keepScroll; }); }
+  if (keepScroll) holdScroll(keepScroll, prevH, v);
   if (tab === 'history') requestAnimationFrame(drawHistory);
+}
+/** Keeps the page exactly where it was while the cards below load and change height, until the person scrolls themselves. */
+let holdTimer = 0;
+function holdScroll(top, prevH, v) {
+  cancelAnimationFrame(holdTimer);
+  if (v && prevH) v.style.minHeight = Math.max(0, prevH - 62) + 'px';   // the page cannot get shorter than it was, so the scroll position is never clamped
+  let user = false; const stop = () => { user = true; };
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach((e) => content.addEventListener(e, stop, { once: true, passive: true }));
+  const t0 = performance.now();
+  const tick = () => {
+    if (user) { if (v) v.style.minHeight = ''; return; }
+    if (Math.abs(content.scrollTop - top) > 0.5) content.scrollTop = top;
+    if (performance.now() - t0 < 2500) holdTimer = requestAnimationFrame(tick); else if (v) v.style.minHeight = '';
+  };
+  content.scrollTop = top; holdTimer = requestAnimationFrame(tick);
 }
 const page = (...k) => h('div', { class: 'page' }, ...k);
 const head = (title, sub, action) => h('div', { class: 'head' }, h('div', { class: 'grow' }, h('h1', {}, title), sub ? h('div', { class: 'muted small' }, sub) : null), action);
@@ -423,7 +440,7 @@ function placeHighlights() {
     if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
     let pill = parent.querySelector(':scope > .hl');
     const rect = { l: on.offsetLeft, t: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };
-    const sig = parent.children.length + ':' + (nav ? 'nav' : (parent.firstElementChild && parent.firstElementChild.textContent));
+    const kids = [...parent.children].filter((x) => !x.classList.contains('hl')), sig = kids.length + ':' + (nav ? 'nav' : (kids[0] && kids[0].textContent));   // the highlight itself does not count
     if (!pill) {
       pill = document.createElement('i'); pill.className = 'hl' + (nav ? ' navhl' : ''); parent.prepend(pill); parent.classList.add('hlready');
       const old = HL.get(key);
@@ -438,3 +455,22 @@ function placeHighlights() {
 let hlQueued = false;
 new MutationObserver(() => { if (hlQueued) return; hlQueued = true; setTimeout(() => { hlQueued = false; placeHighlights(); }, 0); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 window.addEventListener('resize', () => placeHighlights());
+
+/** Numbers count up (or down) to their new value, and rings fill to it, instead of jumping. Works on elements marked data-num / data-ring. */
+const NUMS = new Map(), RINGS = new Map();
+const FMT = { int: (n) => String(Math.round(n)), pct: (n) => String(Math.floor(n)), n: (n) => (typeof fmtN === 'function' ? fmtN(n) : String(Math.round(n))), money: (n) => (typeof money === 'function' ? money(n) : '$' + n.toFixed(2)) };
+/** A number element that counts up to [value]. */
+const num = (tag, cls, value, fmt, key) => h(tag, { class: cls || '', 'data-num': String(value), 'data-fmt': fmt, 'data-key': key }, FMT[fmt](value));
+let numTimer = 0;
+function animateNums() {
+  const els = [...document.querySelectorAll('[data-num]')];
+  const jobs = els.map((e) => { const key = e.dataset.key, to = Number(e.dataset.num), from = NUMS.has(key) ? NUMS.get(key) : 0; NUMS.set(key, to); return { e, from, to, f: FMT[e.dataset.fmt] }; }).filter((j) => j.from !== j.to);
+  els.forEach((e) => { if (!jobs.some((j) => j.e === e)) e.textContent = FMT[e.dataset.fmt](Number(e.dataset.num)); });
+  const rings = [...document.querySelectorAll('[data-ring]')];
+  rings.forEach((c) => { const key = c.dataset.ring, to = c.dataset.dash, from = RINGS.get(key); RINGS.set(key, to); if (from && from !== to) { c.style.transition = 'none'; c.setAttribute('stroke-dasharray', from); void c.getBoundingClientRect(); c.style.transition = ''; requestAnimationFrame(() => c.setAttribute('stroke-dasharray', to)); setTimeout(() => c.setAttribute('stroke-dasharray', to), 30); } else if (!from) { const full = to.split(' ')[1]; c.style.transition = 'none'; c.setAttribute('stroke-dasharray', '0 ' + full); void c.getBoundingClientRect(); c.style.transition = ''; setTimeout(() => c.setAttribute('stroke-dasharray', to), 30); } });
+  if (!jobs.length) return;
+  const t0 = performance.now(), D = 700; clearInterval(numTimer);
+  jobs.forEach((j) => { j.e.textContent = j.f(j.from); });
+  numTimer = setInterval(() => { const k = Math.min(1, (performance.now() - t0) / D), ease = 1 - Math.pow(1 - k, 3); jobs.forEach((j) => { j.e.textContent = j.f(j.from + (j.to - j.from) * ease); }); if (k >= 1) clearInterval(numTimer); }, 33);
+}
+new MutationObserver(() => { clearTimeout(window.__nt); window.__nt = setTimeout(animateNums, 0); }).observe(document.getElementById('content'), { childList: true });

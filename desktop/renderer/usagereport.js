@@ -21,18 +21,18 @@ async function loadUsageReport() {
 function usageSection() {
   loadUsageReport();
   const r = UR.data;
-  const card = h('div', { class: 'card stack ur' });
+  const card = h('div', { class: 'card stack ur' + (UR.grownKey !== UR.key + ':' + (UR.data && UR.data.range) ? ' urgrow' : '') }); UR.grownKey = UR.key + ':' + (UR.data && UR.data.range);
   card.append(h('div', { class: 'row wrap' }, h('div', { class: 'label grow' }, 'Usage and cost'),
     [[7, '7 days'], [30, '30 days'], [0, 'All time']].map(([n, l]) => chip(l, UR.range === n, () => { UR.range = n; UR.key = ''; UR.data = UR.data && UR.data.range === n ? UR.data : UR.data; loadUsageReport(); render(); }))));
   if (UR.err) { card.append(h('div', { class: 'small err' }, UR.err)); return card; }
   if (!r || r.range !== UR.range) { card.append(h('div', { class: 'small muted' }, 'Counting your tokens…')); return card; }
   const t = r.totals, fmt = (n) => (typeof fmtN === 'function' ? fmtN(n) : String(n));
   card.append(h('div', { class: 'row small muted' }, icon('devices'), h('span', {}, r.scope === 'account' ? 'All your devices' : 'This computer only'), info('Your server keeps the chats of every computer you linked, so the numbers cover your whole account. Without a server this shows only this computer.')));
-  const tile = (label, value, sub) => h('div', { class: 'urtile' }, h('div', { class: 'small muted' }, label), h('div', { class: 'urval' }, value), sub ? h('div', { class: 'small muted' }, sub) : null);
+  const tile = (label, value, sub, raw, fmtName) => h('div', { class: 'urtile' }, h('div', { class: 'small muted' }, label), raw != null ? num('div', 'urval', raw, fmtName, 'ur-' + label) : h('div', { class: 'urval' }, value), sub ? h('div', { class: 'small muted' }, sub) : null);
   card.append(h('div', { class: 'urgrid' },
-    tile('Estimated cost', money(t.cost), 'at API prices'), tile('Tokens used', fmt(t.tokens), fmt(t.out) + ' written · ' + fmt(t.in + t.cw) + ' read fresh'),
-    tile('Cached reads', fmt(t.cr), 'saved about ' + money(t.cacheSaved)), tile('Sessions', String(t.sessions), t.activeDays + ' active days'),
-    tile('Messages', fmt(t.messages), t.prompts + ' prompts from you'), tile('Longest streak', t.longestStreak + (t.longestStreak === 1 ? ' day' : ' days'), t.currentStreak ? 'now ' + t.currentStreak : 'not today'),
+    tile('API value', money(t.cost), 'what it would cost per token', t.cost, 'money'), tile('Tokens used', fmt(t.tokens), fmt(t.out) + ' written · ' + fmt(t.in + t.cw) + ' read fresh', t.tokens, 'n'),
+    tile('Cached reads', fmt(t.cr), 'saved about ' + money(t.cacheSaved), t.cr, 'n'), tile('Sessions', String(t.sessions), t.activeDays + ' active days', t.sessions, 'int'),
+    tile('Messages', fmt(t.messages), t.prompts + ' prompts from you', t.messages, 'n'), tile('Longest streak', t.longestStreak + (t.longestStreak === 1 ? ' day' : ' days'), t.currentStreak ? 'now ' + t.currentStreak : 'not today'),
     tile('Favorite model', r.favorite || '–', r.models[0] ? Math.round(r.models[0].cost / Math.max(0.0001, t.cost) * 100) + '% of the cost' : ''), tile('Longest session', urDur(t.longestSessionMs), t.first ? 'since ' + new Date(t.first).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '')));
   // cost per day (or per week when the range is long)
   let bars = r.days; if (bars.length > 100) { const w = []; for (let i = 0; i < bars.length; i += 7) { const c = bars.slice(i, i + 7); w.push({ date: c[0].date, cost: c.reduce((a, x) => a + x.cost, 0), tokens: c.reduce((a, x) => a + x.tokens, 0), week: true }); } bars = w; }
