@@ -48,7 +48,22 @@ object Updates {
     private fun parts(v: String) = v.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
     fun newer(a: String, b: String): Boolean { val x = parts(a); val y = parts(b); for (i in 0..2) { val p = x.getOrElse(i) { 0 }; val q = y.getOrElse(i) { 0 }; if (p != q) return p > q }; return false }
 
+    /** The API allows only 60 looks an hour per network and answers 403 beyond that; the release page's redirect has no such limit. */
+    private fun latestViaRedirect(): Release {
+        val c = URL("https://github.com/veelvoer/hearth/releases/latest").openConnection() as HttpURLConnection
+        c.instanceFollowRedirects = false; c.connectTimeout = 8_000; c.readTimeout = 12_000; c.setRequestProperty("User-Agent", "Hearth-app")
+        try {
+            val tag = (c.getHeaderField("Location") ?: throw ApiException(c.responseCode, "GitHub said ${c.responseCode}")).substringAfterLast("/tag/")
+            val v = tag.removePrefix("v")
+            return Release(tag, v, "", "https://github.com/veelvoer/hearth/releases/download/$tag/Hearth-$v.apk")
+        } finally { c.disconnect() }
+    }
+
     suspend fun latest(): Release = withContext(Dispatchers.IO) {
+        try { latestViaApi() } catch (e: ApiException) { if (e.code == 403 || e.code == 429) latestViaRedirect() else throw e }
+    }
+
+    private fun latestViaApi(): Release {
         val c = URL("https://api.github.com/repos/veelvoer/hearth/releases/latest").openConnection() as HttpURLConnection
         c.connectTimeout = 8_000; c.readTimeout = 12_000; c.setRequestProperty("Accept", "application/vnd.github+json"); c.setRequestProperty("User-Agent", "Hearth-app")
         try {
@@ -57,7 +72,7 @@ object Updates {
             val assets = o.optJSONArray("assets")
             var apk: String? = null
             if (assets != null) for (i in 0 until assets.length()) { val a = assets.getJSONObject(i); if (a.getString("name").endsWith(".apk")) apk = a.getString("browser_download_url") }
-            Release(o.getString("tag_name"), o.getString("tag_name").removePrefix("v"), o.optString("body"), apk)
+            return Release(o.getString("tag_name"), o.getString("tag_name").removePrefix("v"), o.optString("body"), apk)
         } finally { c.disconnect() }
     }
 
