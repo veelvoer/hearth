@@ -272,9 +272,7 @@ textarea.notes { width: 100%; font-family: inherit; }
 @keyframes msgin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* screens glide in, their cards one after another */
-.entering .page > .card, .entering .page > .head { animation: rise .4s var(--ease) both; }
-.entering .page > :nth-child(2) { animation-delay: .04s; } .entering .page > :nth-child(3) { animation-delay: .08s; } .entering .page > :nth-child(4) { animation-delay: .12s; }
-.entering .page > :nth-child(5) { animation-delay: .16s; } .entering .page > :nth-child(6) { animation-delay: .2s; } .entering .page > :nth-child(n+7) { animation-delay: .24s; }
+.entering .page { animation: rise .26s var(--ease) both; }
 .entering .split { animation: fadein .3s ease both; }
 .pane.swap { animation: fadein .22s ease both; }
 
@@ -412,5 +410,5 @@ select, input { min-height: 36px; box-sizing: border-box; }
 .meter i, .meter.thin i { transition: width .8s var(--ease); }
 
 /* screens slide in from the side they are on in the menu */
-.entering.fwd .page > .card, .entering.fwd .page > .head { animation-name: fromright2; } .entering.back .page > .card, .entering.back .page > .head { animation-name: fromleft2; }
-@keyframes fromright2 { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } } @keyframes fromleft2 { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+.entering.fwd .page { animation-name: fromright2; animation-duration: .28s; } .entering.back .page { animation-name: fromleft2; animation-duration: .28s; }
+@keyframes fromright2 { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } } @keyframes fromleft2 { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }

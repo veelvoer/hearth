@@ -56,12 +56,18 @@ const TABS = [['sessions', 'Chats'], ['dashboard', 'Home'], ['history', 'History
 function renderNav() {
   const nav = $('#nav');
   const collapsed = localStorage.getItem('cm.navCollapsed') === '1';
+  const built = (collapsed ? 'c' : 'o') + (S.signedIn ? 'in' : 'out') + TABS.length;
+  if (nav.dataset.built === built) {   // same menu: only move the highlight (rebuilding it would cut the glide short)
+    nav.querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    return;
+  }
+  nav.dataset.built = built;
   nav.innerHTML = '';
   nav.className = collapsed ? 'collapsed' : '';
   nav.append(h('div', { class: 'brand-row' }, h('div', { class: 'brand', html: sparkSVG(24) }, h('span', { class: 'lbl' }, ' Hearth')),
     h('button', { class: 'navtoggle', title: collapsed ? 'Show menu names' : 'Shrink menu to icons', 'aria-label': collapsed ? 'Expand menu' : 'Collapse menu', onclick: () => { localStorage.setItem('cm.navCollapsed', collapsed ? '0' : '1'); renderNav(); } }, collapsed ? '›' : '‹')));
   if (!S.signedIn) return;
-  for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
+  for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
 }
 /** Runs a change of screen as one morphing transition (shared elements glide, the rest cross-fades). */
 function morph(fn) {
@@ -73,7 +79,12 @@ function morph(fn) {
   } catch { return fn(); }
 }
 const TAB_ORDER = ['sessions', 'dashboard', 'now', 'history', 'settings'];
-function setTab(t) { if (t === tab) return; slideDir = TAB_ORDER.indexOf(t) >= TAB_ORDER.indexOf(tab) ? ' fwd' : ' back'; tab = t; render(); }
+function setTab(t) {
+  if (t === tab) return;
+  slideDir = TAB_ORDER.indexOf(t) >= TAB_ORDER.indexOf(tab) ? ' fwd' : ' back'; tab = t;
+  renderNav();   // the menu highlight starts gliding at once; the heavy part (building the screen) follows a moment later
+  clearTimeout(window.__tabT); window.__tabT = setTimeout(() => requestAnimationFrame(() => render()), 70);
+}
 let slideDir = '';
 /** The first-run setup. Also tried again once every script has loaded: the state can arrive before onboarding.js has run. */
 function maybeTutorial() { if (S && S.settings && !S.settings.onboarded && typeof startTutorial === 'function') startTutorial(); }
@@ -203,12 +214,22 @@ function drawHistory() {
 
 // ───────────────────────── Settings ─────────────────────────
 const ch = (ic, title, tip, ...right) => h('div', { class: 'row chead' }, icon(ic), h('div', { class: 'label grow' }, title), tip ? info(tip) : null, ...right);
-function settingsView() {
+const SETTINGS_LIVE = [4, 5, 6, 10];   // the cards that show a setting: they are replaced in place when something changes
+function settingsView(only) {
   const st = S.settings;
-  const set = async (patch) => { S.settings = await cm.setSettings(patch); render(); };
+  /** A setting changed: swap only the cards that show settings. The rest of the page (and the scroll position) is not touched. */
+  const set = async (patch) => {
+    S.settings = await cm.setSettings(patch);
+    const page0 = content.querySelector('.page');
+    if (!page0 || tab !== 'settings') return render();
+    const np = settingsView(true);
+    const oldKids = [...page0.children], newKids = [...np.children];   // snapshots: moving a node would shift a live list
+    for (const i of SETTINGS_LIVE) if (oldKids[i] && newKids[i]) oldKids[i].replaceWith(newKids[i]);
+    lastSig = sigOf();
+  };
   const p = page(head('Settings'));
-  p.append(updatesCard());
-  p.append(syncCard());
+  p.append(only ? h('div') : updatesCard());
+  p.append(only ? h('div') : syncCard());
   p.append(h('div', { class: 'card' }, ch('tour', 'Help', 'The tour lights up each button and explains it. The setup walks you through server, projects, voice, colors and phone again.',
     ibtn('tour', 'Take the tour', () => startTour()), h('button', { class: 'ghost sm', onclick: () => { OB.step = 0; startTutorial(); } }, 'Setup'))));
   p.append(h('div', { class: 'card stack' }, ch('paint', 'Appearance', 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop’s accent color (found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.'),
@@ -220,12 +241,12 @@ function settingsView() {
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset'), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
   p.append(h('div', { class: 'card stack' }, ch('phone', 'Call me', 'A call window and sound when Claude finishes a task, asks a question or needs permission. It follows the relay’s “away” switch, shared with your phone: turn it on while you are away from the keyboard. Needs relay/install_hooks.py run once.'),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Ring on this computer'), toggle(st.callMe, () => set({ callMe: !st.callMe })))));
-  p.append(devicesCard(), computersCard(), hooksCard());
+  p.append(...(only ? [h('div'), h('div'), h('div')] : [devicesCard(), computersCard(), hooksCard()]));
   p.append(h('div', { class: 'card stack' }, ch('settings', 'Startup', 'Closing the window keeps your phone connected. Quit from the tray icon.'),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Keep running in the background'), toggle(st.background !== false, () => set({ background: st.background === false }))),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Start when I log in'), toggle(!!st.autostart, async () => { await cm.setAutostart(!st.autostart); S = await cm.state(); render(); }))));
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Start when I log in'), toggle(!!st.autostart, async () => { await cm.setAutostart(!st.autostart); S = await cm.state(); set({}); }))));
   const v = h('div', { class: 'card stack' }, ch('mic', 'Voice', 'Talk to Claude and hear it answer. Local voices (Whisper and Piper) run on your own computer; run relay/install_voice.sh to add them.'), h('div', { class: 'row' }, h('span', { class: 'pill' }, h('i'), h('span', { id: 'vstat' }, 'Checking…'))));
-  cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
+  if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
   return p;
@@ -422,12 +443,12 @@ setInterval(() => { if (S.settings && S.settings.palette === 'system') applyPale
 let lastSig = '';
 const sigOf = () => JSON.stringify([tab, S.signedIn, S.usage, S.error, S.settings, S.history && S.history.length, typeof D !== 'undefined' ? [D.err, D.stats && { ...D.stats, generated: 0 }, D.live && D.live.length, D.voice] : 0, typeof UR !== 'undefined' ? UR.data && { ...UR.data, generated: 0 } : 0]);
 function softRender() { const sig = sigOf(); if (sig === lastSig) return; lastSig = sig; render(); }
-cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else renderNav(); });
+cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else { lastSig = sigOf(); renderNav(); } });
 cm.on('goto', (t) => setTab(t));
 cm.on('open-session', async (o) => { SS.machines = await cm.machines(); SS.mid = o.machine; openSession({ id: o.session, title: o.title || 'Session', cwd: o.cwd, mid: o.machine, live: true }, o.voice); });
 setInterval(() => { if (tab === 'now' || tab === 'history') render(); }, 30000);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
-cm.state().then(async (s) => { S = s; await applyPalette(); render(); });
+cm.state().then(async (s) => { S = s; await applyPalette(); render(); setTimeout(() => { if (S.signedIn && typeof loadDashboard === 'function') { loadDashboard(); setTimeout(() => typeof loadUsageReport === 'function' && loadUsageReport(), 1500); } }, 1500); });   // warm the dashboard so the first visit does not have to wait
 
 /** The highlight of a selected chip or menu item is its own element that glides to the next one. The buttons never move. */
 const HL = new Map();   // group number -> where its highlight was
