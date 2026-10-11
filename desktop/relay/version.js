@@ -1,3 +1,3 @@
 'use strict';
 /* The version of this Hearth. Set by scripts/set-version.js. */
-module.exports = '1.3.12';
+module.exports = '1.3.13';

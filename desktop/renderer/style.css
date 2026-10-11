@@ -450,6 +450,8 @@ h1 { font-size: 32px; }
 #nav > .side input { background: var(--card); border-radius: 12px; min-height: 34px; padding: 6px 12px; font-size: 13px; margin-bottom: 4px; }
 .ghead { text-transform: uppercase; letter-spacing: .1em; font-size: 11px; color: var(--muted); font-weight: 600; padding: 14px 8px 4px; margin-top: 0; }
 #nav .item { padding: 8px 12px; border-radius: 12px; }
+#nav .item:hover { transform: none; }
+#nav > .side { overflow-x: hidden; }
 #nav .item .ititle { font-size: 14px; gap: 0; }
 #nav .item.on { background: var(--card); border-color: var(--line); }
 #nav .item.on .ititle { font-weight: 600; }
@@ -487,3 +489,7 @@ h1 { font-size: 32px; }
 .subitem { text-align: left; background: none; color: var(--muted); border-radius: 12px; padding: 9px 14px; font-weight: 500; }
 .subitem.on { background: var(--active); color: var(--clay); font-weight: 600; }
 @media (max-width: 1040px) { .submenu { display: none; } }
+
+/* logo follows the accent / theme */
+#nav .logo { background: linear-gradient(135deg, color-mix(in srgb, var(--clay) 72%, #fff), var(--clay)); }
+@media (prefers-color-scheme: dark) { #nav .logo { background: linear-gradient(135deg, var(--clay), color-mix(in srgb, var(--clay) 70%, #000)); } }

@@ -211,9 +211,14 @@ function drawPane() {
   if (SS.voice && SS.voice.el) pane.append(SS.voice.el);
 }
 
+/** What you typed in a chat stays when you leave it (and when the app closes). */
+const draftKey = (s) => s.id || ('new|' + (s.mid || ''));
+const drafts = () => { try { return JSON.parse(localStorage.getItem('cm.drafts') || '{}'); } catch { return {}; } };
+function saveDraft(s, text) { const d = drafts(); if (text) d[draftKey(s)] = text; else delete d[draftKey(s)]; try { localStorage.setItem('cm.drafts', JSON.stringify(d)); } catch { /* full */ } }
 function composer() {
   const s = SS.sel;
   const ta = h('textarea', { id: 'composer-text', rows: 1, placeholder: SS.sending ? 'Claude is working. Type to queue a follow-up…' : s.isNew ? 'Describe what you want to do…' : 'Message Claude' });
+  ta.value = drafts()[draftKey(s)] || '';
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(220, ta.scrollHeight) + 'px'; };
   const menu = h('div', { class: 'slashmenu', hidden: true });
   const APP = [
@@ -230,13 +235,13 @@ function composer() {
     menu.innerHTML = ''; hits.forEach((x) => menu.append(h('div', { class: 'sitem', onmousedown: (e) => { e.preventDefault(); pick(x.name, x.fn); } }, h('b', {}, '/' + x.name), h('span', { class: 'small muted' }, ' ' + (x.desc || '')))));
     menu.hidden = !hits.length;
   };
-  ta.oninput = () => { grow(); showMenu(); };
+  ta.oninput = () => { grow(); showMenu(); saveDraft(s, ta.value); };
   ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } };
   const submit = () => {
     const refs = SS.files.map((f) => '\n@' + f.path).join('');
     const t = (ta.value.trim() + refs).trim();
     if (!t || SS.uploading) return;
-    ta.value = ''; SS.files = []; renderFiles(); grow();
+    ta.value = ''; saveDraft(s, ''); SS.files = []; renderFiles(); grow();
     if (SS.sending) { SS.queue.push(t); renderLive(); } else sendMsg(t);
   };
   const sel = (opts, cur, fn) => h('select', { class: 'sel', onchange: (e) => fn(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));

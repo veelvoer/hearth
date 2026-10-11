@@ -67,7 +67,7 @@ function renderNav() {
   nav.innerHTML = '';
   nav.className = collapsed ? 'collapsed' : '';
   nav.append(h('div', { class: 'brand-row' }, h('div', { class: 'brand' }, h('span', { class: 'logo', html: sparkSVG(18, '#fff') }), h('span', { class: 'lbl' }, ' Hearth')),
-    h('button', { class: 'navtoggle', title: collapsed ? 'Show menu names' : 'Shrink menu to icons', 'aria-label': collapsed ? 'Expand menu' : 'Collapse menu', onclick: () => { localStorage.setItem('cm.navCollapsed', collapsed ? '0' : '1'); renderNav(); } }, collapsed ? '›' : '‹')));
+    h('button', { class: 'navtoggle', title: collapsed ? 'Show menu names' : 'Shrink menu to icons', 'aria-label': collapsed ? 'Expand menu' : 'Collapse menu', onclick: () => { localStorage.setItem('cm.navCollapsed', collapsed ? '0' : '1'); renderNav(); mountSide(); settleNav(); } }, collapsed ? '›' : '‹')));
   if (!S.signedIn) return;
   nav.append(h('button', { class: 'newchat', title: 'New chat', onclick: () => { setTab('sessions'); newChat(); } }, '+', h('span', { class: 'lbl' }, ' New chat')));
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
@@ -109,6 +109,8 @@ function render() {
   if (keepScroll) holdScroll(keepScroll, prevH, v);
   if (tab === 'history') requestAnimationFrame(drawHistory);
 }
+/** The menu changes width over a moment; the highlight is measured again once it has its final size. */
+function settleNav() { [0, 200].forEach((ms) => setTimeout(() => { $('#nav').querySelectorAll(':scope > .hl').forEach((e) => e.remove()); HL.clear(); placeHighlights(); }, ms)); }
 /** The chats are listed in the menu itself, under the four screens, while Chats is open. */
 function mountSide() {
   const nav = $('#nav'); if (!nav) return;
