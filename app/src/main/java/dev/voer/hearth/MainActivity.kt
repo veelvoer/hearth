@@ -55,15 +55,37 @@ class MainActivity : ComponentActivity() {
         Ui.tab = 0
     }
 
+    private var liveJob: kotlinx.coroutines.Job? = null
+
+    override fun onPause() { liveJob?.cancel(); super.onPause() }
+
+    /** While the app is open the numbers follow the computer: read them every 20 s, and when they are over 5 minutes old ask the computer to read the limits again (at most every 5 minutes). */
+    private fun keepUsageLive() {
+        liveJob?.cancel()
+        liveJob = lifecycleScope.launch {
+            var asked = 0L
+            while (true) {
+                if (Store.signedIn(this@MainActivity)) {
+                    val now = System.currentTimeMillis()
+                    val stale = (Store.usage(this@MainActivity)?.at ?: 0L) < now - 5 * 60_000L
+                    val ask = stale && now - asked > 5 * 60_000L
+                    if (ask) asked = now
+                    Ui.refresh(this@MainActivity, ask = ask)
+                }
+                kotlinx.coroutines.delay(20_000)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         Ui.load(this)
+        keepUsageLive()
         if (Build.VERSION.SDK_INT >= 33 && !askedNotif && Store.signedIn(this) &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) { askedNotif = true; notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
         if (Store.signedIn(this)) {
             Sched.ensure(this)
             CallService.sync(this)
-            lifecycleScope.launch { Ui.refresh(this@MainActivity) }
             if (System.currentTimeMillis() - Updates.checkedAt > 6 * 3600_000L) lifecycleScope.launch { Updates.check(this@MainActivity) }
         }
     }

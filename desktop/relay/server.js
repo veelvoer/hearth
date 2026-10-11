@@ -87,6 +87,7 @@ function start(opts) {
   const codeTimer = setInterval(newCode, 10 * 60000); codeTimer.unref();
 
   // ── plan usage: read from the real Claude Code's own output (rate_limit_event), never from account tokens ──
+  core.warm();   // read the chat titles in the background so the first chat list is quick
   const usageFile = path.join(dir, 'usage.json');
   let usage = (() => { try { return JSON.parse(fs.readFileSync(usageFile, 'utf8')); } catch { return {}; } })();
   const WINDOWS = { five_hour: 'session', seven_day: 'week', seven_day_opus: 'opus', seven_day_sonnet: 'sonnet' };

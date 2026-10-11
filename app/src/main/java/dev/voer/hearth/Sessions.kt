@@ -175,7 +175,8 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
     }
     LaunchedEffect(machines) {
         while (true) {
-            machines.forEach { mm -> lists[mm.host] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.getOrNull() }
+            // every computer is asked at the same time and shows up as soon as it answers; a computer that is off must not hold the others back
+            machines.map { mm -> launch { lists[mm.host] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.getOrNull() } }.forEach { it.join() }
             delay(6_000)
         }
     }
@@ -443,12 +444,16 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
             .onFailure { err = it.message ?: "Can't reach ${m.name}" }
     }
     LaunchedEffect(sess.id) {
-        if (sess.id.isNotEmpty()) runCatching { withContext(Dispatchers.IO) { Relay.prefs(m, sess.id) } }.onSuccess { call = it }
-        if (sess.id.isNotEmpty()) runCatching { withContext(Dispatchers.IO) { Relay.runPref(m, sess.id) } }.onSuccess { run = it }
+        // the messages come first and on their own: the small extras load beside them instead of in front of them
+        if (sess.id.isNotEmpty()) {
+            launch { runCatching { withContext(Dispatchers.IO) { Relay.prefs(m, sess.id) } }.onSuccess { call = it } }
+            launch { runCatching { withContext(Dispatchers.IO) { Relay.runPref(m, sess.id) } }.onSuccess { run = it } }
+        }
+        var round = 0
         while (sess.id.isNotEmpty()) {
+            launch { runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission") } } }
+            if (round++ % 3 == 0) launch { runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.onSuccess { l -> serverBusy = l.firstOrNull { it.id == sess.id }?.running == true } }
             if (!sending) reload()
-            runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.onSuccess { l -> serverBusy = l.firstOrNull { it.id == sess.id }?.running == true }
-            runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission") } }
             delay(3_000)
         }
     }

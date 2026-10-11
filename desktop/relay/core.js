@@ -31,24 +31,88 @@ function listFiles() {
   }
   return out;
 }
-function findSession(sid) { return /^[A-Za-z0-9-]+$/.test(sid || '') ? listFiles().find((f) => f.id === sid) || null : null; }
+/** Looking for one chat must not list every chat file on the disk each time: remember where the chats are, and check only that file. */
+let idIndex = new Map();
+function findSession(sid) {
+  if (!/^[A-Za-z0-9-]+$/.test(sid || '')) return null;
+  const hit = idIndex.get(sid);
+  if (hit) {
+    try { const st = fs.statSync(hit.file); return { id: sid, file: hit.file, mtime: st.mtimeMs, size: st.size }; } catch { idIndex.delete(sid); }
+  }
+  const next = new Map();
+  for (const f of listFiles()) if (!next.has(f.id)) next.set(f.id, f);   // the first file of an id wins, as before
+  idIndex = next;
+  return next.get(sid) || null;
+}
+
+// ───────── reading a log once, then only what was added to it ─────────
+const READ_CAP = 30 * 1024 * 1024;   // bigger logs are read the old way each time instead of being kept in memory
+/** The bytes [from, to) of a file. */
+function readChunk(file, from, to) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(Math.max(0, to - from));
+    let n = 0;
+    while (n < buf.length) { const r = fs.readSync(fd, buf, n, buf.length - n, from + n); if (!r) break; n += r; }
+    return n < buf.length ? buf.subarray(0, n) : buf;
+  } finally { fs.closeSync(fd); }
+}
+const parseLine = (l) => { try { return l ? JSON.parse(l) : null; } catch { return null; } };
+/** Splits fresh bytes into the finished lines (parsed) and a last line that may still be being written (parsed only if it is already complete JSON). */
+function splitChunk(chunk) {
+  const nl = chunk.lastIndexOf(10);
+  const done = nl < 0 ? [] : chunk.subarray(0, nl + 1).toString('utf8').split('\n').map(parseLine).filter(Boolean);
+  const tail = parseLine(chunk.subarray(nl + 1).toString('utf8'));
+  return { done, tail, used: nl + 1 };
+}
+/** True when the file still starts with the same bytes it had when it was read, so what was read is still valid and only an addition is new. */
+function sameStart(file, head) { try { return readChunk(file, 0, head.length).toString('latin1') === head; } catch { return false; } }
+
+const entryCache = new Map();   // file -> { size, mtime, head, pos, list, tail }
+/** Every entry of a chat file, like readJsonl, but a growing chat is only read from where it was read last time. */
+function entriesOf(file) {
+  let st; try { st = fs.statSync(file); } catch { return []; }
+  if (st.size > READ_CAP) return readJsonl(file);
+  let c = entryCache.get(file);
+  if (c && (st.size < c.pos || (st.size === c.size && st.mtimeMs !== c.mtime) || !sameStart(file, c.head))) c = null;
+  if (!c || st.size !== c.size) {
+    const from = c ? c.pos : 0;
+    let chunk; try { chunk = readChunk(file, from, st.size); } catch { return []; }
+    const { done, tail, used } = splitChunk(chunk);
+    if (!c) c = { size: 0, mtime: 0, head: readChunk(file, 0, Math.min(256, from + chunk.length)).toString('latin1'), pos: 0, list: [], tail: null };
+    for (const o of done) c.list.push(o);
+    c.pos = from + used; c.size = from + chunk.length; c.mtime = st.mtimeMs; c.tail = tail;
+  }
+  entryCache.delete(file); entryCache.set(file, c);
+  while (entryCache.size > 6) entryCache.delete(entryCache.keys().next().value);
+  return c.tail ? c.list.concat([c.tail]) : c.list;
+}
 
 const sumCache = new Map();
+function applyTitle(o, r) {
+  if (o.type === 'ai-title') r.title = o.aiTitle || r.title;
+  r.cwd = r.cwd || o.cwd || '';
+  if (!r.title && o.type === 'user' && !o.isSidechain) {
+    const t = textOf((o.message || {}).content).trim();
+    if (t && !t.startsWith('<')) r.title = t.slice(0, 80);
+  }
+}
 function summarize(f) {
   const hit = sumCache.get(f.file);
   if (hit && hit.mtime === f.mtime && hit.size === f.size) return hit;
-  let title = '', cwd = '';
-  for (const o of readJsonl(f.file)) {
-    if (o.type === 'ai-title') title = o.aiTitle || title;
-    cwd = cwd || o.cwd || '';
-    if (!title && o.type === 'user' && !o.isSidechain) {
-      const t = textOf((o.message || {}).content).trim();
-      if (t && !t.startsWith('<')) title = t.slice(0, 80);
-    }
-  }
-  const r = { mtime: f.mtime, size: f.size, title: title || 'Untitled', cwd };
-  sumCache.set(f.file, r);
-  return r;
+  // a chat that only grew is read from where it was read last time; anything else is read from the start
+  const grew = !!hit && f.size >= hit.read && sameStart(f.file, hit.head);
+  const from = grew ? hit.pos : 0;
+  const r = grew ? { title: hit.base.title, cwd: hit.base.cwd } : { title: '', cwd: '' };   // what the finished lines said so far
+  let chunk; try { chunk = readChunk(f.file, from, f.size); } catch { chunk = Buffer.alloc(0); }
+  const { done, tail, used } = splitChunk(chunk);
+  for (const o of done) applyTitle(o, r);
+  const base = { title: r.title, cwd: r.cwd };
+  if (tail) applyTitle(tail, r);   // a last line that is already whole counts now (and is read again next time)
+  const out = { mtime: f.mtime, size: f.size, title: r.title || 'Untitled', cwd: r.cwd, base, pos: from + used, read: from + chunk.length,
+    head: grew ? hit.head : readChunk(f.file, 0, Math.min(256, from + chunk.length)).toString('latin1') };
+  sumCache.set(f.file, out);
+  return out;
 }
 
 /** Claude Code processes currently open, by working directory (Linux only; elsewhere we rely on file activity). */
@@ -122,7 +186,7 @@ function messages(sid, tail = 80) { return messagesOf(findSession(sid), tail); }
 /** Same, for a chat file that lives somewhere else (for example a copy stored for another computer). */
 function messagesOf(f, tail = 80) {
   if (!f) return [];
-  const entries = readJsonl(f.file), results = {}, out = [];
+  const entries = entriesOf(f.file), results = {}, out = [];
   for (const o of entries) {
     const c = (o.message || {}).content;
     if (o.type === 'user' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') results[b.tool_use_id || ''] = { result: resultText(b.content), error: !!b.is_error };
@@ -264,4 +328,16 @@ function report(days, extra = []) {
   };
 }
 
-module.exports = { report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };
+/** Reads the titles of the chats a little at a time after start, newest first, so the first list a phone asks for is already quick. */
+function warm() {
+  let files = []; try { files = listFiles().sort((a, b) => b.mtime - a.mtime); } catch { return; }
+  let i = 0;
+  const step = () => {
+    const t = Date.now();
+    while (i < files.length && Date.now() - t < 25) { try { summarize(files[i]); } catch { /* skip */ } i++; }
+    if (i < files.length) setTimeout(step, 10).unref();
+  };
+  setTimeout(step, 500).unref();
+}
+
+module.exports = { warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };

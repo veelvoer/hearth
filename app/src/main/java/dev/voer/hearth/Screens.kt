@@ -54,6 +54,7 @@ object Ui {
     var newRun by mutableStateOf("vps")   // which computer a brand-new chat should start on
     var error by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
+    private var running = false
     var history by mutableStateOf<List<Sample>>(emptyList())
     var rev by mutableIntStateOf(0)
     var chatOpen by mutableStateOf(false)
@@ -67,11 +68,9 @@ object Ui {
     }
 
     suspend fun refresh(c: Context, ask: Boolean = false) {
-        if (busy || !Store.signedIn(c)) return
-        busy = true
-        Repo.refresh(c, ask)
-        load(c)
-        busy = false
+        if (running || !Store.signedIn(c)) return
+        running = true; if (ask) busy = true
+        try { Repo.refresh(c, ask); load(c) } finally { running = false; busy = false }
     }
 }
 

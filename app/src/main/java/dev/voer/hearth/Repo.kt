@@ -14,6 +14,9 @@ import androidx.core.content.ContextCompat
 import androidx.work.*
 import dev.voer.hearth.Store.error
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -29,15 +32,18 @@ object Repo {
             runCatching {
                 val machines = Store.machines(app)
                 if (machines.isEmpty()) throw ApiException(0, "No computer connected")
-                if (ask) machines.firstOrNull { !it.secure }?.let { runCatching { Relay.refreshUsage(it) } } ?: runCatching { Relay.refreshUsage(machines.first()) }
+                if (ask) coroutineScope { machines.map { m -> async { runCatching { Relay.refreshUsage(m) } } }.awaitAll() }
                 val u = machines.mapNotNull { runCatching { Relay.usage(it) }.getOrNull() }.maxByOrNull { it.at }
                     ?: throw ApiException(0, "No usage yet")
                 val prev = Store.usage(app)
                 Store.saveUsage(app, u)
                 if (prev == null || prev.at != u.at) { Store.appendHistory(app, u); Notifier.check(app, prev, u) }
+                val hadError = app.error != null
                 app.error = null
-                WidgetUpdater.updateAll(app)
-                TileService.requestListeningState(app, android.content.ComponentName(app, UsageTile::class.java))
+                if (hadError || prev == null || prev.at != u.at || ask) {   // the live poll runs every 20 s: only redraw widgets when something changed
+                    WidgetUpdater.updateAll(app)
+                    TileService.requestListeningState(app, android.content.ComponentName(app, UsageTile::class.java))
+                }
                 u
             }.onFailure {
                 app.error = if (it is ApiException && it.message == "No usage yet") "No usage data yet. Start a Claude Code chat from here, or tap Refresh."
