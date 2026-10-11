@@ -671,18 +671,40 @@ h('send', (e, id, session, text, mode, voice, sid0, extra) => {
   if (!m) throw new Error('Unknown computer');
   const sid = sid0 || crypto.randomBytes(4).toString('hex');
   const out = (o) => { if (!e.sender.isDestroyed()) e.sender.send('stream', { sid, ...o }); };
-  relayRequest(m, 'POST', `/sessions/${session || 'new'}/send`, { text, mode, brief: !!voice, ...(extra || {}) }, { timeout: 60 * 60000 }).then((res) => {
-    if (res.statusCode !== 200) { readAll(res).then((b) => out({ t: 'fail', text: (safeJson(b) || {}).error || 'Relay error ' + res.statusCode })); return; }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let lastN = -1, finished = false, chat = session || '';
+  /** One event of the run. Events carry a running number, so one that was already seen (after joining the run again) is skipped. */
+  const take = (o) => {
+    if (typeof o.n === 'number') { if (o.n <= lastN) return; lastN = o.n; }
+    if (o.t === 'session' && o.id) chat = o.id;
+    if (o.t === 'end' || o.t === 'fail') finished = true;
+    out(o);
+  };
+  const read = (res) => new Promise((resolve) => {
     let buf = '';
     res.setEncoding('utf8');
-    res.on('data', (d) => {
-      buf += d;
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); const o = safeJson(line); if (o) out(o); }
-    });
-    res.on('end', () => out({ t: 'end' }));
-    res.on('error', (err) => out({ t: 'fail', text: err.message }));
-  }).catch((err) => out({ t: 'fail', text: err.message }));
+    res.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); const o = line.trim() ? safeJson(line) : null; if (o) take(o); } });
+    res.on('end', resolve); res.on('error', resolve); res.on('close', resolve);
+  });
+  (async () => {
+    let first;
+    try { first = await relayRequest(m, 'POST', `/sessions/${session || 'new'}/send`, { text, mode, brief: !!voice, ...(extra || {}) }, { timeout: 5 * 60000 }); }
+    catch (err) { return out({ t: 'fail', text: err.message }); }
+    if (first.statusCode !== 200) return out({ t: 'fail', text: (safeJson(await readAll(first)) || {}).error || 'Relay error ' + first.statusCode });
+    await read(first);
+    // The connection dropped (Wi-Fi blip, sleep, a proxy) before the run said it was over: the run goes on at the computer, so join it again where we left off.
+    for (let attempt = 1; !finished; attempt++) {
+      if (attempt > 60) return out({ t: 'fail', text: 'Lost the connection to ' + m.name + '. Claude may still be working; open the chat again in a moment.' });
+      await sleep(Math.min(4000, 400 * attempt));
+      if (!chat) { return out({ t: 'fail', text: 'Lost the connection to ' + m.name + '.' }); }
+      try {
+        const r = await relayRequest(m, 'GET', `/sessions/${chat}/stream?from=${lastN + 1}`, null, { timeout: 5 * 60000 });
+        if (r.statusCode === 404) { await readAll(r); return take({ t: 'end' }); }   // no run any more: it finished while we were away
+        if (r.statusCode === 200) { attempt = 0; await read(r); }
+        else await readAll(r);
+      } catch { /* still unreachable: try again */ }
+    }
+  })();
   return sid;
 });
 h('voice:status', async (e, id) => { const m = machineById(id); return m ? relayJson(m, 'GET', '/voice/status') : { stt: false, tts: false }; });

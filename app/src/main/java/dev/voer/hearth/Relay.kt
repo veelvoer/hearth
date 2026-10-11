@@ -215,7 +215,20 @@ object Relay {
 
     /** Streams one turn. [onEvent] gets ("delta"|"tool"|"done", text, isError). Blocks until the turn ends. */
     fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, run: String? = null, onEvent: (String, String, Boolean) -> Unit) {
-        val c = open(m, "/sessions/${id.ifEmpty { "new" }}/send", post = true, read = 60 * 60_000)
+        var lastN = -1; var finished = false; var chat = id
+        /** One line of the run. Events carry a running number, so one that was already seen (after joining the run again) is skipped. */
+        fun take(line: String) {
+            val o = runCatching { JSONObject(line) }.getOrNull() ?: return
+            val n = o.optInt("n", -1)
+            if (n >= 0) { if (n <= lastN) return; lastN = n }
+            val t = o.optString("t")
+            if (t == "session" && o.optString("id").isNotEmpty()) chat = o.optString("id")
+            if (t == "end" || t == "fail") finished = true
+            val payload = when (t) { "session" -> o.optString("id"); "prefs" -> o.optString("call"); "queued" -> if (o.optBoolean("online")) "now" else "later"; "tool" -> o.optString("name") + "\u0000" + (o.optJSONObject("input")?.let { i -> listOf("command", "file_path", "pattern", "path", "url").firstNotNullOfOrNull { k -> i.optString(k).takeIf { v -> v.isNotBlank() } } }.orEmpty()) + "\u0000" + o.optString("id")
+                "result" -> o.optString("id") + "\u0000" + o.optString("text"); else -> o.optString("text") }
+            onEvent(t, payload, o.optBoolean("error"))
+        }
+        val c = open(m, "/sessions/${id.ifEmpty { "new" }}/send", post = true, read = 5 * 60_000)
         try {
             val body = JSONObject().put("text", text).put("mode", mode).put("brief", brief)
             if (id.isEmpty() && cwd != null) body.put("cwd", cwd)
@@ -228,13 +241,26 @@ object Relay {
                 val msg = runCatching { JSONObject(c.errorStream?.bufferedReader()?.readText().orEmpty()).optString("error") }.getOrNull()
                 throw ApiException(c.responseCode, msg?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Relay error ${c.responseCode}")
             }
-            c.inputStream.bufferedReader().forEachLine { line ->
-                val o = runCatching { JSONObject(line) }.getOrNull() ?: return@forEachLine
-                val t = o.optString("t")
-                val payload = when (t) { "session" -> o.optString("id"); "prefs" -> o.optString("call"); "queued" -> if (o.optBoolean("online")) "now" else "later"; "tool" -> o.optString("name") + "\u0000" + (o.optJSONObject("input")?.let { i -> listOf("command", "file_path", "pattern", "path", "url").firstNotNullOfOrNull { k -> i.optString(k).takeIf { v -> v.isNotBlank() } } }.orEmpty()) + "\u0000" + o.optString("id")
-                    "result" -> o.optString("id") + "\u0000" + o.optString("text"); else -> o.optString("text") }
-                onEvent(t, payload, o.optBoolean("error"))
-            }
-        } finally { c.disconnect() }
+            c.inputStream.bufferedReader().forEachLine { take(it) }
+        } catch (e: ApiException) { throw e } catch (e: java.io.IOException) { /* the connection dropped: join the run again below */ } finally { c.disconnect() }
+        // The connection dropped (mobile network, sleep, a proxy) before the run said it was over. The run goes on at the computer, so join it again where we left off.
+        var attempt = 0
+        while (!finished) {
+            attempt++
+            if (attempt > 60 || chat.isEmpty()) throw ApiException(0, "Lost the connection to ${m.name}. Claude may still be working; open the chat again in a moment.")
+            Thread.sleep(minOf(4000L, 400L * attempt))
+            val r = open(m, "/sessions/$chat/stream?from=${lastN + 1}", read = 5 * 60_000)
+            try {
+                when (r.responseCode) {
+                    404 -> { onEvent("end", "", false); finished = true }   // no run any more: it finished while we were away
+                    200 -> { attempt = 0; r.inputStream.bufferedReader().forEachLine { take(it) } }
+                }
+            } catch (e: java.io.IOException) { /* still unreachable: try again */ } finally { r.disconnect() }
+        }
     }
+
+    /** Is Claude working on this chat right now? Null when this server is too old to say. */
+    fun working(m: Machine, id: String): Boolean? = runCatching {
+        val o = JSONObject(getJson(m, "/sessions/$id/state")); o.optBoolean("busy")
+    }.getOrNull()
 }

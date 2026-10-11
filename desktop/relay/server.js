@@ -442,7 +442,8 @@ function start(opts) {
     for (let i = from; i < job.events.length; i++) res.write(JSON.stringify(job.events[i]) + '\n');
     if (job.done) return res.end();
     job.listeners.add(res);
-    res.on('close', () => job.listeners.delete(res));  // the run keeps going without us
+    const beat = setInterval(() => { try { res.write('\n'); } catch { /* gone */ } }, 15000);   // a quiet stretch (a long command) must not look like a dead connection to a proxy
+    res.on('close', () => { clearInterval(beat); job.listeners.delete(res); });  // the run keeps going without us
   }
 
   /** The milestone message: always sent; the phone rings only if you asked for a call. */
@@ -538,7 +539,8 @@ function start(opts) {
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event));
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
-          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) : worthListing(f, sm))).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind }));
+          const quiet = new Set([...jobs.values()].filter((j) => j.done).map((j) => j.sid || j.key));
+          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) : worthListing(f, sm)), 300, quiet).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind }));
           const have = new Set(own.map((x) => x.id));
           const away = hubSync ? hubSync.elsewhere().filter((e) => !have.has(e.id) && e.cwd).map((e) => ({ id: e.id, title: e.title, cwd: e.cwd, mtime: Math.floor(e.mtime), live: false, busy: false, running: far.has(e.id), kind: getPrefs(e.id).kind, elsewhere: e.machine })) : [];
           return json(res, 200, [...own, ...away].sort((x, y) => y.mtime - x.mtime));
@@ -553,6 +555,12 @@ function start(opts) {
           const f = core.findSession(parts[1]);
           if (f && !visibleSession(core.summarize(f))) return json(res, 403, { error: 'outside the projects folder' });
           return json(res, 200, withWaiting(core.messages(parts[1], tail)));
+        }
+        if (parts[0] === 'sessions' && parts[2] === 'state') {   // is Claude working on this chat right now? (cheap: the phone asks every few seconds)
+          const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set(), id = parts[1];
+          const f = core.findSession(id), quiet = [...jobs.values()].some((j) => j.done && (j.sid || j.key) === id);
+          const running = run.has(id) || far.has(id), busy = running || (!quiet && !!f && (Date.now() - f.mtime) / 1000 < 20);
+          return json(res, 200, { running, busy });
         }
         if (parts[0] === 'sessions' && parts[2] === 'prefs') return json(res, 200, getPrefs(parts[1]));
         if (parts[0] === 'sessions' && parts[2] === 'stream') {

@@ -459,7 +459,11 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
         var round = 0
         while (sess.id.isNotEmpty()) {
             launch { runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission") } } }
-            if (round++ % 3 == 0) launch { runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.onSuccess { l -> serverBusy = l.firstOrNull { it.id == sess.id }?.running == true } }
+            launch {
+                val w = withContext(Dispatchers.IO) { Relay.working(m, sess.id) }
+                if (w != null) serverBusy = w
+                else if (round++ % 3 == 0) runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.onSuccess { l -> serverBusy = l.firstOrNull { it.id == sess.id }?.let { it.running || it.busy } == true }   // an older server: ask the whole list
+            }
             if (!sending) reload()
             delay(3_000)
         }
@@ -467,10 +471,9 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
     val total = msgs.size + parts.size
     LaunchedEffect(total, parts.lastOrNull()?.text?.length) { if (total > 0) list.scrollToItem(total) }
 
-    fun send() {
-        val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
-        if (text.isEmpty() || sending || uploading) return
-        input = ""; files.clear(); sending = true; parts.clear(); err = null
+    val queued = remember { mutableStateListOf<String>() }   // messages written while Claude is busy: they go out one by one when it is free
+    fun doSend(text: String) {
+        sending = true; parts.clear(); err = null
         msgs.add(Msg("user", text)); unsent.add(text to System.currentTimeMillis())
         val isNew = sess.id.isEmpty()
         scope.launch {
@@ -489,10 +492,23 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
                         }
                     }
                 }
-            }.onFailure { err = it.message ?: "Connection lost" }
+            }.onFailure {
+                if (it is ApiException && it.code == 409 && (it.message ?: "").contains("still working")) {   // busy from somewhere else: wait for it, then send
+                    queued.add(0, text); unsent.removeAll { u -> u.first == text }
+                    val ix = msgs.indexOfLast { x -> x.role == "user" && x.text == text }; if (ix >= 0) msgs.removeAt(ix)
+                    serverBusy = true
+                } else err = it.message ?: "Connection lost"
+            }
             parts.clear(); sending = false; reload()
         }
     }
+    fun send() {
+        val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
+        if (text.isEmpty() || uploading) return
+        input = ""; files.clear()
+        if (sending || serverBusy) queued.add(text) else doSend(text)
+    }
+    LaunchedEffect(serverBusy, sending, queued.size) { if (!serverBusy && !sending && queued.isNotEmpty()) doSend(queued.removeAt(0)) }
     fun setCall(v: String) { val nv = if (call == v) "off" else v; call = nv; if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setPrefs(m, sess.id, nv) } } }
 
     if (voice && sess.id.isNotEmpty()) { CallScreen(m, sess, mode) { voice = false; scope.launch { reload() } }; return }
@@ -561,6 +577,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
               }
             }
             itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err) else MarkdownText(p.text) }
+            queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
             if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant") item {
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

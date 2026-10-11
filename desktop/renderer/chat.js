@@ -127,7 +127,7 @@ function sessionsView() {
     drawSide(); await loadList(); await pollLive();
   })();
   setTimeout(() => { if (SS.sel) { renderMsgs(); renderPerms(); renderFiles(); } }, 0);  // the pane is in the document now
-  SS.timers.push(setInterval(pollLive, 8000), setInterval(() => { if (SS.sel && SS.sel.id && !SS.sending && !SS.voice) loadMsgs(true); }, 3000));
+  SS.timers.push(setInterval(pollLive, 8000), setInterval(() => { if (SS.sel && SS.sel.id && !SS.sending && !SS.voice) loadMsgs(true); }, 3000), setInterval(refreshBusy, 4000));
   return root;
 }
 
@@ -136,9 +136,38 @@ function openSession(s, voice) {
   if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && SS.pane) { try { const t = document.startViewTransition(() => openSessionNow(s, voice)); [t.ready, t.finished, t.updateCallbackDone].forEach((x) => x.catch(() => {})); return; } catch { /* plain */ } }
   openSessionNow(s, voice);
 }
+/** Runs that are going on, by chat. Switching to another chat never stops or mixes them up. */
+const RUNS = new Map(), QUEUES = new Map();
+const qOf = (s) => { const k = (s && s.id) || 'new'; let q = QUEUES.get(k); if (!q) { q = []; QUEUES.set(k, q); } return q; };
+const sameChat = (a, b) => !!a && !!b && (a === b || (!!a.id && a.id === b.id));
+/** Claude is working on the chat I am looking at, started somewhere else (the phone, the terminal, another computer). */
+function remoteWorking() {
+  const s = SS.sel;
+  if (!s || !s.id || SS.sending) return false;
+  const x = allSessions().find((y) => y.id === s.id);
+  return !!(x && (x.running || x.busy));
+}
+const remoteRunning = () => { const s = SS.sel, x = s && s.id && allSessions().find((y) => y.id === s.id); return !!(x && x.running); };
+/** Keeps "working" honest while a chat is open: asks the computer, and starts a queued message once Claude is free. */
+async function refreshBusy() {
+  const s = SS.sel;
+  if (!s || !s.id || SS.sending || tab !== 'sessions') return;
+  const before = remoteWorking();
+  try { SS.live[s.mid] = await cm.relay(s.mid, 'GET', '/sessions'); } catch { return; }
+  if (!sameChat(SS.sel, s)) return;
+  const now = remoteWorking();
+  if (before !== now) {
+    const had = document.activeElement && document.activeElement.id === 'composer-text';
+    renderLive(); drawSide(); drawPane();
+    if (had) { const t = $('#composer-text'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+    if (!now) loadMsgs(false);
+  }
+  if (!now && SS.queue.length) sendMsg(SS.queue.shift());
+}
 function openSessionNow(s, voice) {
   SS.call = 'off';
-  SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = []; SS.parts = []; SS.sending = false;
+  SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = [];
+  const run = SS.sel.id && RUNS.get(SS.sel.id); SS.parts = run ? run.parts : []; SS.sending = !!run; SS.queue = qOf(SS.sel);   // a run that is still going shows up again
   if (tab !== 'sessions') setTab('sessions');
   drawSide(); drawPane(); swapPane();
   loadMsgs(false).then(() => { if (voice) startVoice(); });
@@ -166,10 +195,10 @@ async function setCall(v) {
 function newChat() {
   const mid = defaultMachineId() || SS.mid;
   SS.sel = { id: null, isNew: true, title: 'New chat', cwd: '', mid }; SS.runOn = 'vps';
-  SS.mid = mid; SS.queue = []; SS.perms = [];
+  SS.mid = mid; SS.perms = [];
   const own = (SS.live[mid] || []).filter((x) => x.cwd).sort((a, b) => b.mtime - a.mtime)[0];
   SS.sel.cwd = (SS.lastCwdBy && SS.lastCwdBy[mid]) || (own && own.cwd) || '';
-  SS.msgs = []; SS.parts = []; SS.sending = false; SS.chatErr = null;
+  SS.msgs = []; SS.parts = []; SS.sending = false; SS.chatErr = null; SS.queue = qOf(SS.sel);
   if (tab !== 'sessions') setTab('sessions');
   drawSide(); drawPane(); swapPane();
   const t = $('#composer-text'); if (t) t.focus();
@@ -217,7 +246,7 @@ const drafts = () => { try { return JSON.parse(localStorage.getItem('cm.drafts')
 function saveDraft(s, text) { const d = drafts(); if (text) d[draftKey(s)] = text; else delete d[draftKey(s)]; try { localStorage.setItem('cm.drafts', JSON.stringify(d)); } catch { /* full */ } }
 function composer() {
   const s = SS.sel;
-  const ta = h('textarea', { id: 'composer-text', rows: 1, placeholder: SS.sending ? 'Claude is working. Type to queue a follow-up…' : s.isNew ? 'Describe what you want to do…' : 'Message Claude' });
+  const ta = h('textarea', { id: 'composer-text', rows: 1, placeholder: SS.sending || remoteWorking() ? 'Claude is working. Type to queue a follow-up…' : s.isNew ? 'Describe what you want to do…' : 'Message Claude' });
   ta.value = drafts()[draftKey(s)] || '';
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(220, ta.scrollHeight) + 'px'; };
   const menu = h('div', { class: 'slashmenu', hidden: true });
@@ -242,7 +271,7 @@ function composer() {
     const t = (ta.value.trim() + refs).trim();
     if (!t || SS.uploading) return;
     ta.value = ''; saveDraft(s, ''); SS.files = []; renderFiles(); grow();
-    if (SS.sending) { SS.queue.push(t); renderLive(); } else sendMsg(t);
+    if (SS.sending || remoteWorking()) { SS.queue.push(t); renderLive(); if (!SS.sending) refreshBusy(); } else sendMsg(t);
   };
   const sel = (opts, cur, fn) => h('select', { class: 'sel', onchange: (e) => fn(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));
   const box = h('div', { class: 'composer' }, h('div', { class: 'cbox' }, menu, h('div', { id: 'files', class: 'files' }), ta,
@@ -251,8 +280,8 @@ function composer() {
       sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; }),
       sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; }),
       h('div', { class: 'grow' }),
-      SS.sending ? ibtn('stop', 'Stop Claude', () => { SS.queue = []; if (s.id) cm.stop(s.mid, s.id); }, 'ghost sm') : null,
-      (() => { const b = ibtn('send', SS.sending ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
+      SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', () => { SS.queue.length = 0; if (s.id) cm.stop(s.mid, s.id); }, 'ghost sm') : null,
+      (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
   if (SS.mode === 'bypassPermissions') box.append(h('div', { class: 'small err', style: 'margin-top:6px' }, 'Full auto lets Claude run any command on this computer without asking.'));
   box.append(h('div', { class: 'small muted', style: 'margin-top:6px;text-align:center' }, 'Enter to send · Shift+Enter for a new line · drop or paste files and images'));
   box.ondragover = (e) => e.preventDefault();
@@ -403,7 +432,7 @@ function renderLive() {
     if (p.type === 'tool') { if (!tools) { tools = h('div', { class: 'tools' }); live.append(tools); } tools.append(toolCard(p, 'l' + (p.id || i))); }
     else { tools = null; live.append(assistantEl(p.text)); }
   });
-  if (SS.sending && !SS.parts.length) live.append(h('div', { class: 'typing' }, h('i'), h('i'), h('i')));
+  if ((SS.sending && !SS.parts.length) || remoteWorking()) live.append(h('div', { class: 'typing' }, h('i'), h('i'), h('i')));
   for (const q of SS.queue) live.append(h('div', { class: 'msg user queued' }, q, h('div', { class: 'small muted' }, 'queued')));
   if (SS.chatErr) live.append(h('div', { class: 'small err' }, SS.chatErr));
   if (stick) box.scrollTop = box.scrollHeight;
@@ -415,31 +444,44 @@ function sendMsg(text) {
   if (s.isNew && s.kind !== 'talk' && !s.cwd) { SS.chatErr = 'Choose a project folder first.'; renderMsgs(); return; }
   const mm = SS.machines.find((x) => x.id === s.mid);
   if (mm && !mm.secure) localStorage.setItem('cm.lastMachine', mm.id);
-  SS.sending = true; SS.parts = []; SS.chatErr = null; SS.lastRun = null; SS.msgs.push({ role: 'user', text, pending: true });
-  (SS.unsent = SS.unsent || []).push({ text, sel: s, id: s.id || null, at: Date.now() });
+  const run = { parts: [] };
+  if (s.id) RUNS.set(s.id, run);
+  SS.sending = true; SS.parts = run.parts; SS.chatErr = null; SS.lastRun = null; SS.msgs.push({ role: 'user', text, pending: true });
+  const mine = { text, sel: s, id: s.id || null, at: Date.now() };
+  (SS.unsent = SS.unsent || []).push(mine);
   drawPane();
-  const finish = async () => {
+  const viewing = () => sameChat(SS.sel, s) && SS.sel.id === s.id;
+  const unqueue = () => { SS.unsent = (SS.unsent || []).filter((u) => u !== mine); SS.msgs = SS.msgs.filter((m) => !(m.pending && m.text === text)); };
+  const finish = async (busy) => {
+    if (!chatHandlers[sid]) return;
     delete chatHandlers[sid];
-    SS.sending = false; SS.parts = [];
-    await loadMsgs(false);
-    SS.perms = SS.perms.filter((p) => p.ev.session !== s.id);
-    if (SS.sel === s) drawPane();
+    if (s.id && RUNS.get(s.id) === run) RUNS.delete(s.id);
+    if (busy) { qOf(s).unshift(text); unqueue(); }   // Claude is working on this chat from somewhere else: wait for it, then send
+    if (viewing()) {
+      SS.sending = false; SS.parts = [];
+      await loadMsgs(false);
+      SS.perms = SS.perms.filter((p) => p.ev.session !== s.id);
+      drawPane(); renderMsgs();
+    }
     loadList();
-    if (SS.queue.length && SS.sel === s) sendMsg(SS.queue.shift());
+    if (busy) { refreshBusy(); return; }
+    const q = qOf(s);
+    if (q.length && viewing()) sendMsg(q.shift());
   };
   chatHandlers[sid] = (ev) => {
+    const live = viewing();
     if (ev.t === 'queued') { toast(ev.online ? `Sent to ${ev.to}. It runs there now.` : 'Queued. It runs on your laptop when it is online.'); return; }
-    if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; s.title = text.slice(0, 70); (SS.unsent || []).forEach((u) => { if (u.sel === s) u.id = ev.id; }); drawSide(); } return; }
-    if (ev.t === 'delta') { const last = SS.parts[SS.parts.length - 1]; if (last && last.type === 'text') last.text += ev.text; else SS.parts.push({ type: 'text', text: ev.text }); }
-    else if (ev.t === 'tool') SS.parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, text: ev.text });
-    else if (ev.t === 'result') { const t = SS.parts.find((p) => p.type === 'tool' && p.id === ev.id); if (t) { t.result = ev.text; t.error = ev.error; } }
-    else if (ev.t === 'done') SS.lastRun = { sid: s.id, ms: ev.ms, error: ev.error };
-    else if (ev.t === 'fail') { SS.chatErr = ev.text; finish(); return; }
+    if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; s.title = text.slice(0, 70); RUNS.set(ev.id, run); { const nq = QUEUES.get('new') || []; QUEUES.set(ev.id, nq); if (QUEUES.get('new') === nq) QUEUES.delete('new'); } (SS.unsent || []).forEach((u) => { if (u.sel === s) u.id = ev.id; }); drawSide(); } return; }
+    if (ev.t === 'delta') { const last = run.parts[run.parts.length - 1]; if (last && last.type === 'text') last.text += ev.text; else run.parts.push({ type: 'text', text: ev.text }); }
+    else if (ev.t === 'tool') run.parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, text: ev.text });
+    else if (ev.t === 'result') { const t = run.parts.find((p) => p.type === 'tool' && p.id === ev.id); if (t) { t.result = ev.text; t.error = ev.error; } }
+    else if (ev.t === 'done') { if (live) SS.lastRun = { sid: s.id, ms: ev.ms, error: ev.error }; }
+    else if (ev.t === 'fail') { if (/still working on this chat/i.test(ev.text || '')) { finish(true); return; } if (live) SS.chatErr = ev.text; finish(); return; }
     else if (ev.t === 'end') { finish(); return; }
-    scheduleLive();
+    if (live) scheduleLive();
   };
   cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
-    .catch((e) => { SS.chatErr = clean(e); finish(); });
+    .catch((e) => { if (viewing()) SS.chatErr = clean(e); finish(); });
 }
 
 function startVoice() {

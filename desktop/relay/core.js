@@ -142,7 +142,7 @@ function openClaudes() {
 }
 
 /** The chats, newest first. [keep] drops chats before the list is cut to [limit], so junk can never push real chats out. */
-function sessions(active, keep, limit = 300) {
+function sessions(active, keep, limit = 300, quiet = new Set()) {   // [quiet]: chats whose run just ended here; fresh file writes there are the end of that run, not new work
   const files = listFiles().sort((a, b) => b.mtime - a.mtime);
   const now = Date.now(), open = openClaudes(), hasProc = process.platform === 'linux' && !process.env.FLATPAK_ID;
   const out = [];
@@ -155,7 +155,7 @@ function sessions(active, keep, limit = 300) {
       if (hasProc) { if ((open[s.cwd] || 0) > 0) { live = true; open[s.cwd]--; } }
       else live = age < 120;
     }
-    out.push({ id: f.id, title: s.title, cwd: s.cwd, mtime: Math.floor(f.mtime), live, busy: age < 20 || active.has(f.id), tokens: s.tokens || 0, model: s.model || '' });
+    out.push({ id: f.id, title: s.title, cwd: s.cwd, mtime: Math.floor(f.mtime), live, busy: active.has(f.id) || (!quiet.has(f.id) && age < 20), tokens: s.tokens || 0, model: s.model || '' });
     if (out.length >= limit) break;
   }
   return out;
