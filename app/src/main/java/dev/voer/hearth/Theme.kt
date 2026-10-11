@@ -115,7 +115,7 @@ fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
 
 @Composable
 fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(20.dp)
     Column(
         modifier.appear().fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
             .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), shape).padding(18.dp),

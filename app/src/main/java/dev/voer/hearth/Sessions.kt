@@ -40,9 +40,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier) {
+fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier, bare: Boolean = false) {
     val cs = MaterialTheme.colorScheme
-    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceVariant)
+    Box(if (bare) modifier.fillMaxWidth().padding(vertical = 10.dp) else modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceVariant)
         .border(1.dp, cs.outline, RoundedCornerShape(16.dp)).padding(14.dp)) {
         if (value.isEmpty()) Txt(hint, T.body, muted = true)
         BasicTextField(value, onChange, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
@@ -87,8 +87,9 @@ fun MarkdownText(text: String) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         parts.forEach { (isCode, body) ->
             if (isCode) {
-                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(10.dp))
-                    .horizontalScroll(rememberScrollState()).padding(12.dp)) { Txt(body, T.small.copy(fontFamily = FontFamily.Monospace)) }
+                val dk = cs.background.luminance() < .5f
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (dk) Color(0xFF141312) else Color(0xFF2A2823))
+                    .horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp)) { Txt(body, T.small.copy(fontFamily = FontFamily.Monospace, lineHeight = 18.sp), color = if (dk) Color(0xFFE9E6DD) else Color(0xFFF1EEE6)) }
             } else body.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }.forEach { para ->
                 val lines = para.lines()
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -113,8 +114,8 @@ fun MarkdownText(text: String) {
 private fun ToolCard(name: String, detail: String, result: String?, err: Boolean) {
     var open by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(10.dp))
-        .clickable { open = !open }.padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(12.dp))
+        .clickable { open = !open }.padding(horizontal = 12.dp, vertical = 9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Txt(name.ifEmpty { "Tool" }, T.small.copy(fontWeight = FontWeight.SemiBold), color = cs.primary)
             Spacer(Modifier.width(10.dp))
@@ -485,10 +486,15 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
     if (voice && sess.id.isNotEmpty()) { CallScreen(m, sess, mode) { voice = false; scope.launch { reload() } }; return }
     val working = sending || serverBusy
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
-        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, cs.outline, RoundedCornerShape(12.dp)).clickable(onClick = back), contentAlignment = Alignment.Center) { Txt("‹", T.body.copy(fontSize = 20.sp), muted = true) }
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(sess.title, style = T.h2, color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Txt(listOf(if (sess.kind == "talk") "Talk" else folder(sess.cwd), m.name, if (call != "off") "will call you" else null).filterNotNull().joinToString(" · "), T.small, muted = true)
+                Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
+                Txt(listOf(if (sess.kind == "talk") "Talk" else folder(sess.cwd), m.name, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
+                }
             }
             if (sess.id.isNotEmpty()) { TextAction("Talk") { voice = true }; Spacer(Modifier.width(16.dp)) }
             TextAction(if (options) "Done" else "Options") { options = !options }
@@ -552,11 +558,16 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
             files.toList().forEach { f -> Chip("${f.first.takeLast(24)}  ×", true) { files.remove(f) } }
             if (uploading) Txt("Uploading…", T.small, muted = true, modifier = Modifier.padding(vertical = 8.dp))
         }
-        Row(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            TextAction("Attach") { pick.launch("*/*") }
-            Box(Modifier.weight(1f)) { Field(input, { input = it }, if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false) }
-            if (working && sess.id.isNotEmpty()) Button("Stop") { scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) } } }
-            else Button(if (sending) "…" else "Send") { send() }
+        Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = 8.dp)) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(24.dp)).padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextAction("Attach") { pick.launch("*/*") }
+                Box(Modifier.weight(1f)) { Field(input, { input = it }, if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
+                val stop = working && sess.id.isNotEmpty()
+                Box(Modifier.size(38.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
+                    Txt(if (stop) "■" else if (sending) "…" else "↑", T.body.copy(fontWeight = FontWeight.Bold), color = cs.onPrimary)
+                }
+            }
         }
     }
 }
