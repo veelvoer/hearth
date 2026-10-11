@@ -90,6 +90,15 @@ function entriesOf(file) {
 
 const sumCache = new Map();
 function applyTitle(o, r) {
+  if (o.type === 'assistant' && !o.isSidechain) {   // tokens of this chat (input + output + cache writes, once per answer) and the model that answered last
+    const m = o.message || {}, u = m.usage;
+    if (u && !String(m.model || '').startsWith('<')) {
+      const w = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      if (m.id && m.id === r.lastId) r.tok += Math.max(0, w - r.lastW); else r.tok += w;   // the pieces of one answer repeat its id
+      r.lastId = m.id || ''; r.lastW = w;
+      if (m.model) r.model = m.model;
+    }
+  }
   if (o.type === 'ai-title') r.title = o.aiTitle || r.title;
   r.cwd = r.cwd || o.cwd || '';
   if (!r.title && o.type === 'user' && !o.isSidechain) {
@@ -103,13 +112,13 @@ function summarize(f) {
   // a chat that only grew is read from where it was read last time; anything else is read from the start
   const grew = !!hit && f.size >= hit.read && sameStart(f.file, hit.head);
   const from = grew ? hit.pos : 0;
-  const r = grew ? { title: hit.base.title, cwd: hit.base.cwd } : { title: '', cwd: '' };   // what the finished lines said so far
+  const r = grew ? { ...hit.base } : { title: '', cwd: '', tok: 0, model: '', lastId: '', lastW: 0 };   // what the finished lines said so far
   let chunk; try { chunk = readChunk(f.file, from, f.size); } catch { chunk = Buffer.alloc(0); }
   const { done, tail, used } = splitChunk(chunk);
   for (const o of done) applyTitle(o, r);
-  const base = { title: r.title, cwd: r.cwd };
+  const base = { ...r };
   if (tail) applyTitle(tail, r);   // a last line that is already whole counts now (and is read again next time)
-  const out = { mtime: f.mtime, size: f.size, title: r.title || 'Untitled', cwd: r.cwd, base, pos: from + used, read: from + chunk.length,
+  const out = { mtime: f.mtime, size: f.size, title: r.title || 'Untitled', cwd: r.cwd, tokens: r.tok, model: r.model, base, pos: from + used, read: from + chunk.length,
     head: grew ? hit.head : readChunk(f.file, 0, Math.min(256, from + chunk.length)).toString('latin1') };
   sumCache.set(f.file, out);
   return out;
@@ -146,7 +155,7 @@ function sessions(active, keep, limit = 300) {
       if (hasProc) { if ((open[s.cwd] || 0) > 0) { live = true; open[s.cwd]--; } }
       else live = age < 120;
     }
-    out.push({ id: f.id, title: s.title, cwd: s.cwd, mtime: Math.floor(f.mtime), live, busy: age < 20 || active.has(f.id) });
+    out.push({ id: f.id, title: s.title, cwd: s.cwd, mtime: Math.floor(f.mtime), live, busy: age < 20 || active.has(f.id), tokens: s.tokens || 0, model: s.model || '' });
     if (out.length >= limit) break;
   }
   return out;

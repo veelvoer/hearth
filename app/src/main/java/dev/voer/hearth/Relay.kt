@@ -148,6 +148,14 @@ object Relay {
         return Usage(lim("session"), lim("week"), lim("opus"), lim("sonnet"), null, o.getLong("at"))
     }
 
+    /** What the last 30 days would have cost at API prices, and the cost of each of the last [days] days (the Home screen's tile and chart). */
+    fun cost(m: Machine, days: Int = 14): ApiCost? {
+        val o = JSONObject(getJson(m, "/usage-report?days=30"))
+        val a = o.optJSONArray("days") ?: return null
+        val all = List(a.length()) { a.getJSONObject(it).optDouble("cost", 0.0) }
+        return ApiCost(o.optJSONObject("totals")?.optDouble("cost", 0.0) ?: all.sum(), all.takeLast(days))
+    }
+
     /** Asks that computer to read the limits again with one tiny request. Only when you press Refresh. */
     fun refreshUsage(m: Machine) {
         val c = open(m, "/usage/refresh", post = true, read = 90_000)

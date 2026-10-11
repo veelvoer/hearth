@@ -92,3 +92,6 @@ fun dur(ms: Long): String {
         else -> "${m / 1440}d ${(m % 1440) / 60}h"
     }
 }
+
+/** Money value of the work: the last 30 days in total, and per day for the chart. */
+data class ApiCost(val total: Double, val days: List<Double>)

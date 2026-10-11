@@ -153,14 +153,14 @@ fun SessionsScreen() {
     val v = view
     BackHandler(v !is View.Home) { view = View.Home }
     when (v) {
-        is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }) { m, s -> view = View.Chat(m, s) }
+        is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }) { m, s -> view = View.Chat(m, s) }
         is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind)) }
         is View.Chat -> Chat(v.m, v.s, v.voice) { view = View.Home }
     }
 }
 
 @Composable
-private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, open: (Machine, Sess) -> Unit) {
+private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, talk: (Machine) -> Unit, open: (Machine, Sess) -> Unit) {
     val c = LocalContext.current
     val lists = remember { mutableStateMapOf<String, List<Sess>?>() }
     val now by tick()
@@ -182,8 +182,12 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
     }
     var query by remember { mutableStateOf("") }
     var onlyWorking by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
     Screen {
-        Header("Chats")
+        Header("Chats") {
+            if (machines.isNotEmpty()) Box(Modifier.size(38.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+                .clickable { talk(machines.firstOrNull { it.secure } ?: machines.first()) }, contentAlignment = Alignment.Center) { Glyph("mic", 18.dp) }
+        }
         if (machines.isEmpty()) {
             Card {
                 Txt("Connect a computer", T.h2)
@@ -196,7 +200,6 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             }
             return@Screen
         }
-        Button("New session", Modifier.fillMaxWidth().tourTarget("new")) { newSession() }
         Field(query, { query = it }, "Search chats")
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking) { onlyWorking = false }; Chip("Working", onlyWorking) { onlyWorking = true } }
         val offline = machines.filter { lists.containsKey(it.host) && lists[it.host] == null }
@@ -210,6 +213,10 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             .filter { (_, s) -> (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
+        Spacer(Modifier.height(72.dp))   // room for the + button
+    }
+    if (machines.isNotEmpty()) Box(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 16.dp).size(56.dp).tourTarget("new").clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primary)
+        .clickable { newSession() }, contentAlignment = Alignment.Center) { Txt("+", T.title.copy(fontSize = 30.sp), color = MaterialTheme.colorScheme.onPrimary) }
     }
 }
 
@@ -555,6 +562,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
             }
             itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err) else MarkdownText(p.text) }
             if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }
+            if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant") item {
+                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Open a PR", false) { input = "Open a pull request with these changes."; send() }
+                    Chip("Show diff", false) { input = "Show me the diff of what you changed."; send() }
+                }
+            }
             item { Spacer(Modifier.height(4.dp)) }
         }
         err?.let { Txt(it, T.small, color = cs.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }

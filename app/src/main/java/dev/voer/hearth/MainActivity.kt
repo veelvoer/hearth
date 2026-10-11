@@ -107,9 +107,9 @@ private fun Root() {
 @Composable
 private fun Main() {
     var tab = Ui.tab
-    val tabs = listOf("Chats", "Home", "Settings")
+    val tabs = listOf("Chats", "Home", "History", "Settings")
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
-        Updates.release?.let { r -> androidx.compose.animation.AnimatedVisibility(!Ui.chatOpen && tab != 2, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).clickable { Ui.tab = 2 }.padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Updates.release?.let { r -> androidx.compose.animation.AnimatedVisibility(!Ui.chatOpen && tab != 3, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).clickable { Ui.tab = 2 }.padding(horizontal = 20.dp, vertical = 10.dp)) {
             Txt("Hearth ${r.version} is ready", T.small, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
             Txt("Update", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary)
         } } }
@@ -119,7 +119,7 @@ private fun Main() {
             Txt("End", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.clickable { CallSession.end() })
         }
         Box(Modifier.weight(1f)) {
-            androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(240), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); else -> SettingsScreen() } }
+            androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(240), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
         }
         if (!Ui.chatOpen) Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
         if (!Ui.chatOpen) Row(Modifier.fillMaxWidth().tourTarget("tabs")) {

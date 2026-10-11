@@ -47,7 +47,7 @@ function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
   return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s) },
     h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, h('span', { class: 'ellip' }, s.title)),
-    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working' : relTime(s.mtime)) + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
+    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
 function drawSide() {
@@ -55,7 +55,6 @@ function drawSide() {
   if (!side) return;
   const keep = side.scrollTop, hadFocus = document.activeElement && document.activeElement.id === 'chat-search';
   side.innerHTML = '';
-  side.append(h('button', { class: 'primary', onclick: newChat }, '+ New chat'));
   side.append(h('input', { id: 'chat-search', placeholder: 'Search', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
   const q = SS.search.toLowerCase();
   const list = allSessions().filter((s) => !q || s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q));
@@ -119,20 +118,8 @@ function defaultMachineId() {
 function sessionsView() {
   SS.timers.forEach(clearInterval); SS.timers = [];
   const root = h('div', { class: 'split' });
-  SS.side = h('div', { class: 'side' }); SS.pane = h('div', { class: 'pane' });
-  const width = (w) => Math.max(220, Math.min(560, w));
-  SS.side.style.width = width(Number(localStorage.getItem('cm.sideW')) || 310) + 'px';
-  const rz = h('div', { class: 'resizer', title: 'Drag to resize · double-click to reset' });
-  rz.ondblclick = () => { SS.side.style.width = '310px'; localStorage.setItem('cm.sideW', '310'); };
-  rz.onmousedown = (e) => {
-    e.preventDefault();
-    const x0 = e.clientX, w0 = SS.side.offsetWidth;
-    rz.classList.add('drag'); document.body.style.userSelect = 'none'; document.body.style.cursor = 'col-resize';
-    const move = (ev) => { SS.side.style.width = width(w0 + ev.clientX - x0) + 'px'; };
-    const up = () => { rz.classList.remove('drag'); document.body.style.userSelect = ''; document.body.style.cursor = ''; localStorage.setItem('cm.sideW', String(SS.side.offsetWidth)); removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
-    addEventListener('mousemove', move); addEventListener('mouseup', up);
-  };
-  root.append(SS.side, rz, SS.pane);
+  SS.side = h('div', { class: 'side' }); SS.pane = h('div', { class: 'pane' });   // the list of chats lives in the menu on the left (see mountSide)
+  root.append(SS.pane);
   drawSide(); drawPane();
   (async () => {
     SS.machines = await cm.machines();
@@ -370,7 +357,7 @@ function toolCard(t, key) {
   const d = h('details', { class: 'tool' + (t.error ? ' bad' : '') });
   d.open = SS.open.has(key);
   d.ontoggle = () => { if (d.open) SS.open.add(key); else SS.open.delete(key); };
-  const status = t.result === undefined ? h('span', { class: 'spin', title: 'Running' }) : h('span', { class: t.error ? 'bad' : 'okc' }, t.error ? '✗' : '✓');
+  const status = t.result === undefined ? h('span', { class: 'spin', title: 'Running' }) : h('span', { class: t.error ? 'bad' : 'okc' }, t.error ? 'failed' : /^(Edit|MultiEdit|Write|NotebookEdit)$/.test(t.name || '') ? 'applied' : 'done');
   d.append(h('summary', {}, h('span', { class: 'tname' }, t.name || 'Tool'), h('span', { class: 'tsum ellip' }, toolSummary(t)), status), toolBody(t));
   return d;
 }

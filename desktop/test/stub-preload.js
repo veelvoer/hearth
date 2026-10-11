@@ -17,9 +17,9 @@ const state = { signedIn: true, error: null, now, history,
   profile: { email: 'you@example.com', plan: 'Max 5x' },
   usage: { session: { pct: 62, resetsAt: now + 2 * 36e5 + 14 * 6e4 }, week: { pct: 34, resetsAt: now + 3 * 864e5 }, opus: { pct: 12, resetsAt: now + 3 * 864e5 }, sonnet: { pct: 31, resetsAt: now + 3 * 864e5 }, extra: { used: 12.4, limit: 50, pct: 24.8 }, at: now - 120e3 } };
 const sessions = [
-  { id: 'a1', title: 'Fix the login handler tests', cwd: '/home/you/code/api-server', mtime: now - 4e3, live: true, busy: true },
-  { id: 'a2', title: 'Add a dark mode to the gallery', cwd: '/home/you/photo-app', mtime: now - 60e3, live: true, busy: false },
-  { id: 'a3', title: 'Refactor the settings page', cwd: '/home/you/code/website', mtime: now - 3 * 36e5, live: false, busy: false }];
+  { id: 'a1', title: 'Fix the login handler tests', cwd: '/home/you/code/api-server', mtime: now - 4e3, live: true, busy: true, tokens: 3.2e6, model: 'claude-opus-5-5' },
+  { id: 'a2', title: 'Add a dark mode to the gallery', cwd: '/home/you/photo-app', mtime: now - 60e3, live: true, busy: false, tokens: 1.9e6, model: 'claude-sonnet-5-5' },
+  { id: 'a3', title: 'Refactor the settings page', cwd: '/home/you/code/website', mtime: now - 3 * 36e5, live: false, busy: false, tokens: 860e3, model: 'claude-haiku-4-5-20251001' }];
 const msgs = [
   { role: 'user', text: 'Can you fix the failing login tests?' },
   { role: 'tool', name: 'Bash', text: 'Bash npm test', input: { command: 'npm test -- login', description: 'Run the login tests' }, result: 'FAIL  login.test.js\n  ✕ rejects an expired session (4 ms)\n\nTests: 2 failed, 46 passed', error: true },

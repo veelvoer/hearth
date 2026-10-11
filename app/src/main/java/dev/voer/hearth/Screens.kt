@@ -19,6 +19,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -137,20 +141,94 @@ fun LimitCard(name: String, window: String, l: Limit?, ms: Long, now: Long) {
 }
 
 @Composable
+private fun Ring(pct: Float, dia: Dp = 118.dp, stroke: Dp = 11.dp) {
+    val cs = MaterialTheme.colorScheme
+    val track = cs.outline; val fill = if (pct >= 90f) cs.error else cs.primary
+    Box(Modifier.size(dia), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val s = stroke.toPx(); val tl = Offset(s / 2, s / 2); val sz = Size(this.size.width - s, this.size.height - s)
+            drawArc(track, 0f, 360f, false, tl, sz, style = Stroke(s))
+            drawArc(fill, -90f, 360f * (pct / 100f).coerceIn(0f, 1f), false, tl, sz, style = Stroke(s, cap = StrokeCap.Round))
+        }
+        Row(verticalAlignment = Alignment.Bottom) { Txt(pct.toInt().toString(), T.title); Txt("%", T.small, muted = true, modifier = Modifier.padding(bottom = 5.dp, start = 1.dp)) }
+    }
+}
+
+@Composable
+private fun Tile(label: String, value: String, sub: String? = null, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(14.dp)) {
+        Txt(label, T.small.copy(fontSize = 12.sp), muted = true)
+        Txt(value, T.title.copy(fontSize = 26.sp))
+        if (sub != null) Txt(sub, T.small.copy(fontSize = 12.sp), muted = true)
+    }
+}
+
+@Composable
+private fun CostBars(days: List<Double>) {
+    val col = MaterialTheme.colorScheme.primary
+    Canvas(Modifier.fillMaxWidth().height(96.dp)) {
+        val top = (days.maxOrNull() ?: 0.0).coerceAtLeast(0.01)
+        val gap = 5.dp.toPx(); val w = ((size.width - gap * (days.size - 1)) / days.size.coerceAtLeast(1)).coerceAtLeast(2f)
+        days.forEachIndexed { i, v ->
+            val hh = (size.height * (v / top).toFloat()).coerceAtLeast(3.dp.toPx())
+            drawRoundRect(col, Offset(i * (w + gap), size.height - hh), Size(w, hh), CornerRadius(w / 2))
+        }
+    }
+}
+
+@Composable
 fun NowScreen() {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     val now by tick()
     val u = Ui.usage
+    var cost by remember { mutableStateOf<ApiCost?>(null) }
+    LaunchedEffect(Ui.machinesRev) {   // what the work is worth: asked once a minute while this screen is open
+        while (true) {
+            val ms = Store.machines(c)
+            val m = ms.firstOrNull { it.secure } ?: ms.firstOrNull()
+            if (m != null) runCatching { withContext(Dispatchers.IO) { Relay.cost(m) } }.onSuccess { cost = it }
+            delay(60_000)
+        }
+    }
     Screen {
-        Header("Hearth", Ui.profile?.let { listOf(it.plan, it.email).filter { s -> s.isNotEmpty() }.joinToString(" · ") }) {
+        val ldt = java.time.LocalDateTime.now()
+        Header(when { ldt.hour < 5 -> "Late night"; ldt.hour < 12 -> "Good morning"; ldt.hour < 18 -> "Good afternoon"; else -> "Good evening" },
+            listOfNotNull(ldt.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), Ui.profile?.plan?.takeIf { it.isNotEmpty() }?.let { "Claude $it" }).joinToString(" · ")) {
             TextAction(if (Ui.busy) "Updating…" else "Refresh") { scope.launch { Ui.refresh(c, ask = true) } }
         }
         Ui.error?.let {
             Card { Txt(it, T.small, color = MaterialTheme.colorScheme.primary) }
         }
-        LimitCard("Session", "5-hour window", u?.session, SESSION_MS, now)
-        LimitCard("Week", "7-day window", u?.week, WEEK_MS, now)
+        val s = u?.session
+        val shape = RoundedCornerShape(22.dp)
+        Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Ring(s?.at(now)?.toFloat() ?: 0f)
+            Spacer(Modifier.width(18.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Label("Session limit")
+                if (s == null) Txt("No data yet", T.body, muted = true) else {
+                    val r = s.resetsAt
+                    Txt(if (r != null && r > now) "Resets in ${dur(r - now)}" else "Fresh window", T.body)
+                    val pc = pace(s, SESSION_MS, now)
+                    paceWord(s, pc)?.let { w -> Txt(if (pc?.hitsAt != null) "$w · limit in ${dur(pc.hitsAt - now)}" else w, T.small, muted = true) }
+                }
+            }
+        }
+        val w = u?.week
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val wr = w?.resetsAt
+            Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f))
+            Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f))
+        }
+        cost?.takeIf { it.days.isNotEmpty() }?.let { cc ->
+            Card {
+                Txt("Cost per day", T.body.copy(fontWeight = FontWeight.SemiBold))
+                Spacer(Modifier.height(12.dp))
+                CostBars(cc.days)
+            }
+        }
         if (u?.opus != null || u?.sonnet != null) Card {
             Label("Weekly by model")
             listOf("Opus" to u.opus, "Sonnet" to u.sonnet).forEach { (n, l) ->
@@ -171,7 +249,13 @@ fun NowScreen() {
                 Meter(x.pct.toFloat(), height = 5.dp)
             }
         }
-        if (u != null) Txt("Updated ${ago(u.at, now)}. Same limits as /usage in Claude Code.", T.small, muted = true)
+        val ok = u != null && Ui.error == null
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(if (ok) androidx.compose.ui.graphics.Color(0xFF4CAF7D) else MaterialTheme.colorScheme.onSurfaceVariant))
+            Spacer(Modifier.width(10.dp))
+            Txt(if (u == null) "Waiting for the first numbers" else if (ok) "Online · updated ${ago(u.at, now)}" else "Can't reach your computer right now", T.small, muted = true)
+        }
+        if (u != null) Txt("Same limits as /usage in Claude Code.", T.small, muted = true)
     }
 }
 
@@ -321,20 +405,7 @@ fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
     }
 
 @Composable
-fun UsageScreen() {
-    var view by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        val now = java.time.LocalDateTime.now()
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) {
-            Txt(now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), T.small, muted = true)
-            Txt(when { now.hour < 5 -> "Late night"; now.hour < 12 -> "Good morning"; now.hour < 18 -> "Good afternoon"; else -> "Good evening" }, T.title)
-        }
-        ChipRow(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Limits", view == 0) { view = 0 }; Chip("History", view == 1) { view = 1 }
-        }
-        Box(Modifier.weight(1f).tourTarget("usage")) { if (view == 0) NowScreen() else HistoryScreen() }
-    }
-}
+fun UsageScreen() = Box(Modifier.fillMaxSize().tourTarget("usage")) { NowScreen() }
 
 @Composable
 fun SettingsScreen() {

@@ -48,12 +48,12 @@ fun Modifier.tourTarget(key: String): Modifier = onGloballyPositioned { Tour.bou
 private data class TourStep(val key: String?, val title: String, val text: String, val tab: Int = 0)
 private val STEPS = listOf(
     TourStep(null, "This is Hearth", "A quick look around. I will point at things and say what they do."),
-    TourStep("tabs", "The menu", "Sessions (your chats), Usage (how much of your limit is left and what it costs) and Settings."),
-    TourStep("new", "Start a chat", "Tap here to start a new session. Pick a project, choose which computer works on it, and say what you want."),
+    TourStep("tabs", "The menu", "Chats, Home (how much of your limit is left and what it is worth), History and Settings."),
+    TourStep("new", "Start a chat", "Tap the + button to start a new chat. Pick a project, choose which computer works on it, and say what you want."),
     TourStep("list", "Your chats", "These are the same chats as on your laptop and your server. Tap one to continue it."),
-    TourStep("usage", "Usage", "Your 5-hour and weekly limits, with history.", 1),
-    TourStep("computers", "Computers and servers", "Add or remove the computers and servers this phone talks to. Tap “Add a computer”, then Connect.", 2),
-    TourStep("updates", "Updates", "Hearth updates itself from GitHub. Press Check for updates; it can update the server too.", 2),
+    TourStep("usage", "Home", "Your 5-hour and weekly limits, and what your work is worth.", 1),
+    TourStep("computers", "Computers and servers", "Add or remove the computers and servers this phone talks to. Tap “Add a computer”, then Connect.", 3),
+    TourStep("updates", "Updates", "Hearth updates itself from GitHub. Press Check for updates; it can update the server too.", 3),
     TourStep(null, "That is the tour", "Need help? Settings → Support. Have fun!", 0),
 )
 

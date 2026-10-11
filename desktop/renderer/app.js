@@ -102,11 +102,19 @@ function render() {
   content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' + slideDir : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
   maybeTutorial();
-  if (!S.signedIn) return content.append(loginView());
+  if (!S.signedIn) { mountSide(); return content.append(loginView()); }
   const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
+  mountSide();
   if (keepScroll) holdScroll(keepScroll, prevH, v);
   if (tab === 'history') requestAnimationFrame(drawHistory);
+}
+/** The chats are listed in the menu itself, under the four screens, while Chats is open. */
+function mountSide() {
+  const nav = $('#nav'); if (!nav) return;
+  const want = tab === 'sessions' && S.signedIn && typeof SS !== 'undefined' ? SS.side : null;
+  nav.querySelectorAll(':scope > .side').forEach((e) => { if (e !== want) e.remove(); });
+  if (want && !want.isConnected) nav.insertBefore(want, nav.querySelector('.sp') || nav.querySelector('.navfoot'));
 }
 /** Keeps the page exactly where it was while the cards below load and change height, until the person scrolls themselves. */
 let holdTimer = 0;
@@ -168,10 +176,39 @@ function nowView() {
 // ───────────────────────── History ─────────────────────────
 let histRange = 0;
 const SPANS = [864e5, 7 * 864e5, 30 * 864e5];
+let chatQ = '', chatF = 'all';
+const modelLabel = (id) => { const m = /(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?!\d)/i.exec(id || ''); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + ' ' + m[2] + (m[3] ? '.' + m[3] : '') : ''; };
+/** Every chat as one table (design: History), with search, This week and Costly, and a few totals under it. */
+function chatHistory() {
+  const box = h('div', { class: 'stack' });
+  const draw = () => {
+    box.innerHTML = '';
+    const all = allSessions(), week = Date.now() - 7 * 864e5, q = chatQ.trim().toLowerCase();
+    let list = all.filter((x) => (!q || (x.title + ' ' + (x.cwd || '') + ' ' + modelLabel(x.model)).toLowerCase().includes(q)) && (chatF !== 'week' || x.mtime >= week));
+    list = chatF === 'costly' ? list.sort((x, y) => (y.tokens || 0) - (x.tokens || 0)).slice(0, 10) : list.sort((x, y) => y.mtime - x.mtime);
+    box.append(h('div', { class: 'row' }, [['all', 'All'], ['week', 'This week'], ['costly', 'Costly']].map(([k, l]) => chip(l, chatF === k, () => { chatF = k; draw(); }))),
+      h('input', { id: 'hist-q', placeholder: 'Search chats, projects and tools…', value: chatQ, oninput: (e) => { chatQ = e.target.value; const pos = e.target.selectionStart; draw(); const i = $('#hist-q'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } } }));
+    const head1 = h('tr', {}, ['Chat', 'Project', 'Model', 'Tokens', 'Updated'].map((t) => h('th', { class: 'label' }, t)));
+    const rows = list.slice(0, 200).map((x) => h('tr', { class: 'hrow', onclick: () => { setTab('sessions'); setTimeout(() => openSession(x), 0); } },
+      h('td', { class: 'hc' }, x.title), h('td', {}, folderName(x.cwd)), h('td', {}, modelLabel(x.model) || '–'), h('td', {}, x.tokens ? fmtN(x.tokens) : '–'),
+      h('td', {}, x.running || x.busy ? 'now' : (relTime(x.mtime) === 'now' ? 'now' : relTime(x.mtime) + ' ago'))));
+    box.append(h('div', { class: 'card tablecard' }, rows.length ? h('table', { class: 'htable' }, h('thead', {}, head1), h('tbody', {}, rows))
+      : h('p', { class: 'muted small', style: 'padding:14px 18px;margin:0' }, all.length ? 'No chats match.' : 'No chats yet.')));
+    const days = new Set(all.filter((x) => x.mtime >= Date.now() - 30 * 864e5).map((x) => new Date(x.mtime).toDateString())), tok = all.filter((x) => x.mtime >= Date.now() - 30 * 864e5).reduce((a, x) => a + (x.tokens || 0), 0);
+    box.append(h('div', { class: 'row' }, [['Active days', days.size + ' of 30'], ['Average per active day', days.size ? fmtN(tok / days.size) + ' tokens' : '–'], ['Chats', String(all.length)]]
+      .map(([k, v]) => h('div', { class: 'card grow' }, h('div', { class: 'small muted' }, k), h('h2', { style: 'margin-top:4px' }, v)))));
+  };
+  draw();
+  if (!SS.machines.length || !Object.keys(SS.live).length) (async () => { try { SS.machines = await cm.machines(); if (!SS.mid || !SS.machines.some((m) => m.id === SS.mid)) SS.mid = defaultMachineId(); await pollLive(); } catch { /* shown empty */ } if (tab === 'history' && box.isConnected) draw(); })();
+  return box;
+}
 function historyView() {
   const now = Date.now(), from = now - SPANS[histRange];
   const data = S.history.filter((s) => s.t >= from);
-  const p = page(head('History', 'Sampled every time usage refreshes'));
+  const p = page(head('History', 'Every chat across your computers and server'));
+  p.classList.add('wide');
+  p.append(chatHistory());
+  p.append(h('div', { class: 'row', style: 'margin-top:10px;align-items:baseline' }, h('h3', { class: 'grow' }, 'Limits over time'), h('span', { class: 'small muted' }, 'Sampled every time usage refreshes')));
   p.append(h('div', { class: 'row' }, ['24h', '7d', '30d'].map((l, i) => chip(l, histRange === i, () => { histRange = i; render(); }))));
   p.append(h('div', { class: 'card' }, h('div', { class: 'row small muted', style: 'gap:16px;margin-bottom:8px' },
     h('span', {}, h('span', { class: 'dot' }), 'Session'), h('span', {}, h('span', { class: 'dot', style: 'background:var(--ink)' }), 'Week')),
@@ -254,7 +291,22 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
-  return p;
+  if (only) return p;
+  return withSettingsMenu(p);
+}
+/** The list on the left of Settings: one entry per card, a tap scrolls to it and the one being read is lit. */
+function withSettingsMenu(p) {
+  const cards = [...p.children].filter((c) => c.querySelector && c.querySelector('.chead .label'));
+  const menu = h('div', { class: 'submenu' });
+  const items = cards.map((c) => { const name = c.querySelector('.chead .label').textContent; const b = h('button', { class: 'subitem', onclick: () => { c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, name); menu.append(b); return [b, c]; });
+  const spy = () => {
+    let cur = 0; items.forEach(([, c], i) => { if (c.isConnected && c.getBoundingClientRect().top < 140) cur = i; });
+    items.forEach(([b], i) => b.classList.toggle('on', i === cur));
+  };
+  if (content._spy) content.removeEventListener('scroll', content._spy);
+  content._spy = spy; content.addEventListener('scroll', spy, { passive: true });
+  setTimeout(spy, 0);
+  return h('div', { class: 'settingsrow' }, menu, p);
 }
 
 /** Which computers and servers this app talks to. Chats pick from these; the first own computer is the default. */
