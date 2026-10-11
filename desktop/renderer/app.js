@@ -64,7 +64,7 @@ function renderNav() {
   nav.dataset.built = built;
   nav.innerHTML = '';
   nav.className = collapsed ? 'collapsed' : '';
-  nav.append(h('div', { class: 'brand-row' }, h('div', { class: 'brand', html: sparkSVG(24) }, h('span', { class: 'lbl' }, ' Hearth')),
+  nav.append(h('div', { class: 'brand-row' }, h('div', { class: 'brand' }, h('span', { class: 'logo', html: sparkSVG(18, '#fff') }), h('span', { class: 'lbl' }, ' Hearth')),
     h('button', { class: 'navtoggle', title: collapsed ? 'Show menu names' : 'Shrink menu to icons', 'aria-label': collapsed ? 'Expand menu' : 'Collapse menu', onclick: () => { localStorage.setItem('cm.navCollapsed', collapsed ? '0' : '1'); renderNav(); } }, collapsed ? '›' : '‹')));
   if (!S.signedIn) return;
   for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));

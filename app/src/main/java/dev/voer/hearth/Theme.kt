@@ -55,14 +55,14 @@ val Clay = Color(0xFFF0643C)
 val Crail = Color(0xFFC15F3C)
 
 private val Light = lightColorScheme(
-    primary = Crail, onPrimary = Color(0xFFFAF9F5), background = Color(0xFFF0EEE6), onBackground = Color(0xFF3D3929),
-    surface = Color(0xFFF0EEE6), onSurface = Color(0xFF3D3929), surfaceVariant = Color(0xFFFAF9F5),
-    onSurfaceVariant = Color(0xFF83827D), outline = Color(0xFFDDD9CB), secondary = Clay,
+    primary = Crail, onPrimary = Color(0xFFFBFAF6), background = Color(0xFFF4F1EA), onBackground = Color(0xFF2F2B20),
+    surface = Color(0xFFF4F1EA), onSurface = Color(0xFF2F2B20), surfaceVariant = Color(0xFFFBFAF6),
+    onSurfaceVariant = Color(0xFF7F7A6D), outline = Color(0xFFE2DCCD), secondary = Clay,
 )
 private val Dark = darkColorScheme(
-    primary = Clay, onPrimary = Color(0xFF1F1E1D), background = Color(0xFF1F1E1D), onBackground = Color(0xFFFAF9F5),
-    surface = Color(0xFF1F1E1D), onSurface = Color(0xFFFAF9F5), surfaceVariant = Color(0xFF2B2A28),
-    onSurfaceVariant = Color(0xFF9C9A92), outline = Color(0xFF3F3E3A), secondary = Clay,
+    primary = Clay, onPrimary = Color(0xFF1B1A19), background = Color(0xFF1B1A19), onBackground = Color(0xFFF4F2EC),
+    surface = Color(0xFF1B1A19), onSurface = Color(0xFFF4F2EC), surfaceVariant = Color(0xFF252422),
+    onSurfaceVariant = Color(0xFF9A968C), outline = Color(0xFF34322E), secondary = Clay,
 )
 
 /** App-wide colors: Claude's own palette, or the phone's Material You colors when "System" is chosen. */
@@ -115,7 +115,7 @@ fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
 
 @Composable
 fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(18.dp)
     Column(
         modifier.appear().fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
             .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), shape).padding(18.dp),

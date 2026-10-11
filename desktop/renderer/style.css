@@ -1,9 +1,9 @@
 :root {
-  --bg: #F0EEE6; --card: #FAF9F5; --ink: #3D3929; --muted: #83827D; --line: #DDD9CB; --clay: #C15F3C; --clay-soft: #F0643C; --onclay: #FAF9F5;
+  --bg: #F0EEE6; --card: #FAF9F5; --ink: #3D3929; --muted: #83827D; --line: #DDD9CB; --clay: #C15F3C; --clay-soft: #F0643C; --onclay: #FAF9F5; --side: #EEEAE0; --active: #E6DDCB;
   --serif: "Tiempos Headline", Georgia, "DejaVu Serif", serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1F1E1D; --card: #2B2A28; --ink: #FAF9F5; --muted: #9C9A92; --line: #3F3E3A; --clay: #F0643C; --onclay: #1F1E1D; }
+  :root { --bg: #1F1E1D; --card: #2B2A28; --ink: #FAF9F5; --muted: #9C9A92; --line: #3F3E3A; --clay: #F0643C; --onclay: #1F1E1D; --side: #161514; --active: #2E2A26; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -412,3 +412,23 @@ select, input { min-height: 36px; box-sizing: border-box; }
 /* screens slide in from the side they are on in the menu */
 .entering.fwd .page { animation-name: fromright2; animation-duration: .28s; } .entering.back .page { animation-name: fromleft2; animation-duration: .28s; }
 @keyframes fromright2 { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } } @keyframes fromleft2 { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+
+/* Hearth redesign: warmer sidebar, gradient logo tile, rounder cards and controls */
+#nav { width: 220px; background: var(--side); padding: 22px 14px; gap: 2px; }
+#nav.collapsed { width: 66px; }
+#nav .logo { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #FF8A4C, #E5484D); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+#nav .brand-row .brand { font-size: 19px; }
+#nav button { border-radius: 12px; padding: 9px 12px; }
+#nav button.on { background: var(--active); font-weight: 600; }
+.hl.navhl { border-radius: 12px; background: var(--active); }
+.navtoggle { border-radius: 10px !important; }
+.card { border-radius: 20px; }
+button.primary { border-radius: 14px; }
+.chip { background: var(--card); }
+.chip.on { background: var(--clay); }
+.item { border-radius: 14px; }
+.item.on { background: var(--card); }
+.msg.user { border-radius: 16px; }
+input, textarea, select { background: var(--card); border-radius: 14px; }
+h1 { font-size: 32px; }
+.big { letter-spacing: -1px; }
