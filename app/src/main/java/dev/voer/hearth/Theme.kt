@@ -83,7 +83,7 @@ fun ClaudeTheme(content: @Composable () -> Unit) {
 
 object T {
     val big = TextStyle(fontFamily = FontFamily.Serif, fontSize = 64.sp, letterSpacing = (-1.5).sp)
-    val title = TextStyle(fontFamily = FontFamily.Serif, fontSize = 26.sp)
+    val title = TextStyle(fontFamily = FontFamily.Serif, fontSize = 32.sp)
     val h2 = TextStyle(fontFamily = FontFamily.Serif, fontSize = 19.sp)
     val body = TextStyle(fontSize = 15.sp, lineHeight = 21.sp)
     val small = TextStyle(fontSize = 13.sp, lineHeight = 18.sp)

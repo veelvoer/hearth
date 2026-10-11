@@ -60,7 +60,7 @@ object Updates {
     }
 
     suspend fun latest(): Release = withContext(Dispatchers.IO) {
-        try { latestViaApi() } catch (e: ApiException) { if (e.code == 403 || e.code == 429) latestViaRedirect() else throw e }
+        try { latestViaApi() } catch (e: Exception) { latestViaRedirect() }
     }
 
     private fun latestViaApi(): Release {

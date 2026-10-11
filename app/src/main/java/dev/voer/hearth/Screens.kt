@@ -325,6 +325,11 @@ fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
 fun UsageScreen() {
     var view by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
+        val now = java.time.LocalDateTime.now()
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) {
+            Txt(now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), T.small, muted = true)
+            Txt(when { now.hour < 5 -> "Late night"; now.hour < 12 -> "Good morning"; now.hour < 18 -> "Good afternoon"; else -> "Good evening" }, T.title)
+        }
         ChipRow(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Limits", view == 0) { view = 0 }; Chip("History", view == 1) { view = 1 }
         }

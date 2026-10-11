@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.BasicTextField
@@ -177,8 +178,10 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             delay(6_000)
         }
     }
+    var query by remember { mutableStateOf("") }
+    var onlyWorking by remember { mutableStateOf(false) }
     Screen {
-        Header("Sessions")
+        Header("Chats")
         if (machines.isEmpty()) {
             Card {
                 Txt("Connect a computer", T.h2)
@@ -192,6 +195,8 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             return@Screen
         }
         Button("New session", Modifier.fillMaxWidth().tourTarget("new")) { newSession() }
+        Field(query, { query = it }, "Search chats")
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking) { onlyWorking = false }; Chip("Working", onlyWorking) { onlyWorking = true } }
         val offline = machines.filter { lists.containsKey(it.host) && lists[it.host] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't be reached right now. It will reconnect on its own.", T.small, muted = true)
         // the server holds every chat, so its list is the list (same as on the desktop app); other computers only fill in what it lacks
@@ -200,6 +205,7 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             .groupBy { (_, s) -> s.id }.values.map { g ->
                 g.firstOrNull { (mm, _) -> mm === hub } ?: g.reduce { a, b -> if (a.second.running != b.second.running) (if (a.second.running) a else b) else if (b.second.mtime > a.second.mtime + 2500) b else a }
             }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
+            .filter { (_, s) -> (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
     }
@@ -207,14 +213,17 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
 
 @Composable
 private fun SessionCard(s: Sess, machine: String?, now: Long, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val working = s.running || s.busy
     Card(Modifier.pressable(onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (s.running || s.busy) Box(Modifier.size(8.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary))
-            if (s.running || s.busy) Spacer(Modifier.width(8.dp))
-            Text(s.title, style = T.h2, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (working) Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(cs.primary))
+            if (working) Spacer(Modifier.width(8.dp))
+            Txt(listOfNotNull(if (working) "WORKING" else null, if (s.kind == "talk") "Talk" else folder(s.cwd), machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
+                T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
         }
-        Spacer(Modifier.height(4.dp))
-        Txt(listOfNotNull(if (s.kind == "talk") "Talk" else folder(s.cwd), machine, if (s.running) "working" else dur(now - s.mtime) + " ago").joinToString(" · "), T.small, muted = true)
+        Spacer(Modifier.height(6.dp))
+        Text(s.title, style = T.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

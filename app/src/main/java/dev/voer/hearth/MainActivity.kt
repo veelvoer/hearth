@@ -85,7 +85,7 @@ private fun Root() {
 @Composable
 private fun Main() {
     var tab = Ui.tab
-    val tabs = listOf("Sessions", "Usage", "Settings")
+    val tabs = listOf("Chats", "Home", "Settings")
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
         Updates.release?.let { r -> androidx.compose.animation.AnimatedVisibility(!Ui.chatOpen && tab != 2, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).clickable { Ui.tab = 2 }.padding(horizontal = 20.dp, vertical = 10.dp)) {
             Txt("Hearth ${r.version} is ready", T.small, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))

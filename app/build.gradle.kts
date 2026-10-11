@@ -19,8 +19,8 @@ android {
         applicationId = "dev.voer.hearth"
         minSdk = 29
         targetSdk = 35
-        versionCode = 10307
-        versionName = "1.3.7"
+        versionCode = 10308
+        versionName = "1.3.8"
     }
     signingConfigs {
         if (!keyProps.isEmpty) create("release") {
