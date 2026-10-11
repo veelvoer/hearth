@@ -24,12 +24,23 @@ enum class Shape(val label: String, val w: Float, val h: Float) {
     TINY("Mini", 72f, 72f), SMALL("Ring", 150f, 150f), WIDE("Dual", 310f, 150f), STRIP("Strip", 310f, 64f);
 
     companion object {
-        /** Layout follows the size the widget is actually resized to, whichever provider it came from. */
-        fun fit(w: Float, h: Float) = when {
-            h < 90 && w < 110 -> TINY
-            h < 90 -> STRIP
+        /** By shape alone: the proportions of the widget decide, never an absolute size (phone makers count a "row" differently, so a 4x1 widget is not always under 90 dp tall). */
+        private fun byRatio(w: Float, h: Float) = when {
+            w < 120 && h < 120 -> TINY
+            w / h > 2.6f -> STRIP
             w / h > 1.4f -> WIDE
             else -> SMALL
+        }
+
+        /** The widget keeps the layout of the one that was added; only a clear resize into other proportions switches to another layout. */
+        fun fit(base: Shape, w: Float, h: Float): Shape {
+            val r = w / h
+            return when (base) {
+                TINY -> if (w < 120 && h < 120) TINY else byRatio(w, h)
+                STRIP -> if (r > 1.7f) STRIP else byRatio(w, h)
+                WIDE -> if (r > 3.3f || r < 1.2f) byRatio(w, h) else WIDE
+                SMALL -> if (r > 1.9f || r < 0.6f) byRatio(w, h) else SMALL
+            }
         }
     }
 }
@@ -235,7 +246,7 @@ object WidgetUpdater {
     fun bitmap(c: Context, cfg: WCfg, shape: Shape, u: Usage?, wDp: Float, hDp: Float, density: Float): Bitmap {
         val px = wDp * density * hDp * density
         val scale = density * min(1f, sqrt(900_000f / px))
-        return Renderer(c, cfg, u, System.currentTimeMillis()).render(Shape.fit(wDp, hDp), wDp, hDp, scale)
+        return Renderer(c, cfg, u, System.currentTimeMillis()).render(Shape.fit(shape, wDp, hDp), wDp, hDp, scale)
     }
 
     fun updateAll(c: Context) {
