@@ -55,23 +55,22 @@ const TABS = [['sessions', 'Chats'], ['dashboard', 'Home'], ['history', 'History
 
 function renderNav() {
   const nav = $('#nav');
-  const collapsed = localStorage.getItem('cm.navCollapsed') === '1';
-  const built = (collapsed ? 'c' : 'o') + (S.signedIn ? 'in' : 'out') + TABS.length;
+  const built = (S.signedIn ? 'in' : 'out') + TABS.length;
   const navStatus = () => { const f = nav.querySelector('.navfoot'); if (!f) return; const ok = typeof D !== 'undefined' && D.stats; f.classList.toggle('ok', !!ok); f.querySelector('.lbl').textContent = ok ? 'Server online' : (typeof D !== 'undefined' && D.err ? 'Server unreachable' : 'Connecting…'); };
-  if (nav.dataset.built === built) {   // same menu: only move the highlight (rebuilding it would cut the glide short)
+  if (nav.dataset.built === built) {   // same bar: only move the highlight (rebuilding it would cut the glide short)
     nav.querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     navStatus();
     return;
   }
   nav.dataset.built = built;
   nav.innerHTML = '';
-  nav.className = collapsed ? 'collapsed' : '';
-  nav.append(h('div', { class: 'brand-row' }, h('div', { class: 'brand' }, h('span', { class: 'logo', html: sparkSVG(18, '#fff') }), h('span', { class: 'lbl' }, ' Hearth')),
-    h('button', { class: 'navtoggle', title: collapsed ? 'Show menu names' : 'Shrink menu to icons', 'aria-label': collapsed ? 'Expand menu' : 'Collapse menu', onclick: () => { localStorage.setItem('cm.navCollapsed', collapsed ? '0' : '1'); renderNav(); mountSide(); settleNav(); } }, collapsed ? '›' : '‹')));
+  nav.className = '';
+  const tabs = h('div', { class: 'tabs' });
+  nav.append(h('div', { class: 'brand' }, h('span', { class: 'logo', html: sparkSVG(18, '#fff') }), h('span', { class: 'lbl' }, 'Hearth')));
   if (!S.signedIn) return;
-  nav.append(h('button', { class: 'newchat', title: 'New chat', onclick: () => { setTab('sessions'); newChat(); } }, '+', h('span', { class: 'lbl' }, ' New chat')));
-  for (const [id, label] of TABS) nav.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, icon(id), h('span', { class: 'lbl' }, label)));
-  nav.append(h('div', { class: 'sp' }), h('div', { class: 'navfoot' }, h('i'), h('span', { class: 'lbl' }, '')));
+  for (const [id, label] of TABS) tabs.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, h('span', { class: 'lbl' }, label)));
+  nav.append(tabs, h('div', { class: 'navfoot' }, h('i'), h('span', { class: 'lbl' }, '')),
+    h('button', { class: 'newchat', title: 'New chat', onclick: () => { setTab('sessions'); newChat(); } }, '+ New chat'));
   navStatus();
 }
 /** Runs a change of screen as one morphing transition (shared elements glide, the rest cross-fades). */
@@ -102,21 +101,11 @@ function render() {
   content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' + slideDir : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
   maybeTutorial();
-  if (!S.signedIn) { mountSide(); return content.append(loginView()); }
+  if (!S.signedIn) return content.append(loginView());
   const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
-  mountSide();
   if (keepScroll) holdScroll(keepScroll, prevH, v);
   if (tab === 'history') requestAnimationFrame(drawHistory);
-}
-/** The menu changes width over a moment; the highlight is measured again once it has its final size. */
-function settleNav() { [0, 200].forEach((ms) => setTimeout(() => { $('#nav').querySelectorAll(':scope > .hl').forEach((e) => e.remove()); HL.clear(); placeHighlights(); }, ms)); }
-/** The chats are listed in the menu itself, under the four screens, while Chats is open. */
-function mountSide() {
-  const nav = $('#nav'); if (!nav) return;
-  const want = tab === 'sessions' && S.signedIn && typeof SS !== 'undefined' ? SS.side : null;
-  nav.querySelectorAll(':scope > .side').forEach((e) => { if (e !== want) e.remove(); });
-  if (want && !want.isConnected) nav.insertBefore(want, nav.querySelector('.sp') || nav.querySelector('.navfoot'));
 }
 /** Keeps the page exactly where it was while the cards below load and change height, until the person scrolls themselves. */
 let holdTimer = 0;
@@ -180,29 +169,43 @@ let histRange = 0;
 const SPANS = [864e5, 7 * 864e5, 30 * 864e5];
 let chatQ = '', chatF = 'all';
 const modelLabel = (id) => { const m = /(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?!\d)/i.exec(id || ''); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + ' ' + m[2] + (m[3] ? '.' + m[3] : '') : ''; };
-/** Every chat as one table (design: History), with search, This week and Costly, and a few totals under it. */
+/** Every chat, grouped by day (design: History), with search, This week, By project and Costliest, and the numbers beside it. */
 function chatHistory() {
-  const box = h('div', { class: 'stack' });
+  const box = h('div', { class: 'histgrid' });
   const draw = () => {
     box.innerHTML = '';
-    const all = allSessions(), week = Date.now() - 7 * 864e5, q = chatQ.trim().toLowerCase();
-    let list = all.filter((x) => (!q || (x.title + ' ' + (x.cwd || '') + ' ' + modelLabel(x.model)).toLowerCase().includes(q)) && (chatF !== 'week' || x.mtime >= week));
-    list = chatF === 'costly' ? list.sort((x, y) => (y.tokens || 0) - (x.tokens || 0)).slice(0, 10) : list.sort((x, y) => y.mtime - x.mtime);
-    box.append(h('div', { class: 'row' }, [['all', 'All'], ['week', 'This week'], ['costly', 'Costly']].map(([k, l]) => chip(l, chatF === k, () => { chatF = k; draw(); }))),
-      h('input', { id: 'hist-q', placeholder: 'Search chats, projects and tools…', value: chatQ, oninput: (e) => { chatQ = e.target.value; const pos = e.target.selectionStart; draw(); const i = $('#hist-q'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } } }));
-    const head1 = h('tr', {}, ['Chat', 'Project', 'Model', 'Tokens', 'Updated'].map((t) => h('th', { class: 'label' }, t)));
-    const rows = list.slice(0, 200).map((x) => h('tr', { class: 'hrow', onclick: () => { setTab('sessions'); setTimeout(() => openSession(x), 0); } },
-      h('td', { class: 'hc' }, x.title), h('td', {}, folderName(x.cwd)), h('td', {}, modelLabel(x.model) || '–'), h('td', {}, x.tokens ? fmtN(x.tokens) : '–'),
-      h('td', {}, x.running || x.busy ? 'now' : (relTime(x.mtime) === 'now' ? 'now' : relTime(x.mtime) + ' ago'))));
-    box.append(h('div', { class: 'card tablecard' }, rows.length ? h('table', { class: 'htable' }, h('thead', {}, head1), h('tbody', {}, rows))
-      : h('p', { class: 'muted small', style: 'padding:14px 18px;margin:0' }, all.length ? 'No chats match.' : 'No chats yet.')));
-    const days = new Set(all.filter((x) => x.mtime >= Date.now() - 30 * 864e5).map((x) => new Date(x.mtime).toDateString())), tok = all.filter((x) => x.mtime >= Date.now() - 30 * 864e5).reduce((a, x) => a + (x.tokens || 0), 0);
-    box.append(h('div', { class: 'row' }, [['Active days', days.size + ' of 30'], ['Average per active day', days.size ? fmtN(tok / days.size) + ' tokens' : '–'], ['Chats', String(all.length)]]
-      .map(([k, v]) => h('div', { class: 'card grow' }, h('div', { class: 'small muted' }, k), h('h2', { style: 'margin-top:4px' }, v)))));
+    const all = allSessions(), day = 864e5, q = chatQ.trim().toLowerCase();
+    const startToday = new Date().setHours(0, 0, 0, 0);
+    let list = all.filter((x) => (!q || (x.title + ' ' + (x.cwd || '') + ' ' + modelLabel(x.model)).toLowerCase().includes(q)) && (chatF !== 'week' || x.mtime >= Date.now() - 7 * day));
+    list = chatF === 'costly' ? list.sort((x, y) => (y.cost || y.tokens || 0) - (x.cost || x.tokens || 0)).slice(0, 30) : list.sort((x, y) => y.mtime - x.mtime);
+    const bucket = (x) => chatF === 'project' ? folderName(x.cwd) : chatF === 'costly' ? 'Costliest' : x.mtime >= startToday ? 'Today' : x.mtime >= startToday - day ? 'Yesterday' : x.mtime >= Date.now() - 7 * day ? 'This week' : 'Earlier';
+    const groups = new Map(); list.slice(0, 300).forEach((x) => { const k = bucket(x); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); });
+    const left = h('div', { class: 'stack' }, h('div', { class: 'row' }, h('input', { id: 'hist-q', placeholder: 'Search chats, projects and models…', value: chatQ, oninput: (e) => { chatQ = e.target.value; const pos = e.target.selectionStart; draw(); const i = $('#hist-q'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } } })));
+    for (const [k, items] of groups) {
+      left.append(h('div', { class: 'label hgroup' }, k));
+      items.forEach((x) => left.append(h('div', { class: 'hitem', onclick: () => { setTab('sessions'); setTimeout(() => openSession(x), 0); } },
+        h('i', { class: 'hdot' + (x.running || x.busy ? ' on' : '') }),
+        h('div', { class: 'grow', style: 'min-width:0' }, h('div', { class: 'ellip', style: 'font-weight:600' }, x.title),
+          h('div', { class: 'small muted ellip' }, [folderName(x.cwd), modelLabel(x.model), x.running || x.busy ? 'working now' : (relTime(x.mtime) === 'now' ? 'now' : relTime(x.mtime) + ' ago')].filter(Boolean).join(' · '))),
+        h('div', { class: 'small muted' }, x.tokens ? fmtN(x.tokens) + ' tokens' : ''))));
+    }
+    if (!list.length) left.append(h('p', { class: 'muted small' }, all.length ? 'No chats match.' : 'No chats yet.'));
+    const recent = all.filter((x) => x.mtime >= Date.now() - 30 * day), days = new Set(recent.map((x) => new Date(x.mtime).toDateString())), tok = recent.reduce((a, x) => a + (x.tokens || 0), 0);
+    const byModel = {}; recent.forEach((x) => { const l = modelLabel(x.model).split(' ')[0] || 'Other'; byModel[l] = (byModel[l] || 0) + (x.tokens || 0); });
+    const tot = Object.values(byModel).reduce((a, b) => a + b, 0) || 1, COL = { Sonnet: 'var(--sonnet, #D9A441)', Opus: 'var(--opus, #C15F3C)', Haiku: 'var(--haiku, #6A9BCC)', Other: '#9C9A92' };
+    const right = h('div', { class: 'stack' },
+      h('div', { class: 'card' }, h('div', { class: 'label' }, 'Active days'), h('div', { style: 'margin:6px 0 10px' }, h('span', { class: 'bignum' }, String(days.size)), h('span', { class: 'muted', style: 'margin-left:8px;font-size:20px' }, 'of 30')), h('div', { class: 'meter thin', style: 'margin:0' }, h('i', { style: `width:${days.size / 30 * 100}%` }))),
+      h('div', { class: 'card' }, h('div', { class: 'label', style: 'margin-bottom:8px' }, 'Averages and records'),
+        h('div', { class: 'kv' }, h('span', {}, 'Per active day'), h('b', {}, days.size ? fmtN(tok / days.size) + ' tokens' : '–')), h('div', { class: 'kv' }, h('span', {}, 'Chats in 30 days'), h('b', {}, String(recent.length))), h('div', { class: 'kv' }, h('span', {}, 'All chats'), h('b', {}, String(all.length)))),
+      h('div', { class: 'card' }, h('div', { class: 'label', style: 'margin-bottom:10px' }, 'Where it went'),
+        h('div', { class: 'splitbar' }, Object.entries(byModel).sort((a, b) => b[1] - a[1]).map(([k, v]) => h('i', { style: `width:${v / tot * 100}%;background:${COL[k] || COL.Other}`, title: k }))),
+        h('div', { class: 'small muted', style: 'margin-top:8px' }, Object.entries(byModel).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' ' + Math.round(v / tot * 100) + '%').join(' · ') || 'No chats yet.')));
+    box.append(left, right);
   };
+  const wrap = h('div', { class: 'stack' }, h('div', { class: 'row', style: 'justify-content:flex-end' }, [['all', 'All'], ['week', 'This week'], ['project', 'By project'], ['costly', 'Costliest']].map(([k, l]) => chip(l, chatF === k, () => { chatF = k; draw(); wrap.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.textContent === l)); }))), box);
   draw();
   if (!SS.machines.length || !Object.keys(SS.live).length) (async () => { try { SS.machines = await cm.machines(); if (!SS.mid || !SS.machines.some((m) => m.id === SS.mid)) SS.mid = defaultMachineId(); await pollLive(); } catch { /* shown empty */ } if (tab === 'history' && box.isConnected) draw(); })();
-  return box;
+  return wrap;
 }
 function historyView() {
   const now = Date.now(), from = now - SPANS[histRange];
@@ -258,7 +261,7 @@ function drawHistory() {
 
 // ───────────────────────── Settings ─────────────────────────
 const ch = (ic, title, tip, ...right) => h('div', { class: 'row chead' }, icon(ic), h('div', { class: 'label grow' }, title), tip ? info(tip) : null, ...right);
-const SETTINGS_LIVE = [4, 5, 6, 10];   // the cards that show a setting: they are replaced in place when something changes
+const SETTINGS_LIVE = [5, 6, 7, 11];   // the cards that show a setting: they are replaced in place when something changes
 function settingsView(only) {
   const st = S.settings;
   /** A setting changed: swap only the cards that show settings. The rest of the page (and the scroll position) is not touched. */
@@ -293,7 +296,7 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
-  if (only) return p;
+  if (only) { p.insertBefore(h('div'), p.children[1] || null); return p; }   // keeps the card numbers the same as with the tab row
   return withSettingsMenu(p);
 }
 /** The list on the left of Settings: one entry per card, a tap scrolls to it and the one being read is lit. */
@@ -308,7 +311,8 @@ function withSettingsMenu(p) {
   if (content._spy) content.removeEventListener('scroll', content._spy);
   content._spy = spy; content.addEventListener('scroll', spy, { passive: true });
   setTimeout(spy, 0);
-  return h('div', { class: 'settingsrow' }, menu, p);
+  p.classList.add('settingsgrid'); p.insertBefore(menu, p.children[1] || null);
+  return h('div', { class: 'settingsrow' }, p);
 }
 
 /** Which computers and servers this app talks to. Chats pick from these; the first own computer is the default. */
@@ -513,10 +517,10 @@ cm.state().then(async (s) => { S = s; await applyPalette(); render(); setTimeout
 const HL = new Map();   // group number -> where its highlight was
 function placeHighlights() {
   const groups = new Map();
-  document.querySelectorAll('.chip.on, #nav button.on:not(.navtoggle)').forEach((on) => { const p = on.parentElement; if (p && !p.closest('.ttip, .infopop')) groups.set(p, on); });
+  document.querySelectorAll('.chip.on, #nav .tabs button.on').forEach((on) => { const p = on.parentElement; if (p && !p.closest('.ttip, .infopop')) groups.set(p, on); });
   let g = 0;
   for (const [parent, on] of groups) {
-    const key = g++, nav = parent.id === 'nav';
+    const key = g++, nav = parent.classList.contains('tabs');
     if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
     let pill = parent.querySelector(':scope > .hl');
     const rect = { l: on.offsetLeft, t: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };

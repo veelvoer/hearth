@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -121,14 +124,15 @@ private fun Main() {
         Box(Modifier.weight(1f)) {
             androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(240), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
         }
-        if (!Ui.chatOpen) Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
-        if (!Ui.chatOpen) Row(Modifier.fillMaxWidth().tourTarget("tabs")) {
-            tabs.forEachIndexed { i, s ->
-                Column(Modifier.weight(1f).clickable { Ui.tab = i }.padding(top = 10.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Txt(s, T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i,
-                        color = if (tab == i) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
-                    Spacer(Modifier.height(5.dp))
-                    Box(Modifier.size(width = 18.dp, height = 2.dp).background(if (tab == i) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent))
+        if (!Ui.chatOpen) {
+            val cs = MaterialTheme.colorScheme
+            val active = if (cs.background.luminance() < .5f) androidx.compose.ui.graphics.Color(0xFF2E2A26) else androidx.compose.ui.graphics.Color(0xFFE9E2D2)
+            val bar = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 4.dp).tourTarget("tabs").clip(bar).background(cs.surfaceVariant).border(1.dp, cs.outline, bar).padding(6.dp)) {
+                tabs.forEachIndexed { i, s ->
+                    Box(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(if (tab == i) active else androidx.compose.ui.graphics.Color.Transparent).clickable { Ui.tab = i }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
+                        Txt(s, T.small.copy(fontWeight = if (tab == i) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i, color = if (tab == i) cs.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                    }
                 }
             }
         }

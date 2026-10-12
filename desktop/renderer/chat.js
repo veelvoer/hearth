@@ -50,29 +50,33 @@ function chatItem(s) {
     h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
+const groupKey = (s) => (s.talk ? 'Talks' : (s.cwd || 'Other'));
+/** The projects as tabs along the top, and the chats of the open project in the column beside the chat. Searching looks through every project. */
 function drawSide() {
   const side = SS.side;
   if (!side) return;
   const keep = side.scrollTop, hadFocus = document.activeElement && document.activeElement.id === 'chat-search';
-  side.innerHTML = '';
-  side.append(h('input', { id: 'chat-search', placeholder: 'Search', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
   const q = SS.search.toLowerCase();
-  const list = allSessions().filter((s) => !q || s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q));
+  const all = allSessions();
   const groups = new Map();
-  for (const s of list) { const k = '|' + (s.talk ? 'Talks' : (s.cwd || 'Other')); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); }
+  for (const s of all) { const k = groupKey(s); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); }
   const ordered = [...groups.entries()].sort((a, b) => Math.max(...b[1].map((x) => x.mtime)) - Math.max(...a[1].map((x) => x.mtime)));
-  for (const [key, items] of ordered) {
-    const [mid, cwd] = [key.split('|')[0], key.slice(key.indexOf('|') + 1)];
-    const closed = SS.closed[key] && !q;
-    side.append(h('div', { class: 'ghead', onclick: () => { SS.closed[key] = !SS.closed[key]; drawSide(); } },
-      h('span', { class: 'chev' }, closed ? '›' : '⌄'), h('span', { class: 'grow ellip', title: cwd }, folderName(cwd)),
-      null));
-    if (!closed) items.sort((a, b) => b.mtime - a.mtime).forEach((s) => side.append(chatItem(s)));
+  if (SS.sel && !SS.sel.isNew && SS.sel.cwd && groups.has(SS.sel.cwd) && SS.projFor !== SS.sel) { SS.projKey = SS.sel.cwd; SS.projFor = SS.sel; }   // opening a chat shows its project
+  if (!groups.has(SS.projKey)) SS.projKey = ordered[0] ? ordered[0][0] : null;
+  if (SS.tabsEl) {
+    SS.tabsEl.innerHTML = '';
+    for (const [key, items] of ordered) SS.tabsEl.append(h('button', { class: 'ptab' + (key === SS.projKey ? ' on' : ''), title: key, onclick: () => { SS.projKey = key; SS.search = ''; drawSide(); } },
+      folderName(key), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null));
+    SS.tabsEl.append(h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'));
   }
-  if (!list.length && !SS.err) side.append(h('p', { class: 'small muted' }, SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
+  side.innerHTML = '';
+  side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
+  const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => b.mtime - a.mtime);
+  list.forEach((s) => side.append(chatItem(s)));
+  if (!list.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
   if (SS.err) side.append(h('div', { class: 'small err' }, SS.err));
   side.scrollTop = keep;
-  if (hadFocus) { const i = $('#chat-search'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  if (hadFocus) { const i = $('#chat-search'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 }
 
 // ───────── data ─────────
@@ -117,9 +121,9 @@ function defaultMachineId() {
 
 function sessionsView() {
   SS.timers.forEach(clearInterval); SS.timers = [];
-  const root = h('div', { class: 'split' });
-  SS.side = h('div', { class: 'side' }); SS.pane = h('div', { class: 'pane' });   // the list of chats lives in the menu on the left (see mountSide)
-  root.append(SS.pane);
+  const root = h('div', { class: 'chatwrap' }), split = h('div', { class: 'split' });
+  SS.tabsEl = h('div', { class: 'ptabs' }); SS.side = h('div', { class: 'side' }); SS.pane = h('div', { class: 'pane' });
+  split.append(SS.side, SS.pane); root.append(SS.tabsEl, split);
   drawSide(); drawPane();
   (async () => {
     SS.machines = await cm.machines();
@@ -206,6 +210,7 @@ function newChat() {
 document.addEventListener('keydown', (e) => { if (tab === 'sessions' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); } });
 
 // ───────── pane ─────────
+SS.rightOff = localStorage.getItem('cm.rightOff') === '1';
 const SUGGEST = ['Explain how this project is organized', 'Find and fix bugs in the recent changes', 'Write tests for the most important code', 'Review my uncommitted changes'];
 
 function drawPane() {
@@ -219,22 +224,34 @@ function drawPane() {
     return;
   }
   const mach = SS.machines.find((x) => x.id === s.mid) || {};
-  pane.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
-    h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : ''].filter(Boolean).join(' · '))),
+  const me = allSessions().find((x) => x.id === s.id) || {};
+  const working = SS.sending || remoteWorking() || !!(me.running || me.busy);
+  const main = h('div', { class: 'chatmain' });
+  main.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
+    h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
+    working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
     s.id ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
-    s.id ? ibtn(SS.opts ? 'check' : 'sliders', SS.opts ? 'Close options' : 'Options: where it runs, phone calls', () => { SS.opts = !SS.opts; drawPane(); }, 'ghost sm') : null));
-  if (SS.opts && s.id) pane.append(h('div', { class: 'opts' },
-    SS.call !== null && (SS.machines.find((m) => m.id === s.mid) || {}).secure ? h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Run on'),
-      ...runChips((SS.run || 'auto'), setRun),
-      h('span', { class: 'small muted' }, 'Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. A computer that is off starts when you turn it on. You can also just ask Claude to do something on another PC.')) : null,
-    SS.call !== null ? h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Phone call'), chip("When it's done", SS.call === 'done', () => setCall('done')), chip('Also if it needs me', SS.call === 'attention', () => setCall('attention')),
-      h('span', { class: 'small muted' }, 'You always get a message. A call only happens if you pick one here.')) : null,
-    mach.local && s.cwd ? h('div', { class: 'row' }, h('span', { class: 'muted small grow ellip' }, s.cwd), h('button', { class: 'ghost sm', onclick: () => cm.openPath(s.cwd) }, 'Open folder')) : h('div', { class: 'small muted ellip' }, s.cwd),
-    moveBox(s, mach), continueBox(s, mach)));
-  pane.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
-  pane.append(h('div', { id: 'perms', class: 'perms' }));
-  pane.append(composer());
+    s.id ? ibtn(SS.rightOff ? 'sliders' : 'check', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : ''); drawPane(); }, 'ghost sm') : null));
+  main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
+  main.append(h('div', { id: 'perms', class: 'perms' }));
+  main.append(composer());
+  pane.append(main);
+  if (s.id && !SS.rightOff) {
+    const rc = (title, ...kids) => { const k = kids.filter(Boolean); return k.length ? h('div', { class: 'rcard' }, h('div', { class: 'label' }, title), ...k) : null; };
+    const runRow = SS.call !== null && (SS.machines.find((m) => m.id === s.mid) || {}).secure ? h('div', { class: 'row wrap' }, ...runChips((SS.run || 'auto'), setRun),
+      h('span', { class: 'small muted' }, 'Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. You can also just ask Claude to do something on another PC.')) : null;
+    const callRow = SS.call !== null ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'row wrap' }, chip("When it's done", SS.call === 'done', () => setCall('done')), chip('If it needs me', SS.call === 'attention', () => setCall('attention'))),
+      h('span', { class: 'small muted' }, 'You always get a message. A call only happens if you pick one here.')) : null;
+    const tools = SS.msgs.filter((m) => m.role === 'tool').length;
+    pane.append(h('div', { class: 'rightcol' },
+      rc('Phone call', callRow), rc('Run on', runRow),
+      rc('Folder', mach.local && s.cwd ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'mono small ellip', title: s.cwd }, s.cwd), h('div', {}, h('button', { class: 'ghost sm', onclick: () => cm.openPath(s.cwd) }, 'Open folder'))) : (s.cwd ? h('div', { class: 'mono small', style: 'overflow-wrap:anywhere' }, s.cwd) : null)),
+      rc('Move to server', moveBox(s, mach)), rc('Continue here', continueBox(s, mach)),
+      rc('This chat', h('div', { class: 'kv' }, h('span', {}, 'Tokens'), h('b', {}, me.tokens ? fmtN(me.tokens) : '–')), h('div', { class: 'kv' }, h('span', {}, 'Tool calls'), h('b', {}, String(tools))),
+        h('div', { class: 'kv' }, h('span', {}, 'Cost at API prices'), h('b', {}, me.cost ? '$' + me.cost.toFixed(2) : '–')))));
+  }
+  pane.classList.toggle('isnew', !!(s.isNew && !SS.msgs.length));
   renderPerms();
   renderMsgs();
   if (SS.voice && SS.voice.el) pane.append(SS.voice.el);
@@ -336,7 +353,7 @@ function codingIntro() {
 
 /** A server that manages one projects folder: pick a project in it, or create a new one. */
 /** The computers linked to the server, as buttons: Auto, the Server, and each of your own computers (with a dot when it is online). */
-function loadComputers(mid) { if (SS.computersFor === mid && Date.now() - (SS.computersAt || 0) < 15000) return; SS.computersFor = mid; SS.computersAt = Date.now(); cm.relay(mid, 'GET', '/computers').then((l) => { SS.computers = l || []; if (SS.sel && SS.sel.mid === mid && (SS.opts || (SS.sel && SS.sel.isNew))) drawPane(); }).catch(() => { SS.computers = []; }); }
+function loadComputers(mid) { if (SS.computersFor === mid && Date.now() - (SS.computersAt || 0) < 15000) return; SS.computersFor = mid; SS.computersAt = Date.now(); cm.relay(mid, 'GET', '/computers').then((l) => { SS.computers = l || []; if (SS.sel && SS.sel.mid === mid && (!SS.rightOff || (SS.sel && SS.sel.isNew))) drawPane(); }).catch(() => { SS.computers = []; }); }
 function runChips(cur, pick, withAuto = true) {
   if (SS.sel) loadComputers(SS.sel.mid);
   const pcs = (SS.computers || []).filter((c) => c.kind === 'computer');

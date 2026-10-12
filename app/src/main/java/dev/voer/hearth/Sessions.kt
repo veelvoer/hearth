@@ -185,8 +185,13 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
     Box(Modifier.fillMaxSize()) {
     Screen {
         Header("Chats") {
-            if (machines.isNotEmpty()) Box(Modifier.size(38.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
-                .clickable { talk(machines.firstOrNull { it.secure } ?: machines.first()) }, contentAlignment = Alignment.Center) { Glyph("mic", 18.dp) }
+            if (machines.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+                    .clickable { talk(machines.firstOrNull { it.secure } ?: machines.first()) }, contentAlignment = Alignment.Center) { Glyph("mic", 18.dp) }
+                Box(Modifier.size(44.dp).tourTarget("new").clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary).clickable { newSession() }, contentAlignment = Alignment.Center) {
+                    Txt("+", T.title.copy(fontSize = 26.sp), color = MaterialTheme.colorScheme.onPrimary)
+                }
+            }
         }
         if (machines.isEmpty()) {
             Card {
@@ -213,10 +218,7 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             .filter { (_, s) -> (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
-        Spacer(Modifier.height(72.dp))   // room for the + button
     }
-    if (machines.isNotEmpty()) Box(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 16.dp).size(56.dp).tourTarget("new").clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primary)
-        .clickable { newSession() }, contentAlignment = Alignment.Center) { Txt("+", T.title.copy(fontSize = 30.sp), color = MaterialTheme.colorScheme.onPrimary) }
     }
 }
 
@@ -224,15 +226,22 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
 private fun SessionCard(s: Sess, machine: String?, now: Long, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val working = s.running || s.busy
-    Card(Modifier.pressable(onClick)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (working) Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(cs.primary))
-            if (working) Spacer(Modifier.width(8.dp))
-            Txt(listOfNotNull(if (working) "WORKING" else null, if (s.kind == "talk") "Talk" else folder(s.cwd), machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
-                T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
+    val dark = cs.background.luminance() < .5f
+    val shape = RoundedCornerShape(20.dp)
+    Row(Modifier.fillMaxWidth().pressable(onClick).clip(shape).background(cs.surfaceVariant).border(1.dp, cs.outline, shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)), contentAlignment = Alignment.Center) {
+            Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
         }
-        Spacer(Modifier.height(6.dp))
-        Text(s.title, style = T.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(s.title, style = T.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
+                Txt(listOfNotNull(if (working) "Working" else null, name, machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
+                    T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
+            }
+        }
     }
 }
 

@@ -141,16 +141,16 @@ fun LimitCard(name: String, window: String, l: Limit?, ms: Long, now: Long) {
 }
 
 @Composable
-private fun Ring(pct: Float, dia: Dp = 118.dp, stroke: Dp = 11.dp) {
+private fun Ring(pct: Float, dia: Dp = 118.dp, stroke: Dp = 11.dp, onClay: Boolean = false) {
     val cs = MaterialTheme.colorScheme
-    val track = cs.outline; val fill = if (pct >= 90f) cs.error else cs.primary
+    val track = if (onClay) cs.onPrimary.copy(alpha = .3f) else cs.outline; val fill = if (onClay) cs.onPrimary else if (pct >= 90f) cs.error else cs.primary
     Box(Modifier.size(dia), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val s = stroke.toPx(); val tl = Offset(s / 2, s / 2); val sz = Size(this.size.width - s, this.size.height - s)
             drawArc(track, 0f, 360f, false, tl, sz, style = Stroke(s))
             drawArc(fill, -90f, 360f * (pct / 100f).coerceIn(0f, 1f), false, tl, sz, style = Stroke(s, cap = StrokeCap.Round))
         }
-        Row(verticalAlignment = Alignment.Bottom) { Txt(pct.toInt().toString(), T.title); Txt("%", T.small, muted = true, modifier = Modifier.padding(bottom = 5.dp, start = 1.dp)) }
+        Row(verticalAlignment = Alignment.Bottom) { Txt(pct.toInt().toString(), T.title, color = if (onClay) cs.onPrimary else Color.Unspecified); Txt("%", T.small, muted = !onClay, color = if (onClay) cs.onPrimary else Color.Unspecified, modifier = Modifier.padding(bottom = 5.dp, start = 1.dp)) }
     }
 }
 
@@ -203,16 +203,16 @@ fun NowScreen() {
         }
         val s = u?.session
         val shape = RoundedCornerShape(22.dp)
-        Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Ring(s?.at(now)?.toFloat() ?: 0f)
+        Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.primary).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Ring(s?.at(now)?.toFloat() ?: 0f, onClay = true)
             Spacer(Modifier.width(18.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Label("Session limit")
-                if (s == null) Txt("No data yet", T.body, muted = true) else {
+                Txt("SESSION LIMIT", T.label, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .8f))
+                if (s == null) Txt("No data yet", T.body, color = MaterialTheme.colorScheme.onPrimary) else {
                     val r = s.resetsAt
-                    Txt(if (r != null && r > now) "Resets in ${dur(r - now)}" else "Fresh window", T.body)
+                    Txt(if (r != null && r > now) "Resets in ${dur(r - now)}" else "Fresh window", T.body.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimary)
                     val pc = pace(s, SESSION_MS, now)
-                    paceWord(s, pc)?.let { w -> Txt(if (pc?.hitsAt != null) "$w · limit in ${dur(pc.hitsAt - now)}" else w, T.small, muted = true) }
+                    paceWord(s, pc)?.let { w -> Txt(if (pc?.hitsAt != null) "$w · limit in ${dur(pc.hitsAt - now)}" else w, T.small, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .85f)) }
                 }
             }
         }
@@ -296,6 +296,10 @@ fun Chart(data: List<Sample>, from: Long, to: Long, modifier: Modifier = Modifie
     }
 }
 
+fun modelName(id: String): String? = Regex("(opus|sonnet|haiku)-(\\d+)(?:-(\\d{1,2}))?(?!\\d)", RegexOption.IGNORE_CASE).find(id)?.let { m ->
+    m.groupValues[1].replaceFirstChar { it.uppercase() } + " " + m.groupValues[2] + (m.groupValues[3].takeIf { it.isNotEmpty() }?.let { ".$it" } ?: "") }
+fun tokensShort(n: Long) = when { n >= 1_000_000 -> "%.1fM".format(n / 1e6); n >= 1_000 -> "${n / 1000}k"; else -> n.toString() }
+
 @Composable
 fun HistoryScreen() {
     var range by remember { mutableIntStateOf(0) }
@@ -303,8 +307,44 @@ fun HistoryScreen() {
     val spans = listOf(24L * 3600_000, 7L * 86_400_000, 30L * 86_400_000)
     val from = now - spans[range]
     val data = Ui.history.filter { it.t >= from }
+    val c = LocalContext.current
+    var chats by remember { mutableStateOf<List<Sess>>(emptyList()) }
+    var filter by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Ui.machinesRev) {   // every chat from every computer, refreshed while this screen is open
+        while (true) {
+            val got = Store.machines(c).flatMap { m -> runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.getOrDefault(emptyList()) }
+            if (got.isNotEmpty() || chats.isEmpty()) chats = got.groupBy { it.id }.values.map { g -> g.maxByOrNull { it.mtime }!! }
+            delay(20_000)
+        }
+    }
     Screen {
-        Header("History", "Sampled every time the app or a widget refreshes")
+        Header("History", "Every chat, every computer")
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("All", "This week", "Costliest").forEachIndexed { i, s -> Chip(s, filter == i) { filter = i } }
+        }
+        val startToday = java.time.LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val shown = chats.filter { filter != 1 || it.mtime >= now - 7 * 86_400_000L }.let { l -> if (filter == 2) l.sortedByDescending { it.tokens }.take(30) else l.sortedByDescending { it.mtime } }.take(80)
+        val groups = shown.groupBy { when { filter == 2 -> "Costliest"; it.mtime >= startToday -> "Today"; it.mtime >= startToday - 86_400_000L -> "Yesterday"; it.mtime >= now - 7 * 86_400_000L -> "This week"; else -> "Earlier" } }
+        groups.forEach { (g, items) ->
+            Label(g)
+            items.forEach { x ->
+                val work = x.running || x.busy
+                val shape = RoundedCornerShape(18.dp)
+                Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(9.dp).clip(RoundedCornerShape(50)).background(if (work) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(x.title, style = T.body.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Txt(listOfNotNull(x.cwd.trimEnd('/').substringAfterLast('/').ifEmpty { null }, modelName(x.model), if (work) "working now" else dur(now - x.mtime) + " ago").joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
+                    }
+                    if (x.tokens > 0) Txt(tokensShort(x.tokens), T.small, muted = true)
+                }
+            }
+        }
+        if (chats.isEmpty()) Txt("No chats yet.", T.small, muted = true)
+        Spacer(Modifier.height(6.dp))
+        Txt("Limits over time", T.h2)
+        Txt("Sampled every time the app or a widget refreshes", T.small, muted = true)
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("24h", "7d", "30d").forEachIndexed { i, s -> Chip(s, range == i) { range = i } }
         }

@@ -13,7 +13,7 @@ data class Machine(val name: String, val host: String, val port: Int, val token:
     /** Base URL; a server behind HTTPS is reached on the standard port without showing it. */
     val base get() = (if (secure) "https" else "http") + "://" + host + if ((secure && port == 443) || (!secure && port == 80)) "" else ":$port"
 }
-data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "")
+data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "", val tokens: Long = 0, val model: String = "")
 data class Msg(val role: String, val text: String, val name: String = "", val detail: String = "", val result: String? = null, val err: Boolean = false)
 data class Project(val name: String, val path: String)
 data class Computer(val id: String, val name: String, val online: Boolean, val kind: String)
@@ -109,7 +109,7 @@ object Relay {
         val a = JSONArray(getJson(m, "/sessions"))
         return List(a.length()) {
             val o = a.getJSONObject(it)
-            Sess(o.getString("id"), o.getString("title"), o.optString("cwd"), o.getLong("mtime"), o.optBoolean("live"), o.optBoolean("busy"), o.optBoolean("running"), o.optString("kind", "code").ifBlank { "code" }, o.optString("elsewhere", ""))
+            Sess(o.getString("id"), o.getString("title"), o.optString("cwd"), o.getLong("mtime"), o.optBoolean("live"), o.optBoolean("busy"), o.optBoolean("running"), o.optString("kind", "code").ifBlank { "code" }, o.optString("elsewhere", ""), o.optLong("tokens", 0), o.optString("model", ""))
         }
     }
 
