@@ -524,10 +524,37 @@ function renderPerms() {
   const s = SS.sel;
   for (const p of SS.perms.filter((x) => s && x.ev.session === s.id)) {
     if (p.ev.kind === 'question') { box.append(questionCard(p)); continue; }
-    box.append(h('div', { class: 'perm' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Claude needs your OK'), h('div', { class: 'perm-t' }, p.ev.text)),
-      h('button', { class: 'ghost sm', onclick: () => decide(p, 'deny') }, 'Deny'), h('button', { class: 'primary sm', onclick: () => decide(p, 'allow') }, 'Allow')));
+    box.append(permCard(p));
   }
 }
+const diffLines = (a, b) => [...String(a || '').split('\n').map((l) => h('div', { class: 'dl del' }, '- ' + l)), ...String(b || '').split('\n').map((l) => h('div', { class: 'dl add' }, '+ ' + l))];
+/** What Claude wants to do, shown like in a terminal: the command, or the lines that change. */
+function permPreview(ev) {
+  const i = ev.input || {}, t = ev.tool || '';
+  if (t === 'Bash' && i.command) return h('pre', { class: 'pcode' }, '$ ' + i.command);
+  if ((t === 'Edit' || t === 'NotebookEdit') && (i.old_string != null || i.new_string != null)) return h('div', { class: 'pcode' }, h('div', { class: 'dl file' }, i.file_path || ''), ...diffLines(i.old_string, i.new_string));
+  if (t === 'MultiEdit' && i.edits) return h('div', { class: 'pcode' }, h('div', { class: 'dl file' }, i.file_path || ''), ...i.edits.flatMap((e) => diffLines(e.old_string, e.new_string)));
+  if (t === 'Write') return h('div', { class: 'pcode' }, h('div', { class: 'dl file' }, i.file_path || ''), ...String(i.content || '').split('\n').slice(0, 14).map((l) => h('div', { class: 'dl add' }, '+ ' + l)));
+  return h('pre', { class: 'pcode' }, ev.text || '');
+}
+/** The approval prompt, as in Claude Code: 1 Yes · 2 Yes, don't ask again · 3 No. Answer with the keys 1, 2, 3 (or Y / N, Esc) or by clicking. */
+function permCard(p) {
+  const ev = p.ev, tool = ev.tool || 'a tool';
+  const opts = [['1', 'Yes', 'allow'], ...(ev.tool && ev.tool !== 'Bash' ? [['2', `Yes, and don’t ask again for ${tool} in this chat`, 'allow_always']] : []), [String(ev.tool && ev.tool !== 'Bash' ? 3 : 2), 'No', 'deny']];
+  return h('div', { class: 'perm pc', tabindex: '0', 'data-req': ev.req },
+    h('div', { class: 'label' }, ev.tool ? `Claude wants to use ${tool}` : 'Claude needs your OK'), permPreview(ev),
+    h('div', { class: 'popts' }, opts.map(([k, l, b]) => h('button', { class: 'popt' + (b === 'deny' ? ' no' : ''), onclick: () => decide(p, b) }, h('kbd', {}, k), l))));
+}
+document.addEventListener('keydown', (e) => {
+  if (tab !== 'sessions' || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  const s = SS.sel, mine = s && SS.perms.filter((x) => x.ev.session === s.id && x.ev.kind === 'permission');
+  if (!mine || !mine.length || (typing && !(t.id === 'composer-text' && !t.value))) return;   // never steal keys while you are typing
+  const p = mine[0], card = $(`.pc[data-req="${p.ev.req}"]`); if (!card) return;
+  const keys = [...card.querySelectorAll('.popt')], k = e.key.toLowerCase();
+  const pick = k === 'y' ? keys[0] : k === 'n' || k === 'escape' ? keys[keys.length - 1] : /^[1-9]$/.test(k) ? keys[Number(k) - 1] : null;
+  if (pick) { e.preventDefault(); pick.click(); }
+});
 function questionCard(p) {
   const ev = p.ev, picked = new Set();
   const input = h('input', { placeholder: 'Or type your own answer…' });
@@ -562,6 +589,7 @@ cm.on('event', ({ machine, ev }) => {
   if ((ev.kind === 'permission' || ev.kind === 'question') && ev.req) {
     if (!SS.perms.some((p) => p.ev.req === ev.req)) SS.perms.push({ machine, ev });
     renderPerms();
+    if (viewing) { const card = $(`.pc[data-req="${ev.req}"]`); if (card) { card.scrollIntoView({ block: 'nearest' }); const ta = $('#composer-text'); if (!ta || !ta.value) card.focus({ preventScroll: true }); } }
     if (!viewing) toast(`${proj}: ${ev.kind === 'question' ? 'Claude has a question' : 'Claude needs your OK'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: true }));
   } else if ((ev.kind === 'done' || ev.kind === 'error') && !viewing) {
     toast(`${proj}: ${ev.kind === 'error' ? 'something went wrong' : 'Claude is done'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: false }));

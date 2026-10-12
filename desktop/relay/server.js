@@ -258,7 +258,7 @@ function start(opts) {
         const req = crypto.randomBytes(4).toString('hex');
         const promise = new Promise((resolve) => {
           const t = setTimeout(() => { pending.delete(req); resolve(null); }, mine ? JOB_PERMISSION_WAIT_MS : PERMISSION_WAIT_MS);
-          const ev = { ...base, kind: 'permission', call: mine ? prefs.call === 'attention' : true, req, tool, text: describe(tool, h.tool_input) };
+          const ev = { ...base, kind: 'permission', call: mine ? prefs.call === 'attention' : true, req, tool, text: describe(tool, h.tool_input), input: core.toolInput(tool, h.tool_input) };
           pending.set(req, { event: ev, resolve: (b) => { clearTimeout(t); pending.delete(req); resolve(b); } });
           publish(ev);
         });
@@ -267,9 +267,11 @@ function start(opts) {
         promise.finally(() => pendingByKey.delete(key));
       }
       const decision = await shared.promise;
-      if (decision === 'allow' || decision === 'deny') {
-        const d = { behavior: decision };
-        if (decision === 'deny') d.message = 'Denied from your phone';
+      if (decision === 'allow' || decision === 'deny' || decision === 'allow_always') {
+        const d = { behavior: decision === 'deny' ? 'deny' : 'allow' };
+        if (decision === 'deny') d.message = 'Denied in Hearth';
+        // "don't ask again": the tool is allowed for the rest of this chat's run (never for Bash, which is too broad to allow in one go)
+        if (decision === 'allow_always' && tool && tool !== 'Bash') d.updatedPermissions = [{ type: 'addRules', rules: [{ toolName: tool }], behavior: 'allow', destination: 'session' }];
         return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: d } };
       }
     }

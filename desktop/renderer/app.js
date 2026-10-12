@@ -298,6 +298,12 @@ function settingsView(only) {
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset'), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
   p.append(h('div', { class: 'card stack' }, ch('phone', 'Call me', 'A call window and sound when Claude finishes a task, asks a question or needs permission. It follows the relay’s “away” switch, shared with your phone: turn it on while you are away from the keyboard. Needs relay/install_hooks.py run once.'),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Ring on this computer'), toggle(st.callMe, () => set({ callMe: !st.callMe })))));
+  p.append(h('div', { class: 'card stack' }, ch('bell', 'Notifications', 'Hearth asks for your OK inside the app, like a terminal agent. A desktop notification tells you when Claude needs you, so you can answer without watching the window. Clicking it opens the chat.'),
+    ...[['notifyPerm', 'Needs your OK', 'A tool wants to run and you have to allow it.'], ['notifyQuestion', 'Claude asks a question', 'A question with choices waits for you.'], ['notifyDone', 'Claude is done or hit an error', 'A chat finished while you were elsewhere.']]
+      .map(([k, t, d]) => h('div', { class: 'row' }, h('div', { class: 'grow' }, t, h('div', { class: 'small muted' }, d)), toggle(st[k] !== false, () => set({ [k]: st[k] === false })))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Also while the app is open', h('div', { class: 'small muted' }, 'Normally you only get a notification when Hearth is in the background.')), toggle(st.notifyFocused === true, () => set({ notifyFocused: st.notifyFocused !== true }))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Pop-up window on top of everything', h('div', { class: 'small muted' }, 'The old always-on-top window, used with “Call me”. Off by default: questions are answered in the app.')), toggle(st.popup === true, () => set({ popup: st.popup !== true }))),
+    h('div', {}, h('button', { class: 'ghost sm', onclick: () => cm.testNotify() }, 'Send a test notification'))));
   p.append(...(only ? [h('div'), h('div'), h('div')] : [devicesCard(), computersCard(), hooksCard()]));
   p.append(h('div', { class: 'card stack' }, ch('settings', 'Startup', 'Closing the window keeps your phone connected. Quit from the tray icon.'),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Keep running in the background'), toggle(st.background !== false, () => set({ background: st.background === false }))),
@@ -306,7 +312,7 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
-  [4, 5, 6, 10].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
+  [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
   if (only) return p;
   return withSettingsMenu(p);
 }

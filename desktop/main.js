@@ -251,19 +251,23 @@ function startEvents() {
     })();
   }
 }
-function notifyEvent(m, ev) {
-  if (main && !main.isDestroyed() && main.isVisible() && main.isFocused()) return;  // you're looking at the app: it shows this itself
+/** A desktop notification for what happens in a chat. Which kinds you get, and whether you get them while the app is open, is up to you (Settings → Notifications). */
+function notifyEvent(m, ev, force) {
+  const st = S.settings, on = { permission: st.notifyPerm !== false, question: st.notifyQuestion !== false, done: st.notifyDone !== false, error: st.notifyDone !== false }[ev.kind];
+  if (!force) {
+    if (on === false || on === undefined) return;
+    if (st.notifyFocused !== true && main && !main.isDestroyed() && main.isVisible() && main.isFocused()) return;   // you are looking at the app: it shows this itself
+  }
   const proj = String(ev.cwd || '').replace(/\/$/, '').split('/').pop() || 'Claude';
   const title = ev.kind === 'permission' ? `${proj}: needs your OK` : ev.kind === 'question' ? `${proj}: Claude has a question` : ev.kind === 'error' ? `${proj}: something went wrong` : `${proj}: Claude is done`;
-  notify(title, ev.text || ev.title || '', () => { showMain('sessions'); main.webContents.send('open-session', { machine: m.id, session: ev.session, title: ev.title, cwd: ev.cwd, voice: false }); });
+  notify(title, ev.text || ev.title || '', () => { showMain('sessions'); if (ev.session) main.webContents.send('open-session', { machine: m && m.id, session: ev.session, title: ev.title, cwd: ev.cwd, voice: false }); });
 }
 let callWins = new Map();
 function ring(m, ev) {
   if (ev.kind === 'resolved') { if (main && !main.isDestroyed()) main.webContents.send('event', { machine: m.id, ev }); return; }
   if (main && !main.isDestroyed()) main.webContents.send('event', { machine: m.id, ev });
-  if (ev.call === false || !S.settings.callMe) { notifyEvent(m, ev); return; }
-  const what = ev.kind === 'permission' ? 'needs permission' : ev.kind === 'question' ? 'has a question' : 'is done';
-  notify('Claude ' + what, ev.text || ev.title);
+  notifyEvent(m, ev);   // permissions are answered in the app itself; the notification only tells you to look
+  if (S.settings.popup !== true || ev.call === false || !S.settings.callMe) return;   // the always-on-top window is an opt-in
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   const w = new BrowserWindow({ width: 380, height: 360, x: width - 400, y: 40, frame: false, alwaysOnTop: true, resizable: false, skipTaskbar: true,
     backgroundColor: '#1B1A19', icon: iconPath,
@@ -362,6 +366,7 @@ function broadcast(ch, data) { for (const w of BrowserWindow.getAllWindows()) if
 const h = (name, fn) => ipcMain.handle(name, async (e, ...a) => fn(e, ...a));
 h('state', () => publicState());
 h('refresh', async () => { await refreshUsage(true); return publicState(); });
+h('notify:test', () => { notify('Hearth', 'Notifications work. This is how a request for your OK looks.', () => showMain('sessions')); return true; });
 h('settings:set', (e, patch) => {
   S.settings = { ...S.settings, ...patch }; save();
   if ('callMe' in patch) setCallMe(patch.callMe);
