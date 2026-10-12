@@ -234,7 +234,7 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textAlign = android.graphics.Paint.Align.CENTER }
             fun argb(c: androidx.compose.ui.graphics.Color) = android.graphics.Color.argb((c.alpha * 255).toInt(), (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt())
             val clip = androidx.compose.ui.graphics.Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, top, w, top + hh, CornerRadius(rad))) }
-            androidx.compose.ui.graphics.drawscope.clipPath(clip) {
+            clipPath(clip) {
                 drawRect(cs.outline.copy(alpha = .55f), Offset(0f, top), Size(w, hh))
                 var at = 0.0
                 days.forEachIndexed { i, d ->
