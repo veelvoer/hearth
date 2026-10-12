@@ -197,6 +197,7 @@ async function setCall(v) {
   try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/prefs`, { call: nv }); } catch (e) { SS.chatErr = clean(e); }
 }
 function newChat() {
+  if (SS.sel && !SS.sel.isNew) SS.prevSel = SS.sel;   // so the back button can return to it
   const mid = defaultMachineId() || SS.mid;
   SS.sel = { id: null, isNew: true, title: 'New chat', cwd: '', mid }; SS.runOn = 'vps';
   SS.mid = mid; SS.perms = [];
@@ -227,6 +228,7 @@ function drawPane() {
   const me = allSessions().find((x) => x.id === s.id) || {};
   const working = SS.sending || remoteWorking() || !!(me.running || me.busy);
   const main = h('div', { class: 'chatmain' });
+  if (s.isNew) main.append(h('button', { class: 'ghost sm backbtn', onclick: backToChats }, '← All chats'));
   main.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
     h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
@@ -257,6 +259,13 @@ function drawPane() {
   if (SS.voice && SS.voice.el) pane.append(SS.voice.el);
 }
 
+/** Leaves the new-chat screen: back to the chat you came from, or to the list of chats. */
+function backToChats() {
+  const prev = SS.prevSel; SS.prevSel = null;
+  if (prev && prev.id) { openSession(prev); return; }
+  SS.sel = null; SS.msgs = []; SS.parts = [];
+  drawSide(); drawPane(); swapPane();
+}
 /** What you typed in a chat stays when you leave it (and when the app closes). */
 const draftKey = (s) => s.id || ('new|' + (s.mid || ''));
 const drafts = () => { try { return JSON.parse(localStorage.getItem('cm.drafts') || '{}'); } catch { return {}; } };

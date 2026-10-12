@@ -559,3 +559,32 @@ main.flush { padding: 0 0 16px; overflow: hidden; }
 .bignum { font-family: var(--serif); font-size: 44px; line-height: 1; }
 .splitbar { display: flex; height: 12px; border-radius: 99px; overflow: hidden; background: var(--line); }
 @media (max-width: 980px) { .histgrid { grid-template-columns: 1fr; } }
+
+/* ═════ frosted glass ═════ */
+html, body { background: var(--bg); }
+body { background:
+  radial-gradient(900px 600px at 8% -8%, color-mix(in srgb, var(--clay) 22%, transparent), transparent 70%),
+  radial-gradient(800px 600px at 100% 12%, color-mix(in srgb, #6A9BCC 18%, transparent), transparent 70%),
+  radial-gradient(900px 700px at 55% 108%, color-mix(in srgb, #D9A441 18%, transparent), transparent 70%), var(--bg);
+  background-attachment: fixed; }
+#nav, .card, .rcard, .chatmain, .hitem, .split > .side .item, .split > .side input, .tablecard, .cbox, .ptab, .navfoot, .ttip, .infopop, .slashmenu {
+  background-color: color-mix(in srgb, var(--card) 58%, transparent) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5);
+  border-color: color-mix(in srgb, #fff 55%, var(--line)) !important;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset, 0 8px 28px -14px rgba(60, 40, 20, .28);
+}
+#nav { background-color: color-mix(in srgb, var(--card) 66%, transparent) !important; }
+.chatmain .cbox, .rcard .card, .card .card { box-shadow: none; }
+.ptab.on, .split > .side .item.on { background-color: color-mix(in srgb, var(--active) 80%, transparent) !important; }
+.ptab.add { background-color: transparent !important; backdrop-filter: none; box-shadow: none; border-color: var(--line) !important; }
+.pane.isnew .chatmain { background-color: transparent !important; backdrop-filter: none; box-shadow: none; border-color: transparent !important; }
+.backbtn { align-self: flex-start; margin: 14px 0 0 18px; position: relative; z-index: 2; }
+.pane.isnew .chatmain { position: relative; }
+@media (prefers-color-scheme: dark) {
+  #nav, .card, .rcard, .chatmain, .hitem, .split > .side .item, .split > .side input, .tablecard, .cbox, .ptab, .navfoot, .ttip, .infopop, .slashmenu {
+    background-color: color-mix(in srgb, var(--card) 55%, transparent) !important;
+    border-color: color-mix(in srgb, #fff 9%, transparent) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 10px 30px -14px rgba(0, 0, 0, .6);
+  }
+  #nav { background-color: color-mix(in srgb, var(--card) 62%, transparent) !important; }
+}
