@@ -599,13 +599,16 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
         }
         }
         err?.let { Txt(it, T.small, color = cs.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
-        asks.forEach { a -> AskCard(m, a) { asks = asks - a } }
+        asks.filter { it.kind != "permission" }.forEach { a -> AskCard(m, a) { asks = asks - a } }
         if (files.isNotEmpty() || uploading) Row(Modifier.padding(horizontal = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             files.toList().forEach { f -> Chip("${f.first.takeLast(24)}  ×", true) { files.remove(f) } }
             if (uploading) Txt("Uploading…", T.small, muted = true, modifier = Modifier.padding(vertical = 8.dp))
         }
-        Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = 8.dp)) {
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(24.dp)).padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+        val perm = asks.firstOrNull { it.kind == "permission" }
+        if (perm != null) PermDock(m, perm) { asks = asks - perm }   // the approval sits right on top of the message box, like in a terminal agent
+        val boxShape = if (perm != null) RoundedCornerShape(0.dp, 0.dp, 24.dp, 24.dp) else RoundedCornerShape(24.dp)
+        Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = if (perm != null) 0.dp else 8.dp)) {
+            Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TextAction("Attach") { pick.launch("*/*") }
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
@@ -619,6 +622,37 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
 }
 
 /** Claude waiting on you: a permission to allow or deny, or a question with options and a free answer. */
+/** The approval prompt, joined to the top of the message box: what Claude wants to do, then Yes / Yes and don't ask again / No. */
+@Composable
+private fun PermDock(m: Machine, a: CallEvent, done: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val cs = MaterialTheme.colorScheme
+    val dark = cs.background.luminance() < .5f
+    fun decide(b: String) { scope.launch(Dispatchers.IO) { runCatching { CallApi.decide(m, a.req, b) } }; done() }
+    val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    val always = a.tool.isNotEmpty() && a.tool != "Bash"
+    Column(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, top = 8.dp)) {
+        Column(Modifier.fillMaxWidth().clip(shape).background(cs.surfaceVariant).border(1.dp, cs.primary, shape).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Label(if (a.tool.isNotEmpty()) "Claude wants to use ${a.tool}" else "Claude needs your OK")
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (dark) Color(0xFF141312) else Color(0xFF2A2823)).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp)) {
+                val lines = if (a.detail.isNotBlank()) a.detail.lines().take(16) else listOf(a.text)
+                lines.forEachIndexed { i, l ->
+                    val col = when { l.startsWith("+ ") -> Color(0xFF8FD3A5); l.startsWith("- ") -> Color(0xFFF09A8C); a.tool != "Bash" && i == 0 && a.detail.isNotBlank() -> Color(0xFF9A968C); else -> Color(0xFFF1EEE6) }
+                    Text(l, style = T.small.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp), color = col, softWrap = false)
+                }
+            }
+            val opts = listOfNotNull("Yes" to "allow", if (always) "Yes, and don't ask again for ${a.tool} in this chat" to "allow_always" else null, "No" to "deny")
+            opts.forEachIndexed { i, (label, b) ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, if (b == "deny") cs.outline else cs.primary.copy(alpha = .6f), RoundedCornerShape(12.dp)).clickable { decide(b) }.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 8.dp, vertical = 2.dp)) { Txt("${i + 1}", T.small.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = if (b == "deny") cs.onSurfaceVariant else cs.primary) }
+                    Spacer(Modifier.width(12.dp))
+                    Txt(label, T.body)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AskCard(m: Machine, a: CallEvent, done: () -> Unit) {
     val scope = rememberCoroutineScope()

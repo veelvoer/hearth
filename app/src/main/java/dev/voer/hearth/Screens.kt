@@ -19,6 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.unit.Dp
@@ -181,6 +184,107 @@ private fun CostBars(days: List<Double>) {
     }
 }
 
+/** The whole week as one slider: a bar from 0 to 100% of the limit cut into days. The handle between two days moves how much the day on its left gets, the days still to come
+ *  share the rest evenly and follow while you drag. The solid part of a day is what is already used. */
+@Composable
+private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (PlanDay) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val base = remember(p) { groupsOf(p.segs, p.targets, p.r) }
+    var live by remember(p) { mutableStateOf<Groups?>(null) }
+    var drag by remember(p) { mutableIntStateOf(-1) }
+    var tip by remember(p) { mutableStateOf("") }
+    val res = live ?: base
+    val days = res.days
+    val dens = LocalDensity.current
+    val baseDays by rememberUpdatedState(base.days)
+    val txt = cs.onSurfaceVariant; val ink = cs.onSurface
+    Column {
+        Canvas(Modifier.fillMaxWidth().height(110.dp)
+            .pointerInput(p) {
+                detectTapGestures { pos ->
+                    val w = size.width.toFloat(); val pct = pos.x / w * 100f
+                    var at = 0.0
+                    baseDays.forEach { d -> if (pct >= at && pct < at + d.planned) { onTap(d); return@detectTapGestures }; at += d.planned }
+                }
+            }
+            .pointerInput(p) {
+                var k = -1; var before = 0.0; var d0: PlanDay? = null; var value = 0.0
+                detectDragGestures(
+                    onDragStart = { pos ->
+                        val w = size.width.toFloat(); var at = 0.0; var best = -1; var bestDist = 30.dp.toPx()
+                        baseDays.forEachIndexed { i, d -> at += d.planned; if (i < baseDays.size - 1 && d.state != "past") { val dist = kotlin.math.abs(pos.x - (at / 100.0 * w).toFloat()); if (dist < bestDist) { bestDist = dist; best = i } } }
+                        k = best
+                        if (k >= 0) { d0 = baseDays[k]; before = baseDays.take(k).sumOf { it.planned }; drag = k; value = d0!!.planned }
+                    },
+                    onDrag = { change, _ ->
+                        val d = d0
+                        if (k >= 0 && d != null) {
+                            change.consume()
+                            val x = (change.position.x / size.width.toFloat() * 100.0).coerceIn(0.0, 100.0)
+                            value = Math.round(maxOf(d.used, minOf(100.0 - before, x - before)) * 2) / 2.0
+                            live = groupsOf(p.segs, p.targets + (d.wd to value), p.r)
+                            tip = "${d.name} ${if (value % 1.0 == 0.0) value.toInt().toString() else value.toString()}%"
+                        }
+                    },
+                    onDragEnd = { val d = d0; if (k >= 0 && d != null) onPin(d, value); k = -1; d0 = null; drag = -1 },
+                    onDragCancel = { k = -1; d0 = null; drag = -1; live = null },
+                )
+            }) {
+            val w = size.width; val top = 26.dp.toPx(); val hh = 44.dp.toPx(); val rad = 16.dp.toPx()
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textAlign = android.graphics.Paint.Align.CENTER }
+            fun argb(c: androidx.compose.ui.graphics.Color) = android.graphics.Color.argb((c.alpha * 255).toInt(), (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt())
+            val clip = androidx.compose.ui.graphics.Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, top, w, top + hh, CornerRadius(rad))) }
+            androidx.compose.ui.graphics.drawscope.clipPath(clip) {
+                drawRect(cs.outline.copy(alpha = .55f), Offset(0f, top), Size(w, hh))
+                var at = 0.0
+                days.forEachIndexed { i, d ->
+                    val x0 = (at / 100.0 * w).toFloat(); val sw = (d.planned / 100.0 * w).toFloat()
+                    drawRect(cs.primary.copy(alpha = if (d.fixed) .30f else .20f), Offset(x0, top), Size(sw, hh))
+                    val uw = if (d.planned > 0) (d.used / d.planned * sw).toFloat().coerceAtMost(sw) else 0f
+                    if (uw > 0f) drawRect(cs.primary, Offset(x0, top), Size(uw, hh))
+                    if (d.state == "today") drawRect(cs.primary.copy(alpha = .75f), Offset(x0, top), Size(sw, hh), style = Stroke(2.dp.toPx()))
+                    if (i > 0) drawRect(cs.surfaceVariant, Offset(x0 - 1.dp.toPx(), top), Size(2.dp.toPx(), hh))
+                    at += d.planned
+                }
+            }
+            var at = 0.0
+            days.forEachIndexed { i, d ->
+                val x0 = (at / 100.0 * w).toFloat(); val sw = (d.planned / 100.0 * w).toFloat()
+                if (d.planned >= 5.5) {
+                    paint.textSize = 11.sp.toPx(); paint.color = argb(if (d.state == "today") cs.primary else txt); paint.isFakeBoldText = d.state == "today"
+                    drawContext.canvas.nativeCanvas.drawText(d.name + if (d.fixed) "•" else "", x0 + sw / 2, top + hh + 16.dp.toPx(), paint)
+                    paint.color = argb(ink); paint.isFakeBoldText = true
+                    val v = if (d.state == "past") d.used else d.planned
+                    drawContext.canvas.nativeCanvas.drawText((if (v >= 10 || v == 0.0) v.toInt().toString() else v.toString()) + "%", x0 + sw / 2, top + hh + 31.dp.toPx(), paint)
+                }
+                at += d.planned
+                if (i < days.size - 1 && d.state != "past") {
+                    val kx = (at / 100.0 * w).toFloat(); val kw = 22.dp.toPx(); val kh = 44.dp.toPx(); val active = drag == i
+                    val r = androidx.compose.ui.geometry.RoundRect(kx - kw / 2, top + hh / 2 - kh / 2, kx + kw / 2, top + hh / 2 + kh / 2, CornerRadius(12.dp.toPx()))
+                    drawRoundRect(androidx.compose.ui.graphics.Color.Black.copy(alpha = .12f), Offset(r.left, r.top + 2.dp.toPx()), Size(kw, kh), CornerRadius(12.dp.toPx()))
+                    drawRoundRect(cs.surfaceVariant, Offset(r.left, r.top), Size(kw, kh), CornerRadius(12.dp.toPx()))
+                    drawRoundRect(if (d.fixed || active) cs.primary else cs.outline, Offset(r.left, r.top), Size(kw, kh), CornerRadius(12.dp.toPx()), style = Stroke(1.5.dp.toPx()))
+                    val gc = if (d.fixed || active) cs.primary else txt
+                    drawLine(gc, Offset(kx - 3.dp.toPx(), top + hh / 2 - 8.dp.toPx()), Offset(kx - 3.dp.toPx(), top + hh / 2 + 8.dp.toPx()), 2.dp.toPx(), StrokeCap.Round)
+                    drawLine(gc, Offset(kx + 3.dp.toPx(), top + hh / 2 - 8.dp.toPx()), Offset(kx + 3.dp.toPx(), top + hh / 2 + 8.dp.toPx()), 2.dp.toPx(), StrokeCap.Round)
+                    if (active && tip.isNotEmpty()) {
+                        paint.textSize = 12.sp.toPx(); paint.isFakeBoldText = true
+                        val tw = paint.measureText(tip) + 18.dp.toPx(); val tx = kx.coerceIn(tw / 2, w - tw / 2)
+                        drawRoundRect(ink, Offset(tx - tw / 2, 0f), Size(tw, 22.dp.toPx()), CornerRadius(8.dp.toPx()))
+                        paint.color = argb(cs.surfaceVariant); drawContext.canvas.nativeCanvas.drawText(tip, tx, 15.dp.toPx(), paint)
+                    }
+                }
+            }
+        }
+        val head = listOfNotNull(
+            "${p.left.toInt()}% left" + (if (res.autoDays > 0) " · the ${res.autoDays} day${if (res.autoDays > 1) "s" else ""} without a pin share it evenly, ${res.autoEach}% each" else ""),
+            if (res.over) "Your pins are more than what is left, so they are scaled down" else if (res.leftover > 0) "${res.leftover}% is not planned on any day" else null,
+            if (p.unknown > 0) "${p.unknown.toInt()}% was used before Hearth started watching this week" else null,
+        ).joinToString(". ") + "."
+        Txt(head, T.small, muted = true)
+    }
+}
+
 @Composable
 private fun WeekPlanCard() {
     val c = LocalContext.current
@@ -209,33 +313,10 @@ private fun WeekPlanCard() {
         val p = plan
         if (p == null) { Txt(err ?: "Loading…", T.small, muted = true, modifier = Modifier.padding(top = 8.dp)); return@Card }
         if (p.unavailable != null) { Txt(p.unavailable, T.small, muted = true, modifier = Modifier.padding(top = 8.dp)); return@Card }
-        Txt("Tap a day to pin its share of the week", T.small, muted = true)
+        Txt("Drag a handle to plan a day. Tap a day to type a number.", T.small, muted = true)
         Spacer(Modifier.height(10.dp))
-        val top = maxOf(10.0, p.days.maxOfOrNull { maxOf(it.planned, it.used, it.target ?: 0.0) } ?: 10.0)
-        Row(Modifier.fillMaxWidth().height(170.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            p.days.forEach { d ->
-                val isSel = sel?.wd == d.wd
-                val bg = if (isSel) cs.primary.copy(alpha = .10f) else Color.Transparent
-                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(bg).clickable { sel = if (isSel) null else d }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    val v = if (d.state == "past") d.used else d.planned
-                    Txt(if (v >= 10 || v == 0.0) "${v.toInt()}" else "%.1f".format(v), T.small.copy(fontSize = 11.sp, fontWeight = if (d.state == "future") FontWeight.Normal else FontWeight.SemiBold), muted = d.state == "future")
-                    Canvas(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 5.dp, vertical = 4.dp)) {
-                        val hp = (size.height * (d.planned / top).toFloat()).coerceAtLeast(3.dp.toPx())
-                        val hu = (size.height * (d.used / top).toFloat()).coerceAtMost(hp)
-                        val r = CornerRadius(8.dp.toPx())
-                        if (d.state != "past") {
-                            drawRoundRect(cs.primary.copy(alpha = .20f), Offset(0f, size.height - hp), Size(size.width, hp), r)
-                            drawRoundRect(cs.primary.copy(alpha = if (d.fixed) .9f else .55f), Offset(0f, size.height - hp), Size(size.width, hp), r, style = Stroke(1.5.dp.toPx(), pathEffect = if (d.fixed) null else androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
-                        }
-                        if (hu > 0f) drawRoundRect(cs.primary, Offset(0f, size.height - hu), Size(size.width, hu), r)
-                    }
-                    Txt(d.name + if (d.fixed) "•" else "", T.small.copy(fontSize = 11.sp, fontWeight = if (d.state == "today") FontWeight.Bold else FontWeight.Normal), color = if (d.state == "today") cs.primary else Color.Unspecified, muted = d.state != "today")
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        val head = if (p.autoDays > 0) "${p.left.toInt()}% left · the ${p.autoDays} day${if (p.autoDays > 1) "s" else ""} without a pin share it evenly, ${"%.1f".format(p.autoEach)}% each" else "${p.left.toInt()}% left"
-        Txt(head + (if (p.over) ". Your pins are more than what is left, so they are scaled down." else if (p.leftover > 0) ". ${p.leftover.toInt()}% is not planned on any day." else "") + (if (p.unknown > 0) " ${p.unknown.toInt()}% was used before Hearth started watching this week." else ""), T.small, muted = true)
+        WeekSlider(p, onPin = { d, v -> save(d, v) }, onTap = { sel = it })
+        Spacer(Modifier.height(4.dp))
         err?.let { Txt(it, T.small, color = cs.error) }
     }
     sel?.let { d ->
@@ -523,6 +604,58 @@ fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
 fun UsageScreen() = Box(Modifier.fillMaxSize().tourTarget("usage")) { NowScreen() }
 
 @Composable
+private fun SyncCard() {
+    val c = LocalContext.current
+    var text by remember { mutableStateOf("Checking…") }
+    LaunchedEffect(Ui.machinesRev) {
+        while (true) {
+            val ms = Store.machines(c); val m = ms.firstOrNull { it.secure } ?: ms.firstOrNull()
+            text = if (m == null) "Connect a computer or server first." else runCatching { withContext(Dispatchers.IO) { "${m.name}: " + Relay.syncText(m) } }.getOrElse { "${m.name} can't be reached right now." }
+            delay(30_000)
+        }
+    }
+    Card { Head("sync", "Sync", "Chats and project files that the server keeps the same on all your computers."); Spacer(Modifier.height(8.dp)); Txt(text, T.small, muted = true) }
+}
+
+@Composable
+private fun MemoryCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var info by remember { mutableStateOf<Relay.MemInfo?>(null) }
+    var picked by remember { mutableStateOf<Int?>(null) }
+    var msg by remember { mutableStateOf("Checking…") }
+    fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
+    LaunchedEffect(Ui.machinesRev) {
+        val m = machine()
+        if (m == null) msg = "Connect a computer or server first." else runCatching { withContext(Dispatchers.IO) { Relay.memory(m) } }.onSuccess { info = it; msg = "" }.onFailure { msg = "This server has no memory setting yet. Update it first." }
+    }
+    Card {
+        Head("server", "Server memory", "The most memory the server program may use, as a share of the memory that is free when it starts. 75% is the default. It takes effect when the server starts again.")
+        Spacer(Modifier.height(10.dp))
+        val i = info
+        if (i == null) { Txt(msg, T.small, muted = true); return@Card }
+        val cur = picked ?: i.pct
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(25 to "25%", 50 to "50%", 75 to "75% (default)", 90 to "90%", 0 to "No limit").forEach { (v, l) -> Chip(l, cur == v) { picked = v } }
+        }
+        Spacer(Modifier.height(8.dp))
+        val want = if (cur == 0) null else maxOf(256, minOf(i.availableMb * cur / 100, (i.totalMb * 0.9).toInt()))
+        Txt("${i.availableMb} MB free of ${i.totalMb} MB. Using ${i.usedMb} MB now. " + (if (want != null) "Limit for $cur%: about $want MB." else "No limit of its own."), T.small, muted = true)
+        if (picked != null && picked != i.pct) {
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(if (i.canRestart) "Save and restart" else "Save") {
+                    val m = machine() ?: return@Button; val v = picked ?: return@Button
+                    scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.setMemory(m, v, i.canRestart) } }.onSuccess { info = i.copy(pct = v); picked = null; msg = "" }.onFailure { msg = it.message ?: "Couldn't save" } }
+                }
+                TextAction("Cancel") { picked = null }
+            }
+        }
+        if (msg.isNotEmpty()) Txt(msg, T.small, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+@Composable
 fun SettingsScreen() {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -599,9 +732,6 @@ fun SettingsScreen() {
                 Txt("›", T.title, muted = true)
             }
         }
-        var adv by remember { mutableStateOf(false) }
-        TextAction(if (adv) "Hide advanced settings" else "Advanced settings") { adv = !adv }
-        if (adv) {
         Card {
             Head("bell", "Alerts")
             Spacer(Modifier.height(10.dp))
@@ -669,11 +799,19 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(8.dp))
         }
-        }
+        SyncCard()
+        MemoryCard()
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.", Modifier.weight(1f))
                 Button("Contact", Modifier) { support = true }
+            }
+            Spacer(Modifier.height(10.dp))
+            val warn = RoundedCornerShape(12.dp)
+            Column(Modifier.fillMaxWidth().clip(warn).background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)).border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .35f), warn).padding(12.dp)) {
+                Txt("If support does not work from here, write an email yourself to hearth.support1@gmail.com. Say what you did and what you saw.", T.small)
+                Spacer(Modifier.height(6.dp))
+                TextAction("Write an email") { runCatching { c.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:hearth.support1@gmail.com"))) } }
             }
         }
         Txt("Hearth is an independent app, not made by or affiliated with Anthropic. Your usage limits come from what Claude Code reports on your own computer or server; Hearth never sees your Claude login.", T.small, muted = true)

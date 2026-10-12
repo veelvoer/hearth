@@ -266,7 +266,7 @@ function settingsView(only) {
   const st = S.settings;
   /** A setting changed: swap only the cards that show settings. The rest of the page (and the scroll position) is not touched. */
   const set = async (patch) => {
-    S.settings = await cm.setSettings(patch); applyPerf();
+    S.settings = await cm.setSettings(patch); applyPerf(); if ('palette' in patch || 'customAccent' in patch) await applyPalette();
     const page0 = content.querySelector('.page');
     if (!page0 || tab !== 'settings') return render();
     const np = settingsView(true);
@@ -312,7 +312,8 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(only ? h('div') : memoryCard());
-  p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
+  p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
+    h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
   if (only) return p;
   return withSettingsMenu(p);
@@ -322,7 +323,7 @@ function withSettingsMenu(p) {
   const ap = p.querySelector(':scope > .appearance'); if (ap && p.children[1] !== ap) p.insertBefore(ap, p.children[1] || null);   // Appearance first, as in the design
   const cards = [...p.children].filter((c) => c.querySelector && c.querySelector('.chead .label'));
   const menu = h('div', { class: 'submenu' });
-  const items = cards.map((c) => { const name = c.querySelector('.chead .label').textContent; const b = h('button', { class: 'subitem', onclick: () => { c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, name); menu.append(b); return [b, c]; });
+  const items = cards.map((c) => { const name = c.querySelector('.chead .label').textContent; const b = h('button', { class: 'subitem', onclick: () => { c.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('noanim') ? 'auto' : 'smooth', block: 'start' }); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 2200); } }, name); menu.append(b); return [b, c]; });
   const spy = () => {
     let cur = 0; items.forEach(([, c], i) => { if (c.isConnected && c.getBoundingClientRect().top < 140) cur = i; });
     items.forEach(([b], i) => b.classList.toggle('on', i === cur));
@@ -562,7 +563,7 @@ setInterval(() => { if (S.settings && S.settings.palette === 'system') applyPale
 let lastSig = '';
 const sigOf = () => JSON.stringify([tab, S.signedIn, S.usage, S.error, S.settings, S.history && S.history.length, typeof D !== 'undefined' ? [D.err, D.stats && { ...D.stats, generated: 0 }, D.live && D.live.length, D.voice] : 0, typeof UR !== 'undefined' ? UR.data && { ...UR.data, generated: 0 } : 0]);
 function softRender() { const sig = sigOf(); if (sig === lastSig) return; lastSig = sig; render(); }
-cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; applyPerf(); if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else { lastSig = sigOf(); renderNav(); } });
+cm.on('usage', (s) => { const pal = S.settings && S.settings.palette, accent0 = S.settings && S.settings.customAccent; S = s; applyPerf(); if (pal !== (S.settings || {}).palette || accent0 !== (S.settings || {}).customAccent) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else { lastSig = sigOf(); renderNav(); } });
 cm.on('goto', (t) => setTab(t));
 cm.on('open-session', async (o) => { SS.machines = await cm.machines(); SS.mid = o.machine; openSession({ id: o.session, title: o.title || 'Session', cwd: o.cwd, mid: o.machine, live: true }, o.voice); });
 setInterval(() => { if (tab === 'now' || tab === 'history') render(); }, 30000);

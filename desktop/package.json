@@ -1,8 +1,8 @@
 {
   "name": "hearth-desktop",
   "productName": "Hearth",
-  "version": "1.3.22",
-  "description": "Use Claude Code from your computer and your phone",
+  "version": "1.3.23",
+  "description": "Hearth",
   "main": "main.js",
   "private": true,
   "scripts": {

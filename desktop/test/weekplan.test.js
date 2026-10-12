@@ -45,5 +45,12 @@ let h=record([],{week:{pct:5,resetsAt:end}},1000); h=record(h,{week:{pct:5,reset
   const p3=plan({week:{pct:60,resetsAt:end}},s3,{6:20,0:20},T('2026-10-12T07:00:00Z'),tz);
   console.log('mon:',p3.days.map(d=>`${d.name} u${d.used} p${d.planned}`).join(' | '));
 }
-process.exit(ok?0:1);
+// the slider's live recalculation (groups on the data the server sends) gives the same as asking the server again with that pin
+{ const { groups } = require(require('path').join(__dirname, '..', 'relay', 'weekplan.js'));
+  const now = T('2026-10-09T10:00:00Z'), s = [{ t: T('2026-10-09T08:00:00Z'), w: 5, r: end }];
+  const base = plan({ week: { pct: 5, resetsAt: end } }, s, { 0: 20 }, now, tz);
+  const pinned = plan({ week: { pct: 5, resetsAt: end } }, s, { 0: 20, 6: 30 }, now, tz);
+  const live = groups(base.segs, { ...base.targets, 6: 30 }, base.R);
+  ok = ok && JSON.stringify(live.days) === JSON.stringify(pinned.days); console.log(JSON.stringify(live.days) === JSON.stringify(pinned.days) ? 'ok   live slider = server answer' : 'FAIL live slider');
+}
 process.exit(ok ? 0 : 1);

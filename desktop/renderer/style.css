@@ -649,3 +649,41 @@ body { background:
 @media (prefers-color-scheme: dark) { .pcode { background: #141312; } }
 
 .updcard.again, .updcard.again * { animation: none !important; }
+
+/* dots stay round, whatever the row does to them */
+.dot, .pdot, .hdot, .navfoot i, .pill i { flex: none; min-width: 8px; min-height: 8px; aspect-ratio: 1; }
+.hdot { min-width: 9px; min-height: 9px; }
+/* a setting that was jumped to lights up for a moment */
+.flash { animation: flash 2.2s ease-out; }
+@keyframes flash { 0%, 35% { box-shadow: 0 0 0 3px var(--clay), 0 0 28px color-mix(in srgb, var(--clay) 40%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.settingsgrid > .card { scroll-margin-top: 16px; }
+.warnnote { background: color-mix(in srgb, var(--clay) 10%, transparent); border: 1px solid color-mix(in srgb, var(--clay) 35%, transparent); border-radius: 12px; padding: 10px 14px; font-size: 13px; }
+.warnnote a { color: var(--clay); font-weight: 600; }
+/* the approval prompt sits on top of the message box, joined to it */
+#perms { padding: 0 24px; margin-top: 8px; }
+.chatmain .perm.pc { border-radius: 18px 18px 0 0; margin: 0; border-bottom: 0; }
+.chatmain:has(#perms > .perm) .composer { padding-top: 0; }
+.chatmain:has(#perms > .perm) .cbox { border-top-left-radius: 0; border-top-right-radius: 0; border-top-color: transparent !important; }
+
+/* the week as one slider */
+.wpwrap { position: relative; padding: 18px 0 4px; }
+.wptrack { position: relative; height: 58px; border-radius: 20px; background: color-mix(in srgb, var(--line) 55%, transparent); overflow: visible; }
+.wpseg { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--clay) 20%, transparent); border-left: 2px solid var(--card); box-sizing: border-box; overflow: hidden; transition: left .12s linear, width .12s linear; }
+.wpseg:first-of-type { border-left: 0; border-radius: 20px 0 0 20px; } .wptrack > .wpseg:nth-child(1) { border-left: 0; border-radius: 20px 0 0 20px; }
+.wpseg:last-of-type { border-radius: 0 20px 20px 0; }
+.wpseg.fixed { background: color-mix(in srgb, var(--clay) 30%, transparent); }
+.wpfill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--clay); transition: width .12s linear; }
+.wpseg.today { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--clay) 70%, transparent); }
+.wpknob { position: absolute; top: 50%; width: 22px; height: 40px; margin: -20px 0 0 -11px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); cursor: ew-resize; touch-action: none; display: flex; gap: 3px; align-items: center; justify-content: center; z-index: 2; transition: left .12s linear; }
+.wpknob i { width: 2px; height: 16px; border-radius: 2px; background: var(--muted); }
+.wpknob.fixed { border-color: var(--clay); } .wpknob.fixed i { background: var(--clay); }
+.wpknob.drag { transition: none; transform: scale(1.1); border-color: var(--clay); } .wpseg { }
+.wpknob:hover { border-color: var(--clay); }
+.wptip { position: absolute; top: -4px; transform: translateX(-50%); background: var(--ink); color: var(--card); font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 8px; display: none; white-space: nowrap; pointer-events: none; z-index: 3; }
+.wpnames { position: relative; height: 44px; }
+.wplabel { position: absolute; top: 0; transform: translateX(-50%); background: none; border: 0; padding: 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 0; line-height: 1.25; color: var(--muted); border-radius: 10px; transition: left .12s linear; white-space: nowrap; }
+.wplabel:hover, .wplabel.sel { background: color-mix(in srgb, var(--clay) 10%, transparent); }
+.wplabel .wpn { font-size: 12.5px; } .wplabel .wpn b { color: var(--clay); margin-left: 2px; }
+.wplabel .wpv { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.wplabel.today .wpn { color: var(--clay); font-weight: 700; }
+.noanim .wpseg, .noanim .wpfill, .noanim .wpknob, .noanim .wplabel { transition: none !important; }

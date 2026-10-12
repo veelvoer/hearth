@@ -152,27 +152,67 @@ async function setWeekDay(wd, pct) {
   catch (e) { WP.err = clean(e); }
   drawWeekPlan();
 }
+/** One slider for the whole week: a bar from 0 to 100% of the limit, cut into days. Drag the handle between two days to give the day on its left more or less;
+ *  the days that are still to come share the rest evenly, and move while you drag. The solid part of each day is what is already used. */
 function drawWeekPlan() {
   const box = document.getElementById('weekplan'); if (!box) return;
   box.innerHTML = '';
   const p = WP.plan;
-  box.append(h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Your week, day by day'), p && !p.unavailable ? h('span', { class: 'small muted' }, 'Tap a day to pin its share') : null));
+  box.append(h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Your week, day by day'), p && !p.unavailable ? h('span', { class: 'small muted' }, 'Drag a handle to plan a day') : null));
   if (WP.err) box.append(h('div', { class: 'small err' }, WP.err));
   if (!p) { if (!WP.err) box.append(h('div', { class: 'small muted' }, 'Loading…')); return; }
   if (p.unavailable) { box.append(h('div', { class: 'small muted' }, p.unavailable)); return; }
-  const top = Math.max(10, ...p.days.map((d) => Math.max(d.planned, d.used, d.target || 0)));
-  const bars = h('div', { class: 'wpbars' });
-  for (const d of p.days) {
-    const hp = Math.max(2, d.planned / top * 100), hu = Math.min(hp, d.used / top * 100);
-    bars.append(h('button', { class: 'wpday ' + d.state + (d.fixed ? ' fixed' : '') + (WP.sel === d.wd ? ' sel' : ''), title: `${WD_FULL[d.wd]}: ${d.used}% used, plan ${d.planned}%` + (d.fixed ? ` (pinned at ${d.target}%)` : ' (shared evenly)'), onclick: () => { WP.sel = WP.sel === d.wd ? null : d.wd; drawWeekPlan(); } },
-      h('span', { class: 'wpval' }, (d.state === 'past' ? d.used : d.planned) + '%'),
-      h('span', { class: 'wpcol' }, h('i', { class: 'wpplan', style: `height:${hp}%` }), h('i', { class: 'wpused', style: `height:${hu}%` })),
-      h('span', { class: 'wpname' }, d.name, d.fixed ? h('b', { title: 'pinned' }, '•') : null)));
+
+  const track = h('div', { class: 'wptrack' }), names = h('div', { class: 'wpnames' }), tip = h('div', { class: 'wptip' }), note = h('div', { class: 'small muted' });
+  const segs = p.days.map(() => h('div', { class: 'wpseg' }, h('i', { class: 'wpfill' }))), labels = p.days.map(() => h('button', { class: 'wplabel' })), knobs = [];
+  segs.forEach((e) => track.append(e));
+  const legend = h('div', { class: 'legend' }, h('span', {}, h('i', { class: 'lg used' }), 'Already used'), h('span', {}, h('i', { class: 'lg plan' }), 'Planned'), h('span', {}, h('b', {}, '•'), ' pinned by you'));
+  let days = p.days, live = null;
+  const cum = (list, k) => list.slice(0, k).reduce((a, d) => a + d.planned, 0);
+
+  function paint(list, dragging) {
+    let at = 0;
+    list.forEach((d, k) => {
+      const e = segs[k], w = Math.max(0, d.planned);
+      e.style.left = at + '%'; e.style.width = w + '%';
+      e.className = 'wpseg ' + d.state + (d.fixed ? ' fixed' : '');
+      e.firstChild.style.width = (w > 0 ? Math.min(100, d.used / w * 100) : 0) + '%';
+      e.title = `${WD_FULL[d.wd]}: ${d.used}% used, planned ${d.planned}%` + (d.fixed ? ' (pinned)' : ' (shared evenly)');
+      const L = labels[k]; L.style.left = (at + w / 2) + '%'; L.style.display = w < 5.5 ? 'none' : '';
+      L.className = 'wplabel ' + d.state + (WP.sel === d.wd ? ' sel' : '');
+      L.replaceChildren(h('span', { class: 'wpn' }, d.name, d.fixed ? h('b', {}, '•') : null), h('span', { class: 'wpv' }, (d.state === 'past' ? d.used : d.planned) + '%'));
+      if (knobs[k]) { knobs[k].style.left = (at + w) + '%'; knobs[k].className = 'wpknob' + (d.fixed ? ' fixed' : '') + (dragging === k ? ' drag' : ''); }
+      at += w;
+    });
+    const g = live || p;
+    note.textContent = [`${p.left}% left` + (g.autoDays ? ` · the ${g.autoDays} day${g.autoDays > 1 ? 's' : ''} without a pin share it evenly, ${g.autoEach}% each` : ''),
+      g.over ? 'Your pins are more than what is left, so they are scaled down' : g.leftover > 0 ? `${g.leftover}% is not planned on any day` : '', p.unknown ? `${p.unknown}% was used before Hearth started watching this week` : ''].filter(Boolean).join('. ') + '.';
   }
-  box.append(bars);
-  const auto = p.autoDays ? `${p.left}% left · the ${p.autoDays} day${p.autoDays > 1 ? 's' : ''} without a pin share it evenly, ${p.autoEach}% each` : `${p.left}% left`;
-  box.append(h('div', { class: 'small muted' }, auto + (p.over ? '. Your pins are more than what is left, so they are scaled down.' : p.leftover > 0 ? `. ${p.leftover}% is not planned on any day.` : ''), p.unknown ? ` ${p.unknown}% was used before Hearth started watching this week.` : ''));
-  box.append(h('div', { class: 'legend' }, h('span', {}, h('i', { class: 'lg used' }), 'Used'), h('span', {}, h('i', { class: 'lg plan' }), 'Planned'), h('span', {}, h('b', {}, '•'), ' pinned by you')));
+  days.forEach((d, k) => { if (k < days.length - 1 && d.state !== 'past') { const kn = h('div', { class: 'wpknob', title: 'Drag to change the share of ' + WD_FULL[d.wd] }, h('i'), h('i')); knobs[k] = kn; track.append(kn); } });
+  days.forEach((d, k) => names.append(labels[k]));
+  labels.forEach((L, k) => L.onclick = () => { WP.sel = WP.sel === days[k].wd ? null : days[k].wd; drawWeekPlan(); });
+
+  knobs.forEach((kn, k) => {
+    if (!kn) return;
+    kn.onpointerdown = (ev) => {
+      ev.preventDefault(); kn.setPointerCapture(ev.pointerId);
+      const rect = track.getBoundingClientRect(), base = days, before = cum(base, k), d0 = base[k];
+      tip.style.display = 'block';
+      let value = d0.planned;
+      kn.onpointermove = (e) => {
+        const x = Math.max(0, Math.min(100, (e.clientX - rect.left) / rect.width * 100));
+        value = Math.round(Math.max(d0.used, Math.min(100 - before, x - before)) * 2) / 2;   // not below what the day already used, and not past the end of the week
+        live = WeekPlan.groups(p.segs, { ...p.targets, [d0.wd]: value }, p.R); live.left = p.left;
+        paint(live.days, k);
+        tip.textContent = `${WD_FULL[d0.wd]} ${value}%`; tip.style.left = (before + value) + '%';
+      };
+      const done = () => { kn.onpointermove = null; kn.onpointerup = null; kn.onlostpointercapture = null; tip.style.display = 'none'; if (live) { const v = value; live = null; setWeekDay(d0.wd, v); } };
+      kn.onpointerup = done; kn.onlostpointercapture = () => { if (kn.onpointerup) done(); };
+      kn.onpointermove(ev);
+    };
+  });
+  paint(days);
+  box.append(h('div', { class: 'wpwrap' }, track, tip), names, note, legend);
   if (WP.sel != null) {
     const d = p.days.find((x) => x.wd === WP.sel); if (!d) return;
     const inp = h('input', { type: 'number', min: '0', max: '100', step: '0.5', value: d.fixed ? String(d.target) : String(Math.round(d.planned)), style: 'width:90px' });

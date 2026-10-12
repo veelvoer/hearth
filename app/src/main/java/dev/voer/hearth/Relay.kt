@@ -143,7 +143,11 @@ object Relay {
     private fun parsePlan(o: JSONObject): WeekPlan {
         val a = o.optJSONArray("days")
         val days = if (a == null) emptyList() else List(a.length()) { a.getJSONObject(it).let { d -> PlanDay(d.getInt("wd"), d.getString("name"), d.getString("state"), d.getDouble("used"), d.getDouble("planned"), d.optBoolean("fixed"), if (d.isNull("target")) null else d.getDouble("target")) } }
-        return WeekPlan(if (o.has("unavailable")) o.getString("unavailable") else null, o.optDouble("left", 0.0), o.optBoolean("over"), o.optDouble("leftover", 0.0), o.optDouble("unknown", 0.0), o.optInt("autoDays"), o.optDouble("autoEach", 0.0), days)
+        val sa = o.optJSONArray("segs")
+        val segs = if (sa == null) emptyList() else List(sa.length()) { sa.getJSONObject(it).let { d -> PlanSeg(d.getInt("wd"), d.getDouble("f"), d.getString("state"), d.getDouble("used"), d.getDouble("w")) } }
+        val to = o.optJSONObject("targets")
+        val targets = HashMap<Int, Double>().also { m -> to?.keys()?.forEach { k -> k.toIntOrNull()?.let { wd -> m[wd] = to.getDouble(k) } } }
+        return WeekPlan(if (o.has("unavailable")) o.getString("unavailable") else null, o.optDouble("left", 0.0), o.optBoolean("over"), o.optDouble("leftover", 0.0), o.optDouble("unknown", 0.0), o.optInt("autoDays"), o.optDouble("autoEach", 0.0), days, segs, targets, o.optDouble("R", 0.0))
     }
 
     /** The week planned day by day (the computer works it out, so the phone and the desktop always agree). [tz] = minutes east of UTC. */
@@ -158,6 +162,28 @@ object Relay {
             val o = runCatching { JSONObject(body) }.getOrDefault(JSONObject())
             if (c.responseCode != 200) throw ApiException(c.responseCode, o.optString("error").ifBlank { "Couldn't save" })
             return parsePlan(o)
+        } finally { c.disconnect() }
+    }
+
+    /** What the server keeps in sync: chats and project files, and which of your computers are linked. */
+    fun syncText(m: Machine): String {
+        val o = JSONObject(getJson(m, "/sync/status"))
+        val parts = ArrayList<String>()
+        if (o.has("chats")) parts += "${o.optInt("chats")} chats"
+        o.optJSONObject("files")?.let { f -> if (f.has("count")) parts += "${f.optInt("count")} project files" }
+        val pcs = o.optJSONArray("computers")
+        if (pcs != null && pcs.length() > 0) parts += (0 until pcs.length()).joinToString(", ") { i -> pcs.getJSONObject(i).let { c -> c.optString("name") + if (c.optBoolean("online")) " online" else " offline" } }
+        return if (parts.isEmpty()) "Nothing is synced here yet" else parts.joinToString(" · ")
+    }
+
+    data class MemInfo(val pct: Int, val availableMb: Int, val totalMb: Int, val usedMb: Int, val canRestart: Boolean)
+    fun memory(m: Machine): MemInfo = JSONObject(getJson(m, "/admin/memory")).let { MemInfo(it.getInt("pct"), it.getInt("availableMb"), it.getInt("totalMb"), it.getInt("usedMb"), it.optBoolean("canRestart")) }
+    fun setMemory(m: Machine, pct: Int, restart: Boolean) {
+        val c = open(m, "/admin/memory", post = true)
+        try {
+            c.outputStream.use { it.write(JSONObject().put("pct", pct).put("restart", restart).toString().toByteArray()) }
+            val body = (if (c.responseCode == 200) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+            if (c.responseCode != 200) throw ApiException(c.responseCode, runCatching { JSONObject(body).optString("error") }.getOrDefault("").ifBlank { "Couldn't save" })
         } finally { c.disconnect() }
     }
 
@@ -188,7 +214,19 @@ object Relay {
         val a = JSONArray(getJson(m, "/pending"))
         return List(a.length()) { val o = a.getJSONObject(it)
             CallEvent(o.optLong("id"), o.getString("kind"), o.optString("session"), o.optString("title"), o.optString("cwd"), o.optString("text"), 0, o.optString("req"), o.optString("machine"), o.optBoolean("call", true), "", o.optString("question"),
-                o.optJSONArray("options")?.let { op -> List(op.length()) { i -> op.getJSONObject(i).optString("label") } } ?: emptyList(), o.optBoolean("multi")) }
+                o.optJSONArray("options")?.let { op -> List(op.length()) { i -> op.getJSONObject(i).optString("label") } } ?: emptyList(), o.optBoolean("multi"), o.optString("tool"), previewOf(o.optString("tool"), o.optJSONObject("input"))) }
+    }
+
+    /** What a tool wants to do, as lines for the approval prompt: the command, or the lines that change (- old, + new). */
+    private fun previewOf(tool: String, i: JSONObject?): String {
+        if (i == null) return ""
+        fun lines(prefix: String, t: String) = t.split("\n").joinToString("\n") { prefix + it }
+        return when (tool) {
+            "Bash" -> "$ " + i.optString("command")
+            "Edit", "NotebookEdit" -> i.optString("file_path") + "\n" + lines("- ", i.optString("old_string")) + "\n" + lines("+ ", i.optString("new_string"))
+            "Write" -> i.optString("file_path") + "\n" + lines("+ ", i.optString("content").lines().take(10).joinToString("\n"))
+            else -> ""
+        }
     }
 
     fun answer(m: Machine, req: String, text: String) {
