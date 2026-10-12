@@ -26,6 +26,19 @@ if (args.includes('--link')) {
   process.exit(0);
 }
 
+// Memory: start again with the heap limit the setting asks for (75% of the free memory unless you chose another share). Only when this process was not given a limit already.
+if (!process.env.HEARTH_MEM_CHILD && !process.execArgv.some((x) => x.startsWith('--max-old-space-size')) && !args.includes('--no-memory-limit')) {
+  let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(path.join(dir, 'relay.json'), 'utf8')); } catch { /* first start */ }
+  const mem = require('./memory'), mb = mem.limitMb(mem.pctOf(cfg));
+  if (mb) {
+    const child = require('child_process').spawn(process.execPath, [`--max-old-space-size=${mb}`, ...process.execArgv, __filename, ...process.argv.slice(2)], { stdio: 'inherit', env: { ...process.env, HEARTH_MEM_CHILD: '1' } });
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => { try { child.kill(sig); } catch { /* gone */ } });
+    child.on('exit', (code, sig) => process.exit(code == null ? (sig ? 1 : 0) : code));
+    child.on('error', () => process.exit(1));
+    return;   // the child is the server
+  }
+}
+
 start({
   dir, name,
   host: get('host', '127.0.0.1'),

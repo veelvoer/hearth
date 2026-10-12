@@ -544,6 +544,11 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
+        if (parts[0] === 'admin' && parts[1] === 'memory') {
+          const memory = require('./memory'), v8 = require('v8');
+          const pct = memory.pctOf(readCfg()), MB = 1048576;
+          return json(res, 200, { pct, defaultPct: memory.DEFAULT_PCT, appliedMb: Math.round(v8.getHeapStatistics().heap_size_limit / MB), wantedMb: memory.limitMb(pct), availableMb: Math.round(memory.availableBytes() / MB), totalMb: Math.round(require('os').totalmem() / MB), usedMb: Math.round(process.memoryUsage().rss / MB), canRestart: !!opts.selfUpdate });
+        }
         if (parts[0] === 'admin' && parts[1] === 'latest') {   // is there a newer Hearth on GitHub than the one running here?
           try { const l = await selfupdate.latest(); return json(res, 200, { current: VERSION, latest: l.version, newer: selfupdate.newer(l.version, VERSION), notes: l.notes, canSelfUpdate: !!opts.selfUpdate }); }
           catch (e) { return json(res, 502, { error: 'Could not look on GitHub: ' + e.message }); }
@@ -723,6 +728,19 @@ function start(opts) {
         }
         const b = await bodyJson(req);
         if (parts[0] === 'usage' && parts[1] === 'refresh') return json(res, 200, await checkUsage());
+        if (parts[0] === 'admin' && parts[1] === 'memory') {   // share of the free memory this server may use (0 = no limit of its own); it takes effect when the server starts again
+          const p = Number(b.pct);
+          if (!(p === 0 || (Number.isFinite(p) && p >= 5 && p <= 95))) return json(res, 400, { error: 'pct must be 0 (no limit) or 5 to 95' });
+          writeCfg({ memoryPct: Math.round(p) });
+          let restarting = false;
+          if (b.restart && opts.selfUpdate) {
+            if ([...jobs.values()].some((j) => !j.done)) return json(res, 409, { error: 'Claude is working on this server right now. Try again when it has finished.' });
+            restarting = true;
+          }
+          json(res, 200, { ok: true, restarting });
+          if (restarting) setTimeout(() => process.exit(0), 600);   // the service manager starts it again
+          return undefined;
+        }
         if (parts[0] === 'weekplan') {   // pin a weekday to a share of the week (pct), or give it back to the even sharing (pct null)
           const wd = Number(b.day);
           if (!Number.isInteger(wd) || wd < 0 || wd > 6) return json(res, 400, { error: 'day must be 0 (Sunday) to 6 (Saturday)' });

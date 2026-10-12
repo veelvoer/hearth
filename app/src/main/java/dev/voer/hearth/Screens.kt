@@ -87,8 +87,10 @@ fun tick(): State<Long> = produceState(System.currentTimeMillis()) {
 
 @Composable
 fun Screen(content: @Composable ColumnScope.() -> Unit) =
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+    androidx.compose.foundation.text.selection.SelectionContainer {   // press and hold on any text to select and copy it
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+    }
 
 @Composable
 fun Header(title: String, sub: String? = null, action: (@Composable () -> Unit)? = null) =

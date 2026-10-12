@@ -311,6 +311,7 @@ function settingsView(only) {
   const v = h('div', { class: 'card stack' }, ch('mic', 'Voice', 'Talk to Claude and hear it answer. Local voices (Whisper and Piper) run on your own computer; run relay/install_voice.sh to add them.'), h('div', { class: 'row' }, h('span', { class: 'pill' }, h('i'), h('span', { id: 'vstat' }, 'Checking…'))));
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
+  p.append(only ? h('div') : memoryCard());
   p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
   if (only) return p;
@@ -419,6 +420,36 @@ function computersCard() {
 }
 
 /** Updates for this computer, your phone and the server, with a button to look for them right now. */
+/** How much memory the server may use: a share of what is free when it starts. Default 75%. Applies when the server starts again. */
+function memoryCard() {
+  const card = h('div', { class: 'card stack' }, ch('server', 'Server memory', 'The most memory the server program may use, as a share of the memory that is free when it starts. 75% is the default. It takes effect when the server starts again.'));
+  const body = h('div', { class: 'stack' }, h('div', { class: 'small muted' }, 'Loading…'));
+  card.append(body);
+  (async () => {
+    let m;
+    try { const ms = await cm.machines(); m = ms.find((x) => x.secure) || ms.find((x) => x.local) || ms[0]; if (!m) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'No server connected.')); return; } }
+    catch { return; }
+    let info, picked = null;
+    const draw = () => {
+      body.innerHTML = '';
+      const cur = picked == null ? info.pct : picked;
+      body.append(h('div', { class: 'row wrap' }, [[25, '25%'], [50, '50%'], [75, '75% (default)'], [90, '90%'], [0, 'No limit']].map(([v, l]) => chip(l, cur === v, () => { picked = v; draw(); }))));
+      const want = cur === 0 ? null : Math.max(256, Math.floor(Math.min(info.availableMb * cur / 100, info.totalMb * 0.9)));
+      body.append(h('div', { class: 'small muted' }, `${m.name}: ${info.availableMb} MB free of ${info.totalMb} MB. Using ${info.usedMb} MB now. ` + (want ? `Limit for ${cur}%: about ${want} MB.` : 'No limit of its own.')));
+      if (picked != null && picked !== info.pct) {
+        body.append(h('div', { class: 'row wrap' }, h('button', { class: 'primary sm', onclick: () => save(info.canRestart) }, info.canRestart ? 'Save and restart the server' : 'Save'),
+          h('button', { class: 'ghost sm', onclick: () => { picked = null; draw(); } }, 'Cancel')));
+      }
+    };
+    const save = async (restart) => {
+      try { await cm.relay(m.id, 'POST', '/admin/memory', { pct: picked, restart }); info = { ...info, pct: picked }; picked = null; toast(restart ? 'Saved. The server restarts now.' : 'Saved. It applies the next time the server starts.'); draw(); }
+      catch (e) { toast(clean(e)); }
+    };
+    try { info = await cm.relay(m.id, 'GET', '/admin/memory'); draw(); }
+    catch (e) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'This server has no memory setting yet. Update it first.')); }
+  })();
+  return card;
+}
 function updatesCard() {
   const rows = h('div', { class: 'stack', style: 'gap:10px' });
   const checkBtn = h('button', { class: 'ghost sm' }, 'Check'), goBtn = h('button', { class: 'primary sm', style: 'display:none' }, 'Update now');

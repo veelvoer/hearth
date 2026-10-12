@@ -571,7 +571,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
             }
             Txt("You always get a message when Claude finishes or needs you. A call only happens if you pick one here.", T.small, muted = true)
         } }
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {   // press and hold on any text to select and copy it
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty()) item { Txt(if (sess.kind == "talk") "What's on your mind?" else "What should we build in ${folder(sess.cwd)}?", T.title, modifier = Modifier.padding(top = 24.dp)) }
             itemsIndexed(msgs) { idx, msg ->
               Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
@@ -595,6 +596,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
                 }
             }
             item { Spacer(Modifier.height(4.dp)) }
+        }
         }
         err?.let { Txt(it, T.small, color = cs.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
         asks.forEach { a -> AskCard(m, a) { asks = asks - a } }
