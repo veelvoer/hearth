@@ -155,7 +155,7 @@ fun SessionsScreen() {
     when (v) {
         is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }) { m, s -> view = View.Chat(m, s) }
         is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind)) }
-        is View.Chat -> Chat(v.m, v.s, v.voice) { view = View.Home }
+        is View.Chat -> Chat(v.m, v.s, v.voice, onClear = { view = View.Chat(v.m, Sess("", "New session", v.s.cwd, 0, false, kind = v.s.kind)) }) { view = View.Home }
     }
 }
 
@@ -406,7 +406,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
 private class Part(val tool: Boolean, val text: String = "", val name: String = "", val detail: String = "", val id: String = "", val result: String? = null, val err: Boolean = false)
 
 @Composable
-private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> Unit) {
+private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () -> Unit = {}, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     var sess by remember { mutableStateOf(s0) }
     val msgs = remember { mutableStateListOf<Msg>() }
@@ -514,6 +514,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
     fun send() {
         val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
         if (text.isEmpty() || uploading) return
+        if (text.equals("/clear", ignoreCase = true)) { input = ""; files.clear(); onClear(); return }   // like /clear in Claude Code: a fresh start in the same project
         input = ""; files.clear()
         if (sending || serverBusy) queued.add(text) else doSend(text)
     }
@@ -613,7 +614,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, back: () -> 
                 TextAction("Attach") { pick.launch("*/*") }
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
-                Box(Modifier.size(38.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(38.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
                     Txt(if (stop) "■" else if (sending) "…" else "↑", T.body.copy(fontWeight = FontWeight.Bold), color = cs.onPrimary)
                 }
             }

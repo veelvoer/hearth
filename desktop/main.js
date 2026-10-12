@@ -234,7 +234,7 @@ function startEvents() {
                 let i;
                 while ((i = buf.indexOf('\n\n')) >= 0) {
                   const block = buf.slice(0, i); buf = buf.slice(i + 2);
-                  if (block.startsWith('data: ')) { const ev = safeJson(block.slice(6)); if (ev) ring(cur, ev); }
+                  const dl = block.split('\n').find((x) => x.startsWith('data: ')); if (dl) { const ev = safeJson(dl.slice(6)); if (ev) ring(cur, ev); }   // each event is "id: N" then "data: {…}"
                 }
               });
               res.on('end', resolve); res.on('error', resolve);

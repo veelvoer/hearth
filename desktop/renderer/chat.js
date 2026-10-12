@@ -270,6 +270,25 @@ function backToChats() {
 const draftKey = (s) => s.id || ('new|' + (s.mid || ''));
 const drafts = () => { try { return JSON.parse(localStorage.getItem('cm.drafts') || '{}'); } catch { return {}; } };
 function saveDraft(s, text) { const d = drafts(); if (text) d[draftKey(s)] = text; else delete d[draftKey(s)]; try { localStorage.setItem('cm.drafts', JSON.stringify(d)); } catch { /* full */ } }
+/** The Stop button: ends the run (also one that was started from another device) and says so when there is nothing to stop. */
+async function stopClaude() {
+  const s = SS.sel; if (!s) return;
+  SS.queue.length = 0;
+  if (!s.id) { toast('Claude is still starting. Press Stop again in a second.'); return; }
+  try {
+    const r = await cm.stop(s.mid, s.id);
+    if (r && r.ok === false) toast('Nothing to stop here: this chat is not running on ' + (machineName(s.mid) || 'this computer') + '.');
+  } catch (e) { toast(clean(e)); }
+  setTimeout(() => { if (typeof refreshBusy === 'function') refreshBusy(); }, 700);
+}
+/** /clear, as in Claude Code: a fresh start with no memory of this chat, in the same project, on the same computer. The old chat stays in the list. */
+function clearChat() {
+  const s = SS.sel; if (!s) return;
+  const keep = { cwd: s.cwd, mid: s.mid, kind: s.kind };
+  newChat();
+  if (SS.sel) { SS.sel.cwd = keep.cwd; SS.sel.mid = keep.mid; if (keep.kind) SS.sel.kind = keep.kind; SS.mid = keep.mid; drawSide(); drawPane(); }
+  toast('Fresh start. The earlier chat is still in your list.');
+}
 function composer() {
   const s = SS.sel;
   const ta = h('textarea', { id: 'composer-text', rows: 1, placeholder: SS.sending || remoteWorking() ? 'Claude is working. Type to queue a follow-up…' : s.isNew ? 'Describe what you want to do…' : 'Message Claude' });
@@ -277,7 +296,7 @@ function composer() {
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(220, ta.scrollHeight) + 'px'; };
   const menu = h('div', { class: 'slashmenu', hidden: true });
   const APP = [
-    ['new', 'Start a new chat', () => newChat()], ['changes', 'See and save what changed', () => openTools(s, 'changes')], ['notes', 'Edit the project notes (CLAUDE.md)', () => openTools(s, 'notes')],
+    ['clear', 'Start fresh in this project, like /clear (this chat stays in the list)', () => clearChat()], ['new', 'Start a new chat', () => newChat()], ['changes', 'See and save what changed', () => openTools(s, 'changes')], ['notes', 'Edit the project notes (CLAUDE.md)', () => openTools(s, 'notes')],
     ['skills', 'Find and use skills', () => openTools(s, 'skills')], ['plugins', 'Add plugins', () => openTools(s, 'plugins')], ['connections', 'Connect Claude to other tools', () => openTools(s, 'connections')], ['plan', 'Plan only: Claude suggests, changes nothing', () => { SS.mode = 'plan'; drawPane(); }],
     ['opus', 'Use the strongest model', () => { SS.model = 'opus'; toast('Model: Opus'); }], ['sonnet', 'Use the balanced model', () => { SS.model = 'sonnet'; toast('Model: Sonnet'); }], ['haiku', 'Use the fastest, cheapest model', () => { SS.model = 'haiku'; toast('Model: Haiku'); }],
     ['talk', 'Talk with your voice', () => startVoice()]].filter(([n]) => s.id || n === 'skills' || n === 'plugins' || n === 'connections' || n === 'plan' || n === 'opus' || n === 'sonnet' || n === 'haiku' || n === 'new');
@@ -296,6 +315,7 @@ function composer() {
     const refs = SS.files.map((f) => '\n@' + f.path).join('');
     const t = (ta.value.trim() + refs).trim();
     if (!t || SS.uploading) return;
+    if (/^\/clear\s*$/i.test(t)) { ta.value = ''; saveDraft(s, ''); grow(); clearChat(); return; }
     ta.value = ''; saveDraft(s, ''); SS.files = []; renderFiles(); grow();
     if (SS.sending || remoteWorking()) { SS.queue.push(t); renderLive(); if (!SS.sending) refreshBusy(); } else sendMsg(t);
   };
@@ -306,7 +326,7 @@ function composer() {
       sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; }),
       sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; }),
       h('div', { class: 'grow' }),
-      SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', () => { SS.queue.length = 0; if (s.id) cm.stop(s.mid, s.id); }, 'ghost sm') : null,
+      SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,
       (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
   if (SS.mode === 'bypassPermissions') box.append(h('div', { class: 'small err', style: 'margin-top:6px' }, 'Full auto lets Claude run any command on this computer without asking.'));
   box.append(h('div', { class: 'small muted', style: 'margin-top:6px;text-align:center' }, 'Enter to send · Shift+Enter for a new line · drop or paste files and images'));

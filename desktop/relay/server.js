@@ -211,6 +211,21 @@ function start(opts) {
   const lastQuestion = new Map();
   let link = null, linkGen = 0;   // this computer's link to a server (laptop side)
   const pendingByKey = new Map();
+  /** Ends a process and everything it started (on Windows the shell around Claude would otherwise keep it running), and force-ends it if it does not go. */
+  function killTree(child) {
+    if (!child || child.exitCode !== null || child.killed) return;
+    try { if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); else child.kill('SIGTERM'); } catch { /* gone */ }
+    const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 4000); t.unref();
+    child.once('close', () => clearTimeout(t));
+  }
+  /** The Stop button: end the run of this chat here, and withdraw an approval it was waiting for. False when no run of it is going on in this program. */
+  function stopJob(sid) {
+    const j = sid && jobs.get(sid);
+    if (!j || j.done) return false;
+    for (const [req, p] of [...pending]) if (p.event.session === sid || p.event.session === j.sid) { p.resolve(null); publish({ kind: 'resolved', req, session: p.event.session }); }
+    killTree(j.child);
+    return true;
+  }
   const away = () => !!readCfg().away;
 
   // ── jobs: Claude runs that outlive the connection that started them ──
@@ -776,7 +791,14 @@ function start(opts) {
         }
         if (parts[0] === 'answer') { const p = pending.get(b.req); if (p) { p.resolve(String(b.answer || '').slice(0, 2000)); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'decision') { const p = pending.get(b.req); if (p) { p.resolve(b.behavior); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
-        if (parts[0] === 'stop') { const j = jobs.get(String(b.session || '')); if (j && !j.done) j.child.kill(); return json(res, 200, { ok: !!j }); }
+        if (parts[0] === 'stop') {
+          const sid = String(b.session || '');
+          if (stopJob(sid)) return json(res, 200, { ok: true });
+          let sent = false;   // the run may be on one of your computers that the server handed the work to: pass the stop on
+          if (hubSync && sid) for (const [n, a] of hubSync.agents) if ((a.running || []).includes(sid)) { const list = answersFor.get(n) || []; list.push({ stop: sid }); answersFor.set(n, list); sent = true; }
+          if (sent) wake();
+          return json(res, 200, { ok: sent });
+        }
         if (parts[0] === 'projects') {
           if (!root) return json(res, 400, { error: 'this computer does not manage a projects folder' });
           const name = String(b.name || '').trim();
@@ -970,7 +992,7 @@ function start(opts) {
       try {
         const r = await agentPost('/agent/poll', { epoch: lastEpoch }, 30000);
         if (r.epoch !== undefined && r.epoch !== lastEpoch) { lastEpoch = r.epoch; if (agentSync) agentSync.kick('server-changed'); }
-        for (const a of r.answers || []) { const p = pending.get(a.req); if (p) p.resolve(a.value); }
+        for (const a of r.answers || []) { if (a.stop) { stopJob(a.stop); continue; } const p = pending.get(a.req); if (p) p.resolve(a.value); }
         for (const w of r.work || []) {
           if (doing.has(w.id)) continue;
           doing.add(w.id);
