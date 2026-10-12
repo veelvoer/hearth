@@ -109,6 +109,10 @@ object Store {
     fun setVoiceBrief(c: Context, v: Boolean) = sp(c).edit().putBoolean("vbrief", v).apply()
     fun voiceEngine(c: Context) = sp(c).getString("voice", "auto") ?: "auto"
     fun setVoiceEngine(c: Context, v: String) = sp(c).edit().putString("voice", v).apply()
+    fun glass(c: Context) = sp(c).getBoolean("glass", true)
+    fun setGlass(c: Context, v: Boolean) = sp(c).edit().putBoolean("glass", v).apply()
+    fun motion(c: Context) = sp(c).getBoolean("motion", true)
+    fun setMotion(c: Context, v: Boolean) = sp(c).edit().putBoolean("motion", v).apply()
     fun live(c: Context) = sp(c).getBoolean("live", false)
     fun setLive(c: Context, v: Boolean) = sp(c).edit().putBoolean("live", v).apply()
     fun lastNotified(c: Context, k: String): String? = sp(c).getString("ln_$k", null)

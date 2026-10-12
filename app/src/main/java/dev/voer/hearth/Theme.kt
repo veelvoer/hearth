@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -68,10 +70,46 @@ private val Dark = darkColorScheme(
 /** App-wide colors: Claude's own palette, or the phone's Material You colors when "System" is chosen. */
 object ThemePrefs { var system by mutableStateOf<Boolean?>(null) }
 
+/** Looks: frosted glass (see-through panels over a soft glow) and motion. Off = solid panels and no animation, lighter on weak phones. */
+object Fx {
+    var glass by mutableStateOf(true)
+    var motion by mutableStateOf(true)
+    private var loaded = false
+    fun load(c: android.content.Context) { if (loaded) return; loaded = true; glass = Store.glass(c); motion = Store.motion(c) }
+}
+
+/** The panel look. Frosted: a see-through surface with a light edge and a faint highlight at the top. Plain: the solid surface color. */
+@Composable
+fun Modifier.panel(shape: androidx.compose.ui.graphics.Shape): Modifier {
+    val cs = MaterialTheme.colorScheme
+    val dark = cs.background.luminance() < .5f
+    return if (Fx.glass) {
+        val edge = if (dark) Color.White.copy(alpha = .10f) else Color.White.copy(alpha = .75f)
+        this.clip(shape)
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(cs.surfaceVariant.copy(alpha = if (dark) .62f else .78f), cs.surfaceVariant.copy(alpha = if (dark) .44f else .5f))))
+            .border(BorderStroke(1.dp, edge), shape)
+    } else this.clip(shape).background(cs.surfaceVariant).border(BorderStroke(1.dp, cs.outline), shape)
+}
+
+/** The soft colored glow behind everything that makes the glass read as glass. */
+@Composable
+fun Modifier.glow(): Modifier {
+    val cs = MaterialTheme.colorScheme
+    if (!Fx.glass) return this.background(cs.background)
+    val dark = cs.background.luminance() < .5f
+    val a = if (dark) .20f else .24f
+    return this.background(cs.background).drawBehind {
+        drawRect(androidx.compose.ui.graphics.Brush.radialGradient(listOf(cs.primary.copy(alpha = a), Color.Transparent), Offset(size.width * .05f, size.height * -.02f), size.width * 1.0f))
+        drawRect(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0xFF6A9BCC).copy(alpha = a * .8f), Color.Transparent), Offset(size.width * 1.0f, size.height * .15f), size.width * .9f))
+        drawRect(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0xFFD9A441).copy(alpha = a * .8f), Color.Transparent), Offset(size.width * .6f, size.height * 1.05f), size.width * 1.0f))
+    }
+}
+
 @Composable
 fun ClaudeTheme(content: @Composable () -> Unit) {
     val c = LocalContext.current
     if (ThemePrefs.system == null) ThemePrefs.system = Store.themeSystem(c)
+    Fx.load(c)
     val dark = isSystemInDarkTheme()
     val scheme = when {
         ThemePrefs.system == true && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(c) else dynamicLightColorScheme(c)
@@ -100,8 +138,8 @@ fun Label(s: String, modifier: Modifier = Modifier) = Txt(s.uppercase(), T.label
 
 /** Slides up and fades in the first time it appears. */
 fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
-    val a = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { delay(delayMs.toLong()); a.animateTo(1f, tween(340, easing = FastOutSlowInEasing)) }
+    val a = remember { Animatable(if (Fx.motion) 0f else 1f) }
+    LaunchedEffect(Unit) { if (Fx.motion) { delay(delayMs.toLong()); a.animateTo(1f, tween(340, easing = FastOutSlowInEasing)) } }
     graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 28f }
 }
 
@@ -109,7 +147,7 @@ fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
 fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
+    val s by animateFloatAsState(if (pressed && Fx.motion) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
     graphicsLayer { scaleX = s; scaleY = s }.clickable(interactionSource = src, indication = null, onClick = onClick)
 }
 
@@ -117,8 +155,7 @@ fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
 fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Column(
-        modifier.appear().fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), shape).padding(18.dp),
+        modifier.appear().fillMaxWidth().panel(shape).padding(18.dp),
         content = content,
     )
 }

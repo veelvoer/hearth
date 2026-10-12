@@ -101,7 +101,7 @@ private fun Root() {
     val seenTour = remember { Ui.tourRev }   // "Show tutorial" in Settings counts up; a new screen must not replay an old press
     LaunchedEffect(Ui.tourRev) { if (Ui.tourRev != seenTour) tour = true }
     LaunchedEffect(tour) { if (tour) Store.setOnboarded(c, true) }   // the tutorial shows once; closing the app halfway must not bring it back
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(Modifier.fillMaxSize().glow()) {
         if (tour) Welcome { Store.setOnboarded(c, true); tour = false; (c as? MainActivity)?.askNotifications(); if (it) Tour.start() } else Main()
         TourOverlay()
     }
@@ -122,13 +122,13 @@ private fun Main() {
             Txt("End", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.clickable { CallSession.end() })
         }
         Box(Modifier.weight(1f)) {
-            androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(240), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
+            androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(if (Fx.motion) 240 else 0), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
         }
         if (!Ui.chatOpen) {
             val cs = MaterialTheme.colorScheme
             val active = if (cs.background.luminance() < .5f) androidx.compose.ui.graphics.Color(0xFF2E2A26) else androidx.compose.ui.graphics.Color(0xFFE9E2D2)
             val bar = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 4.dp).tourTarget("tabs").clip(bar).background(cs.surfaceVariant).border(1.dp, cs.outline, bar).padding(6.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 4.dp).tourTarget("tabs").panel(bar).padding(6.dp)) {
                 tabs.forEachIndexed { i, s ->
                     Box(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(if (tab == i) active else androidx.compose.ui.graphics.Color.Transparent).clickable { Ui.tab = i }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
                         Txt(s, T.small.copy(fontWeight = if (tab == i) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i, color = if (tab == i) cs.primary else androidx.compose.ui.graphics.Color.Unspecified)

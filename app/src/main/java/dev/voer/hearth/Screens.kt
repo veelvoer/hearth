@@ -159,7 +159,7 @@ private fun Ring(pct: Float, dia: Dp = 118.dp, stroke: Dp = 11.dp, onClay: Boole
 @Composable
 private fun Tile(label: String, value: String, sub: String? = null, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(18.dp)
-    Column(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(14.dp)) {
+    Column(modifier.panel(shape).padding(14.dp)) {
         Txt(label, T.small.copy(fontSize = 12.sp), muted = true)
         Txt(value, T.title.copy(fontSize = 26.sp))
         if (sub != null) Txt(sub, T.small.copy(fontSize = 12.sp), muted = true)
@@ -252,7 +252,7 @@ fun NowScreen() {
             }
         }
         val ok = u != null && Ui.error == null
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().panel(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(if (ok) androidx.compose.ui.graphics.Color(0xFF4CAF7D) else MaterialTheme.colorScheme.onSurfaceVariant))
             Spacer(Modifier.width(10.dp))
             Txt(if (u == null) "Waiting for the first numbers" else if (ok) "Online · updated ${ago(u.at, now)}" else "Can't reach your computer right now", T.small, muted = true)
@@ -332,7 +332,7 @@ fun HistoryScreen() {
             items.forEach { x ->
                 val work = x.running || x.busy
                 val shape = RoundedCornerShape(18.dp)
-                Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, shape).padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().panel(shape).padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(9.dp).clip(RoundedCornerShape(50)).background(if (work) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
@@ -507,6 +507,16 @@ fun SettingsScreen() {
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Claude", !sys) { ThemePrefs.system = false; Store.setThemeSystem(c, false) }
                 if (Build.VERSION.SDK_INT >= 31) Chip("System colors", sys) { ThemePrefs.system = true; Store.setThemeSystem(c, true) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { Txt("Frosted glass", T.body); Txt("See-through panels. Turn off if the app feels slow.", T.small, muted = true) }
+                Switch(Fx.glass, { Fx.glass = it; Store.setGlass(c, it) })
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { Txt("Animations", T.body); Txt("Fades, slides and bounces. Off is the lightest.", T.small, muted = true) }
+                Switch(Fx.motion, { Fx.motion = it; Store.setMotion(c, it) })
             }
             Spacer(Modifier.height(8.dp))
         }

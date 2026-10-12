@@ -228,7 +228,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onClick: () -> Uni
     val working = s.running || s.busy
     val dark = cs.background.luminance() < .5f
     val shape = RoundedCornerShape(20.dp)
-    Row(Modifier.fillMaxWidth().pressable(onClick).clip(shape).background(cs.surfaceVariant).border(1.dp, cs.outline, shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().pressable(onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)), contentAlignment = Alignment.Center) {
             Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
