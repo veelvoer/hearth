@@ -588,3 +588,14 @@ body { background:
   }
   #nav { background-color: color-mix(in srgb, var(--card) 62%, transparent) !important; }
 }
+
+/* ═════ performance switches (Settings → Appearance) ═════ */
+.noglass body { background: var(--bg); background-attachment: scroll; }
+.noglass #nav, .noglass .card, .noglass .rcard, .noglass .chatmain, .noglass .hitem, .noglass .split > .side .item, .noglass .split > .side input, .noglass .tablecard, .noglass .cbox, .noglass .ptab, .noglass .navfoot, .noglass .ttip, .noglass .infopop, .noglass .slashmenu {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important;
+  background-color: var(--card) !important; border-color: var(--line) !important;
+}
+.noglass .ptab { background-color: color-mix(in srgb, var(--line) 38%, var(--bg)) !important; }
+.noglass .ptab.on, .noglass .split > .side .item.on { background-color: var(--active) !important; }
+.noglass .ptab.add, .noglass .pane.isnew .chatmain { background-color: transparent !important; }
+.noanim *, .noanim *::before, .noanim *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }

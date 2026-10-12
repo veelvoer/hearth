@@ -75,7 +75,7 @@ function renderNav() {
 }
 /** Runs a change of screen as one morphing transition (shared elements glide, the rest cross-fades). */
 function morph(fn) {
-  if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return fn();
+  if (!document.startViewTransition || document.documentElement.classList.contains('noanim') || matchMedia('(prefers-reduced-motion: reduce)').matches) return fn();
   try {
     const t = document.startViewTransition(async () => { await fn(); });
     for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});   // a skipped transition is fine, not an error
@@ -266,7 +266,7 @@ function settingsView(only) {
   const st = S.settings;
   /** A setting changed: swap only the cards that show settings. The rest of the page (and the scroll position) is not touched. */
   const set = async (patch) => {
-    S.settings = await cm.setSettings(patch);
+    S.settings = await cm.setSettings(patch); applyPerf();
     const page0 = content.querySelector('.page');
     if (!page0 || tab !== 'settings') return render();
     const np = settingsView(true);
@@ -282,7 +282,9 @@ function settingsView(only) {
   p.append(h('div', { class: 'card stack' }, ch('paint', 'Appearance', 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop’s accent color (found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.'),
     h('div', { class: 'row' }, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']].map(([v, l]) => chip(l, (st.theme || 'system') === v, () => set({ theme: v })))),
     h('div', { class: 'row wrap' }, [['claude', 'Hearth'], ['system', 'My desktop'], ['custom', 'Pick a color']].map(([v, l]) => chip(l, (st.palette || 'claude') === v, () => set({ palette: v }))),
-      st.palette === 'custom' ? h('input', { type: 'color', value: st.customAccent || '#F0643C', style: 'width:52px;height:36px;padding:2px', onchange: (e) => set({ customAccent: e.target.value }) }) : null)));
+      st.palette === 'custom' ? h('input', { type: 'color', value: st.customAccent || '#F0643C', style: 'width:52px;height:36px;padding:2px', onchange: (e) => set({ customAccent: e.target.value }) }) : null),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Frosted glass', h('div', { class: 'small muted' }, 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass !== false, () => set({ glass: st.glass === false }))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Animations', h('div', { class: 'small muted' }, 'Gliding highlights, fades and counting numbers. Turn off for the lightest, fastest app.')), toggle(st.motion !== false, () => set({ motion: st.motion === false })))));
   p.append(h('div', { class: 'card stack' }, ch('bell', 'Alerts', 'You get a notification when your usage crosses these levels. “Session reset” tells you when a heavy 5-hour session rolls over and you have a fresh one.'),
     h('div', { class: 'row' }, [50, 75, 90, 100].map((v) => chip(v + '%', st.thresholds.includes(v), () => set({ thresholds: st.thresholds.includes(v) ? st.thresholds.filter((x) => x !== v) : [...st.thresholds, v] })))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset'), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
@@ -488,7 +490,14 @@ function updateAppIcon(accent) {
   } catch { /* keep the default icon */ }
 }
 /** Colors: Hearth's own, the desktop's accent color, or one you pick. */
+/** Frosted glass and animations are switches: off means plain solid panels and no motion, which is much lighter on weak graphics. */
+function applyPerf() {
+  const st = S.settings || {}, r = document.documentElement;
+  r.classList.toggle('noglass', st.glass === false);
+  r.classList.toggle('noanim', st.motion === false);
+}
 async function applyPalette() {
+  applyPerf();
   const root = document.documentElement, pal = (S.settings && S.settings.palette) || 'claude';
   let a = null;
   if (pal === 'system') a = await cm.accent(); else if (pal === 'custom') a = (S.settings && S.settings.customAccent) || '#F0643C';
@@ -506,7 +515,7 @@ setInterval(() => { if (S.settings && S.settings.palette === 'system') applyPale
 let lastSig = '';
 const sigOf = () => JSON.stringify([tab, S.signedIn, S.usage, S.error, S.settings, S.history && S.history.length, typeof D !== 'undefined' ? [D.err, D.stats && { ...D.stats, generated: 0 }, D.live && D.live.length, D.voice] : 0, typeof UR !== 'undefined' ? UR.data && { ...UR.data, generated: 0 } : 0]);
 function softRender() { const sig = sigOf(); if (sig === lastSig) return; lastSig = sig; render(); }
-cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else { lastSig = sigOf(); renderNav(); } });
+cm.on('usage', (s) => { const pal = S.settings && S.settings.palette; S = s; applyPerf(); if (pal !== (S.settings || {}).palette) applyPalette(); if (tab === 'dashboard' || tab === 'now' || tab === 'history' || !S.signedIn) softRender(); else { lastSig = sigOf(); renderNav(); } });
 cm.on('goto', (t) => setTab(t));
 cm.on('open-session', async (o) => { SS.machines = await cm.machines(); SS.mid = o.machine; openSession({ id: o.session, title: o.title || 'Session', cwd: o.cwd, mid: o.machine, live: true }, o.voice); });
 setInterval(() => { if (tab === 'now' || tab === 'history') render(); }, 30000);
