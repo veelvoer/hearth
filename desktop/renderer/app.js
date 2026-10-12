@@ -270,8 +270,8 @@ function settingsView(only) {
     const page0 = content.querySelector('.page');
     if (!page0 || tab !== 'settings') return render();
     const np = settingsView(true);
-    const oldKids = [...page0.children], newKids = [...np.children];   // snapshots: moving a node would shift a live list
-    for (const i of SETTINGS_LIVE) if (oldKids[i] && newKids[i]) oldKids[i].replaceWith(newKids[i]);
+    const oldKids = [...page0.querySelectorAll(':scope > [data-live]')], newKids = [...np.querySelectorAll(':scope > [data-live]')];
+    for (const n of newKids) { const o = oldKids.find((x) => x.dataset.live === n.dataset.live); if (o) o.replaceWith(n); }
     lastSig = sigOf();
   };
   const p = page(head('Settings'));
@@ -279,10 +279,18 @@ function settingsView(only) {
   p.append(only ? h('div') : syncCard());
   p.append(h('div', { class: 'card' }, ch('tour', 'Help', 'The tour lights up each button and explains it. The setup walks you through server, projects, voice, colors and phone again.',
     ibtn('tour', 'Take the tour', () => startTour()), h('button', { class: 'ghost sm', onclick: () => { OB.step = 0; startTutorial(); } }, 'Setup'))));
-  p.append(h('div', { class: 'card stack' }, ch('paint', 'Appearance', 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop’s accent color (found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.'),
-    h('div', { class: 'row' }, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']].map(([v, l]) => chip(l, (st.theme || 'system') === v, () => set({ theme: v })))),
-    h('div', { class: 'row wrap' }, [['claude', 'Hearth'], ['system', 'My desktop'], ['custom', 'Pick a color']].map(([v, l]) => chip(l, (st.palette || 'claude') === v, () => set({ palette: v }))),
-      st.palette === 'custom' ? h('input', { type: 'color', value: st.customAccent || '#F0643C', style: 'width:52px;height:36px;padding:2px', onchange: (e) => set({ customAccent: e.target.value }) }) : null),
+  const SW = [['#C15F3C', 'Hearth clay'], ['#3A86E8', 'Blue'], ['#2E9A4E', 'Green'], ['#8E3FA8', 'Purple'], ['#6B8299', 'Slate']];
+  const cur = (st.palette || 'claude') === 'claude' ? SW[0][0] : st.palette === 'custom' ? (st.customAccent || '') : '';
+  p.append(h('div', { class: 'card stack appearance' }, ch('paint', 'Appearance', 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop’s accent color (found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.'),
+    h('div', { class: 'subtitle' }, 'Mode'),
+    h('div', { class: 'modebtns' }, [['light', 'Light'], ['system', 'Auto'], ['dark', 'Dark']].map(([v, l]) => h('button', { class: 'modebtn' + ((st.theme || 'system') === v ? ' on' : ''), onclick: () => set({ theme: v }) }, l))),
+    h('div', { class: 'subtitle' }, 'Accent color'),
+    h('div', { class: 'row wrap swatches' }, SW.map(([c, n]) => h('button', { class: 'swatch' + (cur.toLowerCase() === c.toLowerCase() ? ' on' : ''), title: n, style: 'background:' + c, onclick: () => set(c === SW[0][0] ? { palette: 'claude' } : { palette: 'custom', customAccent: c }) })),
+      chip('My desktop', st.palette === 'system', () => set({ palette: 'system' })),
+      h('input', { type: 'color', title: 'Pick your own color', value: st.customAccent || '#F0643C', style: 'width:44px;height:36px;padding:2px', onchange: (e) => set({ palette: 'custom', customAccent: e.target.value }) })),
+    h('div', { class: 'small muted' }, 'Hearth clay, or pick your own color.'),
+    h('div', { class: 'subtitle' }, 'Preview'),
+    h('div', { class: 'previewbox' }, h('div', { class: 'previewbubble' }, 'Can you fix the tests?'), h('div', { class: 'previewdone' }, 'Done — all 48 pass.'), h('div', {}, h('button', { class: 'primary sm', tabindex: '-1' }, 'Primary button'))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Frosted glass', h('div', { class: 'small muted' }, 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass !== false, () => set({ glass: st.glass === false }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Animations', h('div', { class: 'small muted' }, 'Gliding highlights, fades and counting numbers. Turn off for the lightest, fastest app.')), toggle(st.motion !== false, () => set({ motion: st.motion === false })))));
   p.append(h('div', { class: 'card stack' }, ch('bell', 'Alerts', 'You get a notification when your usage crosses these levels. “Session reset” tells you when a heavy 5-hour session rolls over and you have a fresh one.'),
@@ -298,11 +306,13 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(h('div', { class: 'card' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact'))));
-  if (only) { p.insertBefore(h('div'), p.children[1] || null); return p; }   // keeps the card numbers the same as with the tab row
+  [4, 5, 6, 10].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
+  if (only) return p;
   return withSettingsMenu(p);
 }
 /** The list on the left of Settings: one entry per card, a tap scrolls to it and the one being read is lit. */
 function withSettingsMenu(p) {
+  const ap = p.querySelector(':scope > .appearance'); if (ap && p.children[1] !== ap) p.insertBefore(ap, p.children[1] || null);   // Appearance first, as in the design
   const cards = [...p.children].filter((c) => c.querySelector && c.querySelector('.chead .label'));
   const menu = h('div', { class: 'submenu' });
   const items = cards.map((c) => { const name = c.querySelector('.chead .label').textContent; const b = h('button', { class: 'subitem', onclick: () => { c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, name); menu.append(b); return [b, c]; });
@@ -529,6 +539,7 @@ function placeHighlights() {
   document.querySelectorAll('.chip.on, #nav .tabs button.on').forEach((on) => { const p = on.parentElement; if (p && !p.closest('.ttip, .infopop')) groups.set(p, on); });
   let g = 0;
   for (const [parent, on] of groups) {
+    if (parent.querySelectorAll(':scope > .chip.on').length > 1) { const old = parent.querySelector(':scope > .hl'); if (old) old.remove(); parent.classList.remove('hlready'); continue; }   // several selected at once (alert levels): each keeps its own fill
     const key = g++, nav = parent.classList.contains('tabs');
     if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
     let pill = parent.querySelector(':scope > .hl');

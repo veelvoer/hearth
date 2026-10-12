@@ -599,3 +599,22 @@ body { background:
 .noglass .ptab.on, .noglass .split > .side .item.on { background-color: var(--active) !important; }
 .noglass .ptab.add, .noglass .pane.isnew .chatmain { background-color: transparent !important; }
 .noanim *, .noanim *::before, .noanim *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+
+/* ═════ Settings as in the design: titled cards in two columns ═════ */
+.settingsrow > .page.settingsgrid { display: block; column-count: 2; column-gap: 14px; }
+.settingsgrid > .head, .settingsgrid > .submenu { column-span: all; }
+.settingsgrid > .card { break-inside: avoid; margin: 0 0 14px; display: flex; }
+.settingsgrid .chead > svg, .settingsgrid .chead > .ic { display: none; }
+.settingsgrid .chead .label { text-transform: none; letter-spacing: 0; font-size: 20px; font-weight: 600; color: var(--ink); }
+.settingsgrid .chead { padding-bottom: 2px; }
+.subtitle { font-size: 17px; font-weight: 600; margin-top: 6px; }
+.modebtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.modebtn { background: transparent; border: 1px solid var(--line); border-radius: 16px; padding: 14px 0; color: var(--muted); }
+.modebtn.on { background: var(--active); border-color: transparent; color: var(--ink); font-weight: 600; }
+.swatches { gap: 14px !important; }
+.swatch { width: 38px; height: 38px; border-radius: 50%; border: 0; padding: 0; flex: none; }
+.swatch.on { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--clay); }
+.previewbox { background: color-mix(in srgb, var(--line) 35%, var(--bg)); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.previewbubble { align-self: flex-end; background: var(--bubble, var(--active)); border-radius: 14px; padding: 9px 16px; }
+.previewdone { font-family: var(--serif); font-size: 20px; }
+@media (max-width: 900px) { .settingsrow > .page.settingsgrid { column-count: 1; } }
