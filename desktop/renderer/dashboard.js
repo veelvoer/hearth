@@ -135,6 +135,59 @@ const hbars = (items, fmt = fmtN) => {
   return box;
 };
 
+// ───────── the week, planned day by day ─────────
+const WP = { plan: null, at: 0, mid: null, sel: null, busy: false, err: null };
+const WD_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const wpTz = () => -new Date().getTimezoneOffset();
+async function wpMachine() { const ms = await cm.machines(); return ms.find((x) => x.secure) || ms.find((x) => x.local) || ms[0] || null; }
+async function loadWeekPlan(force) {
+  if (WP.busy || (!force && Date.now() - WP.at < 20000)) return;
+  WP.busy = true;
+  try { const m = await wpMachine(); if (!m) { WP.err = 'No computer connected.'; return; } WP.mid = m.id; WP.plan = await cm.relay(m.id, 'GET', '/weekplan?tz=' + wpTz()); WP.err = null; WP.at = Date.now(); }
+  catch (e) { WP.err = clean(e); }
+  finally { WP.busy = false; if (tab === 'dashboard') drawWeekPlan(); }
+}
+async function setWeekDay(wd, pct) {
+  try { WP.plan = await cm.relay(WP.mid, 'POST', '/weekplan', { day: wd, pct, tz: wpTz() }); WP.at = Date.now(); WP.err = null; WP.sel = null; }
+  catch (e) { WP.err = clean(e); }
+  drawWeekPlan();
+}
+function drawWeekPlan() {
+  const box = document.getElementById('weekplan'); if (!box) return;
+  box.innerHTML = '';
+  const p = WP.plan;
+  box.append(h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Your week, day by day'), p && !p.unavailable ? h('span', { class: 'small muted' }, 'Tap a day to pin its share') : null));
+  if (WP.err) box.append(h('div', { class: 'small err' }, WP.err));
+  if (!p) { if (!WP.err) box.append(h('div', { class: 'small muted' }, 'Loading…')); return; }
+  if (p.unavailable) { box.append(h('div', { class: 'small muted' }, p.unavailable)); return; }
+  const top = Math.max(10, ...p.days.map((d) => Math.max(d.planned, d.used, d.target || 0)));
+  const bars = h('div', { class: 'wpbars' });
+  for (const d of p.days) {
+    const hp = Math.max(2, d.planned / top * 100), hu = Math.min(hp, d.used / top * 100);
+    bars.append(h('button', { class: 'wpday ' + d.state + (d.fixed ? ' fixed' : '') + (WP.sel === d.wd ? ' sel' : ''), title: `${WD_FULL[d.wd]}: ${d.used}% used, plan ${d.planned}%` + (d.fixed ? ` (pinned at ${d.target}%)` : ' (shared evenly)'), onclick: () => { WP.sel = WP.sel === d.wd ? null : d.wd; drawWeekPlan(); } },
+      h('span', { class: 'wpval' }, (d.state === 'past' ? d.used : d.planned) + '%'),
+      h('span', { class: 'wpcol' }, h('i', { class: 'wpplan', style: `height:${hp}%` }), h('i', { class: 'wpused', style: `height:${hu}%` })),
+      h('span', { class: 'wpname' }, d.name, d.fixed ? h('b', { title: 'pinned' }, '•') : null)));
+  }
+  box.append(bars);
+  const auto = p.autoDays ? `${p.left}% left · the ${p.autoDays} day${p.autoDays > 1 ? 's' : ''} without a pin share it evenly, ${p.autoEach}% each` : `${p.left}% left`;
+  box.append(h('div', { class: 'small muted' }, auto + (p.over ? '. Your pins are more than what is left, so they are scaled down.' : p.leftover > 0 ? `. ${p.leftover}% is not planned on any day.` : ''), p.unknown ? ` ${p.unknown}% was used before Hearth started watching this week.` : ''));
+  box.append(h('div', { class: 'legend' }, h('span', {}, h('i', { class: 'lg used' }), 'Used'), h('span', {}, h('i', { class: 'lg plan' }), 'Planned'), h('span', {}, h('b', {}, '•'), ' pinned by you')));
+  if (WP.sel != null) {
+    const d = p.days.find((x) => x.wd === WP.sel); if (!d) return;
+    const inp = h('input', { type: 'number', min: '0', max: '100', step: '0.5', value: d.fixed ? String(d.target) : String(Math.round(d.planned)), style: 'width:90px' });
+    const save = () => { const v = Number(inp.value); if (Number.isFinite(v) && v >= 0 && v <= 100) setWeekDay(d.wd, v); };
+    inp.onkeydown = (e) => { if (e.key === 'Enter') save(); };
+    box.append(h('div', { class: 'row wrap wpedit' }, h('span', {}, `${WD_FULL[d.wd]}: share of the whole week`), inp, h('span', { class: 'muted' }, '%'),
+      h('button', { class: 'primary sm', onclick: save }, 'Pin'), d.fixed ? h('button', { class: 'ghost sm', onclick: () => setWeekDay(d.wd, null) }, 'Share evenly') : null, h('button', { class: 'ghost sm', onclick: () => { WP.sel = null; drawWeekPlan(); } }, 'Close')));
+  }
+}
+function weekPlanCard() {
+  const box = h('div', { class: 'card stack', id: 'weekplan' });
+  setTimeout(() => { drawWeekPlan(); loadWeekPlan(false); }, 0);
+  return box;
+}
+
 function greeting() { const hr = new Date().getHours(); return hr < 5 ? 'Late night' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening'; }
 
 function dashboardView() {
@@ -156,6 +209,7 @@ function dashboardView() {
   if (S.error) root.append(h('div', { class: 'card err small' }, S.error));
 
   root.append(h('div', { class: 'g2' }, limitPanel('Session', '5-hour window', u && u.session, CMW.SESSION_MS), limitPanel('Week', '7-day window', u && u.week, CMW.WEEK_MS)));
+  root.append(weekPlanCard());
 
   if (typeof usageSection === 'function' && D.machineId) root.append(usageSection());
   if (D.err === 'norelay') {

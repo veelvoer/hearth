@@ -88,8 +88,20 @@ function start(opts) {
 
   // ── plan usage: read from the real Claude Code's own output (rate_limit_event), never from account tokens ──
   core.warm();   // read the chat titles in the background so the first chat list is quick
+  const weekplan = require('./weekplan');
+  const histFile = path.join(dir, 'weekhist.json'), planFile = path.join(dir, 'weekplan.json');
+  let weekHist = (() => { try { const a = JSON.parse(fs.readFileSync(histFile, 'utf8')); return Array.isArray(a) ? a : []; } catch { return []; } })();
+  let weekTargets = (() => { try { return JSON.parse(fs.readFileSync(planFile, 'utf8')) || {}; } catch { return {}; } })();
+  /** Every new reading of the weekly limit is kept, so the days of the week can be told apart later (also when no app is open). */
+  function noteWeek(u) {
+    const next = weekplan.record(weekHist, u, u.at || Date.now());
+    if (next === weekHist) return;
+    weekHist = next;
+    try { fs.writeFileSync(histFile, JSON.stringify(weekHist), { mode: 0o600 }); } catch { /* best effort */ }
+  }
   const usageFile = path.join(dir, 'usage.json');
   let usage = (() => { try { return JSON.parse(fs.readFileSync(usageFile, 'utf8')); } catch { return {}; } })();
+  noteWeek(usage);   // the reading we start with counts too
   const WINDOWS = { five_hour: 'session', seven_day: 'week', seven_day_opus: 'opus', seven_day_sonnet: 'sonnet' };
   function noteRateLimit(info) {
     if (!info) return;
@@ -103,7 +115,7 @@ function start(opts) {
       got = true;
     }
     if (!got) return;
-    usage = { ...next, at: Date.now() };
+    usage = { ...next, at: Date.now() }; noteWeek(usage);
     try { fs.writeFileSync(usageFile, JSON.stringify(usage), { mode: 0o600 }); } catch { /* best effort */ }
     if (typeof forwardUsage === 'function') forwardUsage(usage);
   }
@@ -498,6 +510,7 @@ function start(opts) {
         if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || inRoot(cwd)) ? cwd : '', findClaude())); }
         if (parts[0] === 'projects' && parts.length === 1) return json(res, 200, listProjects());
         if (parts[0] === 'usage') return json(res, 200, usage);
+        if (parts[0] === 'weekplan') return json(res, 200, weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(u.searchParams.get('tz')) || 0));
         if (parts[0] === 'projects' && parts[1] === 'exists') { const c = String(u.searchParams.get('cwd') || ''); let ok = false; try { ok = fs.statSync(c).isDirectory() && (!root || inRoot(c)); } catch { /* no */ } return json(res, 200, { exists: ok }); }
         if (parts[0] === 'sync' && !parts[1]) return json(res, 200, await syncStatus(u.searchParams.get('folder') || 'claude-projects'));
         if (parts[0] === 'projects' && parts[1] === 'export') {
@@ -708,6 +721,14 @@ function start(opts) {
         }
         const b = await bodyJson(req);
         if (parts[0] === 'usage' && parts[1] === 'refresh') return json(res, 200, await checkUsage());
+        if (parts[0] === 'weekplan') {   // pin a weekday to a share of the week (pct), or give it back to the even sharing (pct null)
+          const wd = Number(b.day);
+          if (!Number.isInteger(wd) || wd < 0 || wd > 6) return json(res, 400, { error: 'day must be 0 (Sunday) to 6 (Saturday)' });
+          if (b.pct == null) delete weekTargets[wd];
+          else { const p = Number(b.pct); if (!Number.isFinite(p) || p < 0 || p > 100) return json(res, 400, { error: 'pct must be 0 to 100' }); weekTargets[wd] = Math.round(p * 10) / 10; }
+          try { fs.writeFileSync(planFile, JSON.stringify(weekTargets), { mode: 0o600 }); } catch { /* best effort */ }
+          return json(res, 200, weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(b.tz) || 0));
+        }
         if (parts[0] === 'projects' && parts[1] === 'move') {  // put a project into the projects folder, chats included
           if (!moveRoot) return json(res, 400, { error: 'this computer has no projects folder set up' });
           const src = path.resolve(String(b.cwd || '')), name = String(b.name || path.basename(src)).trim();
@@ -758,7 +779,7 @@ function start(opts) {
         }
         if (parts[0] === 'agent' && parts[1] === 'usage') {   // plan limits seen by a linked laptop
           const us = b.usage || {};
-          if (us.at && (!usage.at || us.at > usage.at)) { usage = { ...us }; try { fs.writeFileSync(usageFile, JSON.stringify(usage), { mode: 0o600 }); } catch { /* best effort */ } }
+          if (us.at && (!usage.at || us.at > usage.at)) { usage = { ...us }; noteWeek(usage); try { fs.writeFileSync(usageFile, JSON.stringify(usage), { mode: 0o600 }); } catch { /* best effort */ } }
           return json(res, 200, { ok: true });
         }
         if (parts[0] === 'agent' && parts[1] === 'chats' && parts[2] === 'sync') {   // a computer sends its list of chats; the answer says what to send and what to fetch

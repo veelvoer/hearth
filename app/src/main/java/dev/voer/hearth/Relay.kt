@@ -140,6 +140,27 @@ object Relay {
         } finally { c.disconnect() }
     }
 
+    private fun parsePlan(o: JSONObject): WeekPlan {
+        val a = o.optJSONArray("days")
+        val days = if (a == null) emptyList() else List(a.length()) { a.getJSONObject(it).let { d -> PlanDay(d.getInt("wd"), d.getString("name"), d.getString("state"), d.getDouble("used"), d.getDouble("planned"), d.optBoolean("fixed"), if (d.isNull("target")) null else d.getDouble("target")) } }
+        return WeekPlan(if (o.has("unavailable")) o.getString("unavailable") else null, o.optDouble("left", 0.0), o.optBoolean("over"), o.optDouble("leftover", 0.0), o.optDouble("unknown", 0.0), o.optInt("autoDays"), o.optDouble("autoEach", 0.0), days)
+    }
+
+    /** The week planned day by day (the computer works it out, so the phone and the desktop always agree). [tz] = minutes east of UTC. */
+    fun weekPlan(m: Machine, tz: Int): WeekPlan = parsePlan(JSONObject(getJson(m, "/weekplan?tz=$tz")))
+
+    /** Pins [day] (0 = Sunday) to [pct] percent of the week, or gives it back to even sharing when [pct] is null. */
+    fun setWeekDay(m: Machine, day: Int, pct: Double?, tz: Int): WeekPlan {
+        val c = open(m, "/weekplan", post = true)
+        try {
+            c.outputStream.use { it.write(JSONObject().put("day", day).put("pct", pct ?: JSONObject.NULL).put("tz", tz).toString().toByteArray()) }
+            val body = (if (c.responseCode == 200) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+            val o = runCatching { JSONObject(body) }.getOrDefault(JSONObject())
+            if (c.responseCode != 200) throw ApiException(c.responseCode, o.optString("error").ifBlank { "Couldn't save" })
+            return parsePlan(o)
+        } finally { c.disconnect() }
+    }
+
     /** Plan limits as reported by the real Claude Code on that computer (no account tokens are involved). Null until it has run once. */
     fun usage(m: Machine): Usage? {
         val o = JSONObject(getJson(m, "/usage"))

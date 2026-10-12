@@ -95,3 +95,7 @@ fun dur(ms: Long): String {
 
 /** Money value of the work: the last 30 days in total, and per day for the chart. */
 data class ApiCost(val total: Double, val days: List<Double>)
+
+/** One weekday of the weekly plan: what was used, what is planned in total, and whether you pinned it. */
+data class PlanDay(val wd: Int, val name: String, val state: String, val used: Double, val planned: Double, val fixed: Boolean, val target: Double?)
+data class WeekPlan(val unavailable: String?, val left: Double, val over: Boolean, val leftover: Double, val unknown: Double, val autoDays: Int, val autoEach: Double, val days: List<PlanDay>)

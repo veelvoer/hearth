@@ -180,6 +180,76 @@ private fun CostBars(days: List<Double>) {
 }
 
 @Composable
+private fun WeekPlanCard() {
+    val c = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var plan by remember { mutableStateOf<WeekPlan?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var sel by remember { mutableStateOf<PlanDay?>(null) }
+    val scope = rememberCoroutineScope()
+    val tz = remember { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000 }
+    fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
+    LaunchedEffect(Ui.machinesRev) {
+        while (true) {
+            val m = machine()
+            if (m == null) err = "No computer connected." else runCatching { withContext(Dispatchers.IO) { Relay.weekPlan(m, tz) } }.onSuccess { plan = it; err = null }.onFailure { err = "Can't reach your computer right now." }
+            delay(30_000)
+        }
+    }
+    fun save(day: PlanDay, pct: Double?) {
+        val m = machine() ?: return
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { Relay.setWeekDay(m, day.wd, pct, tz) } }.onSuccess { plan = it; err = null; sel = null }.onFailure { err = it.message ?: "Couldn't save" }
+        }
+    }
+    Card {
+        Txt("Your week, day by day", T.body.copy(fontWeight = FontWeight.SemiBold))
+        val p = plan
+        if (p == null) { Txt(err ?: "Loading…", T.small, muted = true, modifier = Modifier.padding(top = 8.dp)); return@Card }
+        if (p.unavailable != null) { Txt(p.unavailable, T.small, muted = true, modifier = Modifier.padding(top = 8.dp)); return@Card }
+        Txt("Tap a day to pin its share of the week", T.small, muted = true)
+        Spacer(Modifier.height(10.dp))
+        val top = maxOf(10.0, p.days.maxOfOrNull { maxOf(it.planned, it.used, it.target ?: 0.0) } ?: 10.0)
+        Row(Modifier.fillMaxWidth().height(170.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            p.days.forEach { d ->
+                val isSel = sel?.wd == d.wd
+                val bg = if (isSel) cs.primary.copy(alpha = .10f) else Color.Transparent
+                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(bg).clickable { sel = if (isSel) null else d }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    val v = if (d.state == "past") d.used else d.planned
+                    Txt(if (v >= 10 || v == 0.0) "${v.toInt()}" else "%.1f".format(v), T.small.copy(fontSize = 11.sp, fontWeight = if (d.state == "future") FontWeight.Normal else FontWeight.SemiBold), muted = d.state == "future")
+                    Canvas(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 5.dp, vertical = 4.dp)) {
+                        val hp = (size.height * (d.planned / top).toFloat()).coerceAtLeast(3.dp.toPx())
+                        val hu = (size.height * (d.used / top).toFloat()).coerceAtMost(hp)
+                        val r = CornerRadius(8.dp.toPx())
+                        if (d.state != "past") {
+                            drawRoundRect(cs.primary.copy(alpha = .20f), Offset(0f, size.height - hp), Size(size.width, hp), r)
+                            drawRoundRect(cs.primary.copy(alpha = if (d.fixed) .9f else .55f), Offset(0f, size.height - hp), Size(size.width, hp), r, style = Stroke(1.5.dp.toPx(), pathEffect = if (d.fixed) null else androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
+                        }
+                        if (hu > 0f) drawRoundRect(cs.primary, Offset(0f, size.height - hu), Size(size.width, hu), r)
+                    }
+                    Txt(d.name + if (d.fixed) "•" else "", T.small.copy(fontSize = 11.sp, fontWeight = if (d.state == "today") FontWeight.Bold else FontWeight.Normal), color = if (d.state == "today") cs.primary else Color.Unspecified, muted = d.state != "today")
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        val head = if (p.autoDays > 0) "${p.left.toInt()}% left · the ${p.autoDays} day${if (p.autoDays > 1) "s" else ""} without a pin share it evenly, ${"%.1f".format(p.autoEach)}% each" else "${p.left.toInt()}% left"
+        Txt(head + (if (p.over) ". Your pins are more than what is left, so they are scaled down." else if (p.leftover > 0) ". ${p.leftover.toInt()}% is not planned on any day." else "") + (if (p.unknown > 0) " ${p.unknown.toInt()}% was used before Hearth started watching this week." else ""), T.small, muted = true)
+        err?.let { Txt(it, T.small, color = cs.error) }
+    }
+    sel?.let { d ->
+        var text by remember(d.wd) { mutableStateOf(((d.target ?: Math.round(d.planned).toDouble())).let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() }) }
+        val full = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")[d.wd]
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { sel = null },
+            title = { Txt(full, T.h2) },
+            text = { Column { Txt("Share of the whole week for this day (percent).", T.small, muted = true); Spacer(Modifier.height(8.dp)); Field(text, { text = it.filter { ch -> ch.isDigit() || ch == '.' }.take(5) }, "e.g. 20", number = true) } },
+            confirmButton = { TextAction("Pin") { text.toDoubleOrNull()?.takeIf { it in 0.0..100.0 }?.let { save(d, it) } } },
+            dismissButton = { Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { if (d.fixed) TextAction("Share evenly") { save(d, null) }; TextAction("Close") { sel = null } } },
+        )
+    }
+}
+
+@Composable
 fun NowScreen() {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -224,6 +294,7 @@ fun NowScreen() {
             Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f))
             Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f))
         }
+        WeekPlanCard()
         cost?.takeIf { it.days.isNotEmpty() }?.let { cc ->
             Card {
                 Txt("Cost per day", T.body.copy(fontWeight = FontWeight.SemiBold))
