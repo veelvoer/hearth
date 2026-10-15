@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('cm', {
   accent: inv('system:accent'), systemDark: inv('system:dark'), setIcon: inv('app:icon'), setupPaths: inv('setup:paths'), installVoice: inv('voice:install'), setAutostart: inv('autostart:set'), pickFolder: inv('pickFolder'), openPath: inv('openPath'), moveProject: inv('project:move'), updateRun: inv('update:run'), updateCheck: inv('update:check'), updateLater: inv('update:later'), updateStatus: inv('update:status'), hubStatus: inv('hub:status'), phoneCode: inv('hub:phonecode'), continueHere: inv('project:continue'), upload: inv('upload'), stop: inv('stop'), openExternal: inv('openExternal'),
   filePath: (f) => webUtils.getPathForFile(f),
   machines: inv('machines'), addMachine: inv('machines:add'), removeMachine: inv('machines:remove'), discover: inv('discover'),
-  relay: inv('relay'), send: inv('send'),
+  relay: inv('relay'), roomCall: inv('rooms:call'), send: inv('send'),
   voiceStatus: inv('voice:status'), stt: inv('voice:stt'), tts: inv('voice:tts'),
   callAction: inv('call:action'),
   supportState: inv('support:state'), supportStart: inv('support:start'), supportVerify: inv('support:verify'), supportLogout: inv('support:logout'), support: inv('support:call'),

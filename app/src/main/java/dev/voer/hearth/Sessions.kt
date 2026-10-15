@@ -135,6 +135,7 @@ private fun ToolCard(name: String, detail: String, result: String?, err: Boolean
 private sealed interface View {
     data object Home : View
     data object New : View
+    data object Shared : View
     data class Chat(val m: Machine, val s: Sess, val voice: Boolean = false) : View
 }
 
@@ -150,17 +151,19 @@ fun SessionsScreen() {
             Ui.pendingOpen = null
         }
     }
+    LaunchedEffect(Ui.shareRev) { if (Ui.pendingJoin != null) view = View.Shared }
     val v = view
     BackHandler(v !is View.Home) { view = View.Home }
     when (v) {
-        is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }) { m, s -> view = View.Chat(m, s) }
+        is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }, { view = View.Shared }) { m, s -> view = View.Chat(m, s) }
+        is View.Shared -> RoomsScreen(machines, Ui.pendingJoin) { Ui.pendingJoin = null; view = View.Home }
         is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind, asRoot -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind, root = asRoot)) }
         is View.Chat -> Chat(v.m, v.s, v.voice, onClear = { view = View.Chat(v.m, Sess("", "New session", v.s.cwd, 0, false, kind = v.s.kind, root = v.s.root)) }) { view = View.Home }
     }
 }
 
 @Composable
-private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, talk: (Machine) -> Unit, open: (Machine, Sess) -> Unit) {
+private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, talk: (Machine) -> Unit, shared: () -> Unit, open: (Machine, Sess) -> Unit) {
     val c = LocalContext.current
     val lists = remember { mutableStateMapOf<String, List<Sess>?>() }
     val now by tick()
@@ -206,7 +209,7 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             return@Screen
         }
         Field(query, { query = it }, "Search chats")
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking) { onlyWorking = false }; Chip("Working", onlyWorking) { onlyWorking = true } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking) { onlyWorking = false }; Chip("Working", onlyWorking) { onlyWorking = true }; Chip("Shared chats ›", false) { shared() } }
         val offline = machines.filter { lists.containsKey(it.host) && lists[it.host] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't be reached right now. It will reconnect on its own.", T.small, muted = true)
         // the server holds every chat, so its list is the list (same as on the desktop app); other computers only fill in what it lacks

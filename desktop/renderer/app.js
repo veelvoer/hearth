@@ -38,7 +38,7 @@ const content = $('#content');
 const ICONS = {
   dashboard: '<path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/>',
   now: '<path d="M12 21a9 9 0 1 1 9-9"/><path d="M12 12l4-4"/>',
-  sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
+  sessions: '<path d="M4 5h16v11H9l-5 4z"/>', shared: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14c2.4 0 4.2 1.6 4.2 4.2"/>',
   history: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
   refresh: '<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/>', mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
@@ -51,7 +51,7 @@ const ICONS = {
   tour: '<circle cx="12" cy="12" r="9"/><path d="M15.8 8.2l-2.1 5.5-5.5 2.1 2.1-5.5z"/>', tool: '<path d="M14.5 6.5a4 4 0 0 0 4.5 4.5l-8.5 8.5a2.1 2.1 0 0 1-3-3l8.5-8.5a4 4 0 0 0-1.5-1.5z"/>',
 };
 const icon = (n) => h('span', { class: 'ic', html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` });
-const TABS = [['sessions', 'Chats'], ['dashboard', 'Home'], ['history', 'History'], ['settings', 'Settings']];
+const TABS = [['sessions', 'Chats'], ['shared', 'Shared'], ['dashboard', 'Home'], ['history', 'History'], ['settings', 'Settings']];
 
 function renderNav() {
   const nav = $('#nav');
@@ -82,7 +82,7 @@ function morph(fn) {
     return t;
   } catch { return fn(); }
 }
-const TAB_ORDER = ['sessions', 'dashboard', 'now', 'history', 'settings'];
+const TAB_ORDER = ['sessions', 'shared', 'dashboard', 'now', 'history', 'settings'];
 function setTab(t) {
   if (t === tab) return;
   slideDir = TAB_ORDER.indexOf(t) >= TAB_ORDER.indexOf(tab) ? ' fwd' : ' back'; tab = t;
@@ -102,7 +102,7 @@ function render() {
   content.innerHTML = '';
   maybeTutorial();
   if (!S.signedIn) return content.append(loginView());
-  const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
+  const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, shared: typeof sharedView === 'function' ? sharedView : sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
   if (keepScroll) holdScroll(keepScroll, prevH, v);
   if (tab === 'history') requestAnimationFrame(drawHistory);

@@ -445,7 +445,7 @@ function start(opts) {
       : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
       : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
-    const job = { key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
+    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
     jobs.set(key, job);
     if (agentSync) agentSync.kick('job-start');
     // "call me when it's done" typed into the chat sets the call preference for this chat
@@ -489,6 +489,7 @@ function start(opts) {
       for (const r of job.listeners) { try { r.end(); } catch { /* closed */ } }
       job.listeners.clear();
       announceDone(job);
+      for (const f of job.onDone) { try { f(job); } catch (e) { onLog('onDone: ' + e.message); } }
       bumpChats(); if (agentSync) agentSync.kick('job-done');
       try { fs.unlinkSync(mcpFile); } catch { /* gone */ }
       setTimeout(() => { for (const [k, v] of jobs) if (v === job) jobs.delete(k); }, 120000).unref();
@@ -539,11 +540,38 @@ function start(opts) {
   };
   const pairPending = () => { pairLive(); return [...pairReqs].filter(([, r]) => r.status === 'pending').map(([id, r]) => ({ id, name: r.name, ip: r.ip, at: r.at })); };
 
+  // ── shared chats (rooms): see rooms.js ──
+  const rooms = require('./rooms').createRooms({
+    dir, hostName: opts.name || os.hostname(), bypassOk, allowCwd: (c) => okDir(c) && isDir(c), log: onLog,
+    run: ({ room, text, mode, session }, done) => {   // the host's Claude answers a prompt for this room
+      const r = startJob({ text, mode, cwd: room.cwd }, session || 'new');
+      if (r.error) return { error: r.message };
+      r.job.onDone.push((job) => done({ text: (job.resultText || job.text || '').trim(), session: job.sid, error: job.error && !(job.resultText || job.text) ? 'Claude reported an error.' : '' }));
+      return undefined;
+    },
+  });
+  const roomsHttp = async (req, res, u, parts, ip) => {
+    if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });
+    const f = failures.get(ip);
+    if (f && f.until > Date.now()) return json(res, 429, { error: 'too many failed attempts, try again later' });
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer /, '');
+    const isJoin = parts[1] === 'join' && req.method === 'POST';
+    const a = Buffer.from(bearer), b = Buffer.from(token);
+    let who = a.length === b.length && crypto.timingSafeEqual(a, b) ? { owner: true } : rooms.guestFor(bearer);
+    if (!who && isJoin) who = {};
+    if (!who) { authed(req, res); return undefined; }   // counts the failure and answers 401
+    const body = req.method === 'GET' ? { since: u.searchParams.get('since') } : await bodyJson(req);
+    const r = rooms.route(req.method, parts.slice(1), body, who, ip);
+    if (isJoin && r.code !== 200) { const n = ((f && f.n) || 0) + 1; failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 }); }
+    return json(res, r.code, r.data);
+  };
+
   // ── routes ──
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
       const ip = clientIp(req);
+      if (parts[0] === 'rooms') return roomsHttp(req, res, u, parts, ip);
       if (parts[0] === 'tools') {   // git changes, project notes, connections
         if (!authed(req, res)) return undefined;
         const r = await tools.route(parts.slice(1), u, req.method === 'GET' ? {} : await bodyJson(req), { inRoot: okDir, claude: findClaude() });

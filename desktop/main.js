@@ -578,6 +578,14 @@ h('projects:reject', async (e, names) => {
   await relayJson(m, 'POST', '/sync/projects/reject', names === 'all' ? { all: true } : { names });
   await checkPending().catch(() => {}); return lastPend;
 });
+/** Calls a shared chat on someone else's server with the guest key you got from an invite. Only the /rooms paths, only that server. */
+h('rooms:call', async (e, conn, method, p, body) => {
+  if (!conn || typeof conn.url !== 'string' || !/^\/rooms(\/|$)/.test(String(p)) || !['GET', 'POST', 'DELETE'].includes(method)) throw new Error('Not allowed');
+  const u = new URL(conn.url);
+  if (!['http:', 'https:'].includes(u.protocol)) throw new Error('Not a server address');
+  const m = { name: 'the host', host: u.hostname, port: Number(u.port) || (u.protocol === 'https:' ? 443 : 80), secure: u.protocol === 'https:', token: String(conn.token || '') };
+  return relayJson(m, method, p, body);
+});
 h('relay', async (e, id, method, p, body) => {
   const m = machineById(id);
   if (!m) throw new Error('Unknown computer');

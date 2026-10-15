@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(i: android.content.Intent?) {
         val link = i?.data
+        if (link != null && link.scheme == "hearth" && link.host == "room") { Ui.pendingJoin = link.toString(); Ui.tab = 0; Ui.shareRev++; return }
         if (link != null && (link.scheme == "hearth" || link.scheme == "hearth")) {   // pairing link: connect to the server it describes
             parseMachine(link.toString(), "", "")?.let { m ->
                 val had = Store.machines(this)
