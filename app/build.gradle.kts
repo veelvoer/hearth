@@ -15,12 +15,13 @@ val keyProps = Properties().apply {
 android {
     namespace = "dev.voer.hearth"
     compileSdk = 35
+    sourceSets { getByName("main") { assets.srcDir("../release-notes") } }   // the patch notes travel inside the app
     defaultConfig {
         applicationId = "dev.voer.hearth"
         minSdk = 29
         targetSdk = 35
-        versionCode = 10327
-        versionName = "1.3.27"
+        versionCode = 10328
+        versionName = "1.3.28"
     }
     signingConfigs {
         if (!keyProps.isEmpty) create("release") {

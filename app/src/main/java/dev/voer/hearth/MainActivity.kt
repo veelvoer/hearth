@@ -104,14 +104,20 @@ private fun Root() {
     val seenTour = remember { Ui.tourRev }   // "Show tutorial" in Settings counts up; a new screen must not replay an old press
     LaunchedEffect(Ui.tourRev) { if (Ui.tourRev != seenTour) tour = true }
     LaunchedEffect(tour) { if (tour) Store.setOnboarded(c, true) }   // the tutorial shows once; closing the app halfway must not bring it back
-    var news by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
-    LaunchedEffect(Unit) { news = Updates.whatsNew(c) }
-    news?.let { (ver, lines) ->
+    var news by remember { mutableStateOf<List<Pair<String, List<String>>>>(emptyList()) }
+    val wasOnboarded = remember { Store.onboarded(c) }   // read before the tutorial marks it
+    LaunchedEffect(Unit) { news = Updates.whatsNew(c, wasOnboarded) }
+    if (news.isNotEmpty()) {
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = { news = null },
-            title = { Txt("Hearth $ver", T.h2) },
-            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { Label("What is new"); lines.forEach { Txt(it, T.small) } } },
-            confirmButton = { TextAction("Got it") { news = null } },
+            onDismissRequest = { news = emptyList() },
+            title = { Txt("Updated to Hearth ${Updates.current(c)}", T.h2) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Txt(if (news.size > 1) "Everything that changed since the version you had." else "What changed in this version.", T.small, muted = true)
+                    news.forEach { (v, lines) -> Spacer(Modifier.height(8.dp)); Txt("Hearth $v", T.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)); lines.forEach { l -> Txt(l, T.small) } }
+                }
+            },
+            confirmButton = { TextAction("Got it") { news = emptyList() } },
         )
     }
     Box(Modifier.fillMaxSize().glow()) {

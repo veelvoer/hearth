@@ -47,13 +47,19 @@ object Updates {
     /** Release notes as plain lines for a card: no # or ** marks, bullets as dots. */
     fun plain(md: String): List<String> = md.lines().map { it.trim() }.filter { it.isNotEmpty() }.map { it.replace(Regex("^#+\\s*"), "").replace(Regex("^[-*]\\s+"), "• ").replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").replace("`", "") }
 
-    /** Notes of the version that was just installed, once: the first time the app opens after an update. */
-    suspend fun whatsNew(c: Context): Pair<String, List<String>>? {
-        val p = c.getSharedPreferences("updates", Context.MODE_PRIVATE); val now = current(c); val last = p.getString("seen", null)
-        p.edit().putString("seen", now).apply()
-        if (last == null || last == now) return null
-        val r = runCatching { latest() }.getOrNull() ?: return null
-        return if (r.version == now && r.notes.isNotBlank()) now to plain(r.notes).take(16) else null
+    private fun cmp(a: String, b: String): Int { val x = parts(a); val y = parts(b); for (i in 0..2) { val d = x.getOrElse(i) { 0 } - y.getOrElse(i) { 0 }; if (d != 0) return d }; return 0 }
+
+    /** The patch notes that came inside this app (no network needed): every version after the one last shown, up to the running one, newest first.
+     *  Nothing on a fresh install; the first time after the update that brought this feature only the running version. */
+    fun whatsNew(c: Context, onboarded: Boolean): List<Pair<String, List<String>>> {
+        val p = c.getSharedPreferences("updates", Context.MODE_PRIVATE); val now = current(c); val last = p.getString("notes_seen", null)
+        p.edit().putString("notes_seen", now).apply()
+        if (last == now) return emptyList()
+        if (last == null && !onboarded) return emptyList()
+        val names = runCatching { c.assets.list("")?.toList().orEmpty() }.getOrDefault(emptyList())
+        return names.mapNotNull { Regex("^(\\d+\\.\\d+\\.\\d+)\\.md$").find(it)?.groupValues?.get(1) }
+            .filter { cmp(it, now) <= 0 && (if (last == null) it == now else cmp(it, last) > 0) }.sortedWith { a, b -> cmp(b, a) }.take(12)
+            .map { v -> v to plain(runCatching { c.assets.open("$v.md").bufferedReader().readText() }.getOrDefault("")) }.filter { it.second.isNotEmpty() }
     }
 
     fun current(c: Context): String = runCatching { c.packageManager.getPackageInfo(c.packageName, 0).versionName ?: "0" }.getOrDefault("0")

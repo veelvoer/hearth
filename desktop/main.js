@@ -374,6 +374,14 @@ h('settings:set', (e, patch) => {
   broadcast('usage', publicState());
   return S.settings;
 });
+/** Patch notes that ship inside the app: every version after [last] up to the running one, newest first. Without [last] only the running version. */
+h('notes:since', (e, last) => {
+  const dir = app.isPackaged ? path.join(process.resourcesPath, 'release-notes') : path.join(__dirname, '..', 'release-notes');
+  const parse = (v) => String(v || '').split('.').map((x) => Number(x) || 0), cmp = (a, b) => { const x = parse(a), y = parse(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
+  const cur = app.getVersion(); let files = []; try { files = fs.readdirSync(dir); } catch { return []; }
+  return files.map((f) => /^(\d+\.\d+\.\d+)\.md$/.exec(f)).filter(Boolean).map((m) => m[1]).filter((v) => cmp(v, cur) <= 0 && (last ? cmp(v, last) > 0 : v === cur))
+    .sort((a, b) => cmp(b, a)).slice(0, 12).map((v) => ({ version: v, text: fs.readFileSync(path.join(dir, v + '.md'), 'utf8').slice(0, 6000) }));
+});
 h('stats', async (e, id, days) => { const m = machineById(id); if (!m) throw new Error('Unknown computer'); return relayJson(m, 'GET', '/stats?days=' + (days || 30)); });
 // ───────── phone pairing, call hooks, system colors ─────────
 const keepRunning = () => S.settings.callMe || !!(relayInfo && relayInfo.ok && S.settings.background !== false);
