@@ -712,3 +712,5 @@ body { background:
 @media (max-width: 860px) { .rmside { display: none; } }
 .rmroom input[type=checkbox] { width: 18px; min-height: 0; height: 18px; accent-color: var(--clay); flex: none; padding: 0; }
 .rmroom label.row { gap: 8px; flex: none; }
+
+.updnotes { display: flex; flex-direction: column; gap: 3px; margin: 10px 0 4px; max-height: 190px; overflow-y: auto; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--line) 30%, transparent); }

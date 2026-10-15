@@ -12,6 +12,8 @@ jobs:
       - name: The tag must match the version inside the app, the server and the phone app
         run: |
           V="${GITHUB_REF_NAME#v}"
+          [ -s "release-notes/$V.md" ] || { echo "release-notes/$V.md is missing: every release needs notes"; exit 1; }
+          ! grep -q "TODO" "release-notes/$V.md" || { echo "release-notes/$V.md still says TODO"; exit 1; }
           [ "$(node -p "require('./desktop/package.json').version")" = "$V" ] || { echo "desktop/package.json is not $V"; exit 1; }
           [ "$(node -p "require('./desktop/relay/version.js')")" = "$V" ] || { echo "desktop/relay/version.js is not $V"; exit 1; }
           grep -q "versionName = \"$V\"" app/build.gradle.kts || { echo "app/build.gradle.kts is not $V"; exit 1; }
@@ -58,7 +60,10 @@ jobs:
     needs: [desktop, android]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: out, merge-multiple: true }
+      - name: The notes of this version become the text of the release
+        run: cp "release-notes/${GITHUB_REF_NAME#v}.md" NOTES.md
       - uses: softprops/action-gh-release@v2
-        with: { files: out/* }
+        with: { files: out/*, body_path: NOTES.md }

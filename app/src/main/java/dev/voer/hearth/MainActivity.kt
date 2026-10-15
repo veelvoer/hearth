@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
@@ -102,6 +104,16 @@ private fun Root() {
     val seenTour = remember { Ui.tourRev }   // "Show tutorial" in Settings counts up; a new screen must not replay an old press
     LaunchedEffect(Ui.tourRev) { if (Ui.tourRev != seenTour) tour = true }
     LaunchedEffect(tour) { if (tour) Store.setOnboarded(c, true) }   // the tutorial shows once; closing the app halfway must not bring it back
+    var news by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
+    LaunchedEffect(Unit) { news = Updates.whatsNew(c) }
+    news?.let { (ver, lines) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { news = null },
+            title = { Txt("Hearth $ver", T.h2) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { Label("What is new"); lines.forEach { Txt(it, T.small) } } },
+            confirmButton = { TextAction("Got it") { news = null } },
+        )
+    }
     Box(Modifier.fillMaxSize().glow()) {
         if (tour) Welcome { Store.setOnboarded(c, true); tour = false; (c as? MainActivity)?.askNotifications(); if (it) Tour.start() } else Main()
         TourOverlay()

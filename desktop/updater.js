@@ -77,7 +77,7 @@ function create(d) {
     const behind = await behindGithub();
     return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: selfUpd ? !!(lat && gh.newer(lat.version, sv.version)) : (hasServer && typeof srv === 'string' && srv !== rs), selfUpd, sv, latestV: lat && lat.version, github: behind > 0, behind, sigs: sg, rs, srv, loc };
   }
-  const summary = (n) => (n && (n.desktop || n.phone || n.server || n.github) ? { desktop: n.desktop, phone: n.phone, server: n.server, github: !!n.github, behind: n.behind, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest } : null);
+  const summary = (n) => (n && (n.desktop || n.phone || n.server || n.github) ? { desktop: n.desktop, phone: n.phone, server: n.server, github: !!n.github, behind: n.behind, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest, notes: n.l && n.l.notes ? String(n.l.notes) : '' } : null);
 
   async function check(force = false) {
     if (running) return;

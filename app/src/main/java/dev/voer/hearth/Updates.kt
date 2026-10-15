@@ -44,6 +44,18 @@ object Updates {
     var checkedAt by mutableStateOf(0L)
     var latestVersion by mutableStateOf("")
 
+    /** Release notes as plain lines for a card: no # or ** marks, bullets as dots. */
+    fun plain(md: String): List<String> = md.lines().map { it.trim() }.filter { it.isNotEmpty() }.map { it.replace(Regex("^#+\\s*"), "").replace(Regex("^[-*]\\s+"), "• ").replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").replace("`", "") }
+
+    /** Notes of the version that was just installed, once: the first time the app opens after an update. */
+    suspend fun whatsNew(c: Context): Pair<String, List<String>>? {
+        val p = c.getSharedPreferences("updates", Context.MODE_PRIVATE); val now = current(c); val last = p.getString("seen", null)
+        p.edit().putString("seen", now).apply()
+        if (last == null || last == now) return null
+        val r = runCatching { latest() }.getOrNull() ?: return null
+        return if (r.version == now && r.notes.isNotBlank()) now to plain(r.notes).take(16) else null
+    }
+
     fun current(c: Context): String = runCatching { c.packageManager.getPackageInfo(c.packageName, 0).versionName ?: "0" }.getOrDefault("0")
     private fun parts(v: String) = v.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
     fun newer(a: String, b: String): Boolean { val x = parts(a); val y = parts(b); for (i in 0..2) { val p = x.getOrElse(i) { 0 }; val q = y.getOrElse(i) { 0 }; if (p != q) return p > q }; return false }
@@ -176,6 +188,7 @@ fun UpdatesCard() {
             Updates.checkedAt > 0 -> "This is the newest version"
             else -> ""
         }, T.small, muted = true)
+        if (r != null && r.notes.isNotBlank()) { Spacer(Modifier.height(6.dp)); Label("What is new"); Updates.plain(r.notes).take(14).forEach { Txt(it, T.small, muted = true) } }
         listOf(note, Updates.message).filter { it.isNotBlank() }.forEach { Txt(it, T.small, color = androidx.compose.material3.MaterialTheme.colorScheme.primary) }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
