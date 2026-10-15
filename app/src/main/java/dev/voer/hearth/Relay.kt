@@ -13,7 +13,7 @@ data class Machine(val name: String, val host: String, val port: Int, val token:
     /** Base URL; a server behind HTTPS is reached on the standard port without showing it. */
     val base get() = (if (secure) "https" else "http") + "://" + host + if ((secure && port == 443) || (!secure && port == 80)) "" else ":$port"
 }
-data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "", val tokens: Long = 0, val model: String = "")
+data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "", val tokens: Long = 0, val model: String = "", val root: Boolean = false)
 data class Msg(val role: String, val text: String, val name: String = "", val detail: String = "", val result: String? = null, val err: Boolean = false)
 data class Project(val name: String, val path: String)
 data class Computer(val id: String, val name: String, val online: Boolean, val kind: String)
@@ -109,7 +109,7 @@ object Relay {
         val a = JSONArray(getJson(m, "/sessions"))
         return List(a.length()) {
             val o = a.getJSONObject(it)
-            Sess(o.getString("id"), o.getString("title"), o.optString("cwd"), o.getLong("mtime"), o.optBoolean("live"), o.optBoolean("busy"), o.optBoolean("running"), o.optString("kind", "code").ifBlank { "code" }, o.optString("elsewhere", ""), o.optLong("tokens", 0), o.optString("model", ""))
+            Sess(o.getString("id"), o.getString("title"), o.optString("cwd"), o.getLong("mtime"), o.optBoolean("live"), o.optBoolean("busy"), o.optBoolean("running"), o.optString("kind", "code").ifBlank { "code" }, o.optString("elsewhere", ""), o.optLong("tokens", 0), o.optString("model", ""), o.optBoolean("root"))
         }
     }
 
@@ -214,8 +214,39 @@ object Relay {
         val a = JSONArray(getJson(m, "/pending"))
         return List(a.length()) { val o = a.getJSONObject(it)
             CallEvent(o.optLong("id"), o.getString("kind"), o.optString("session"), o.optString("title"), o.optString("cwd"), o.optString("text"), 0, o.optString("req"), o.optString("machine"), o.optBoolean("call", true), "", o.optString("question"),
-                o.optJSONArray("options")?.let { op -> List(op.length()) { i -> op.getJSONObject(i).optString("label") } } ?: emptyList(), o.optBoolean("multi"), o.optString("tool"), previewOf(o.optString("tool"), o.optJSONObject("input"))) }
+                o.optJSONArray("options")?.let { op -> List(op.length()) { i -> op.getJSONObject(i).optString("label") } } ?: emptyList(), o.optBoolean("multi"), o.optString("tool"), previewOf(o.optString("tool"), o.optJSONObject("input")), o.optJSONObject("suggest")?.optString("label").orEmpty()) }
     }
+
+    /** What the server allows (work in any folder, Full auto, root chats) and the commands allowed for good. */
+    data class Rule(val id: String, val label: String)
+    data class Options(val outside: Boolean, val outsideAvailable: Boolean, val bypass: Boolean, val bypassFixed: Boolean, val root: Boolean, val rootOk: Boolean, val rootWhy: String, val rules: List<Rule>)
+    private fun parseOptions(o: JSONObject): Options {
+        val ra = o.optJSONArray("rules"); val rr = o.optJSONObject("rootReady")
+        return Options(o.optBoolean("outside", true), o.optBoolean("outsideAvailable"), o.optBoolean("bypass"), o.optBoolean("bypassFixed"), o.optBoolean("root"), rr?.optBoolean("ok") ?: false, rr?.optString("why").orEmpty(),
+            if (ra == null) emptyList() else List(ra.length()) { ra.getJSONObject(it).let { r -> Rule(r.getString("id"), r.optString("label").ifBlank { r.optString("prefix") }) } })
+    }
+    fun options(m: Machine): Options = parseOptions(JSONObject(getJson(m, "/admin/options")))
+    private fun postJson(m: Machine, path: String, body: JSONObject): JSONObject {
+        val c = open(m, path, post = true)
+        try {
+            c.outputStream.use { it.write(body.toString().toByteArray()) }
+            val text = (if (c.responseCode == 200) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+            val o = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+            if (c.responseCode != 200) throw ApiException(c.responseCode, o.optString("error").ifBlank { "Couldn't save" })
+            return o
+        } finally { c.disconnect() }
+    }
+    fun setOptions(m: Machine, body: JSONObject): Options = parseOptions(postJson(m, "/admin/options", body))
+    fun setAuto(m: Machine, id: String, on: Boolean) { postJson(m, "/sessions/$id/auto", JSONObject().put("on", on)) }
+
+    data class Dir(val name: String, val path: String, val git: Boolean)
+    data class Listing(val path: String, val parent: String?, val dirs: List<Dir>)
+    fun browse(m: Machine, path: String, hidden: Boolean): Listing {
+        val o = JSONObject(getJson(m, "/fs?path=" + java.net.URLEncoder.encode(path, "UTF-8") + (if (hidden) "&hidden=1" else "")))
+        val a = o.getJSONArray("dirs")
+        return Listing(o.getString("path"), if (o.isNull("parent")) null else o.optString("parent"), List(a.length()) { a.getJSONObject(it).let { d -> Dir(d.getString("name"), d.getString("path"), d.optBoolean("git")) } })
+    }
+    fun makeDir(m: Machine, parent: String, name: String): String = postJson(m, "/fs/mkdir", JSONObject().put("path", parent).put("name", name)).getString("path")
 
     /** What a tool wants to do, as lines for the approval prompt: the command, or the lines that change (- old, + new). */
     private fun previewOf(tool: String, i: JSONObject?): String {
@@ -273,7 +304,7 @@ object Relay {
     }
 
     /** Streams one turn. [onEvent] gets ("delta"|"tool"|"done", text, isError). Blocks until the turn ends. */
-    fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, run: String? = null, onEvent: (String, String, Boolean) -> Unit) {
+    fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, run: String? = null, root: Boolean = false, onEvent: (String, String, Boolean) -> Unit) {
         var lastN = -1; var finished = false; var chat = id
         /** One line of the run. Events carry a running number, so one that was already seen (after joining the run again) is skipped. */
         fun take(line: String) {
@@ -295,6 +326,7 @@ object Relay {
             if (model != null) body.put("model", model)
             if (effort != null) body.put("effort", effort)
             if (run != null) body.put("run", run)
+            if (id.isEmpty() && root) body.put("root", true)
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             if (c.responseCode != 200) {
                 val msg = runCatching { JSONObject(c.errorStream?.bufferedReader()?.readText().orEmpty()).optString("error") }.getOrNull()

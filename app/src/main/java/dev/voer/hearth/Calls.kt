@@ -27,7 +27,7 @@ import kotlin.math.max
 data class CallEvent(val id: Long, val kind: String, val session: String, val title: String, val cwd: String,
                      val text: String, val seconds: Int, val req: String, val machine: String, val call: Boolean = true, val boot: String = "",
                      val question: String = "", val options: List<String> = emptyList(), val multi: Boolean = false,
-                     val tool: String = "", val detail: String = "")
+                     val tool: String = "", val detail: String = "", val suggest: String = "")
 
 object CallApi {
     private fun post(m: Machine, path: String, body: JSONObject) {

@@ -618,6 +618,54 @@ private fun SyncCard() {
     Card { Head("sync", "Sync", "Chats and project files that the server keeps the same on all your computers."); Spacer(Modifier.height(8.dp)); Txt(text, T.small, muted = true) }
 }
 
+/** What the server may do for you: work in any folder, Full auto, chats with root rights, and the commands allowed for good. */
+@Composable
+private fun PermissionsCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var o by remember { mutableStateOf<Relay.Options?>(null) }
+    var msg by remember { mutableStateOf("Checking…") }
+    var cmd by remember { mutableStateOf("") }
+    fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
+    LaunchedEffect(Ui.machinesRev) {
+        val m = machine()
+        if (m == null) msg = "Connect a computer or server first." else runCatching { withContext(Dispatchers.IO) { Relay.options(m) } }.onSuccess { o = it; msg = "" }.onFailure { msg = "This server has no permission settings yet. Update it first." }
+    }
+    fun save(body: org.json.JSONObject) {
+        val m = machine() ?: return
+        scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.setOptions(m, body) } }.onSuccess { o = it; msg = "" }.onFailure { msg = it.message ?: "Couldn't save" } }
+    }
+    Card {
+        Head("server", "Server permissions", "Choose how much Claude may do on your server. Nothing here applies to your own computers.")
+        Spacer(Modifier.height(10.dp))
+        val v = o
+        if (v == null) { Txt(msg, T.small, muted = true); return@Card }
+        if (v.outsideAvailable) {
+            Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Work outside the projects folder", T.body); Txt("Browse the whole server and start a chat in any folder.", T.small, muted = true) }; Switch(v.outside, { save(org.json.JSONObject().put("outside", it)) }) }
+            Spacer(Modifier.height(10.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Allow Full auto", T.body); Txt(if (v.bypassFixed) "Always on for this server." else "Claude may run anything in a chat set to Full auto, without asking.", T.small, muted = true) }; if (!v.bypassFixed) Switch(v.bypass, { save(org.json.JSONObject().put("bypass", it)) }) }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Allow chats with root rights", T.body); Txt("A chat can run as root through sudo, and Claude is told it is root.", T.small, muted = true) }; Switch(v.root, { save(org.json.JSONObject().put("root", it)) }) }
+        if (v.root && !v.rootOk) { Spacer(Modifier.height(6.dp)); Txt("Not possible yet: " + v.rootWhy, T.small, color = MaterialTheme.colorScheme.error) }
+        Spacer(Modifier.height(14.dp))
+        Txt("Commands allowed for good", T.body.copy(fontWeight = FontWeight.SemiBold))
+        if (v.rules.isEmpty()) Txt("None yet. When Claude asks to run a command, choose \"Yes, and don't ask again\".", T.small, muted = true)
+        v.rules.forEach { r ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                Txt(r.label, T.small.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.weight(1f))
+                TextAction("Remove") { save(org.json.JSONObject().put("removeRule", r.id)) }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f)) { Field(cmd, { cmd = it }, "Add a command, e.g. npm test", mono = true) }
+            TextAction("Add") { if (cmd.isNotBlank()) { save(org.json.JSONObject().put("addPrefix", cmd.trim())); cmd = "" } }
+        }
+        if (msg.isNotEmpty()) Txt(msg, T.small, color = MaterialTheme.colorScheme.error)
+    }
+}
+
 @Composable
 private fun MemoryCard() {
     val c = LocalContext.current
@@ -802,6 +850,7 @@ fun SettingsScreen() {
         }
         SyncCard()
         MemoryCard()
+        PermissionsCard()
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.", Modifier.weight(1f))

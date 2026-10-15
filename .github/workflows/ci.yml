@@ -17,6 +17,10 @@ jobs:
         run: node desktop/test/computers.test.js
       - name: Ask-to-connect test
         run: node desktop/test/pair.test.js
+      - name: Permissions and root test
+        run: node desktop/test/perms-flow.test.js
+      - name: Command rules test
+        run: node desktop/test/perms.test.js
       - name: Stop button test
         run: node desktop/test/stop.test.js
       - name: Server memory test

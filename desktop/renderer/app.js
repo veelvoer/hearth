@@ -312,6 +312,7 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(only ? h('div') : memoryCard());
+  p.append(only ? h('div') : permsCard());
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
@@ -448,6 +449,34 @@ function memoryCard() {
     };
     try { info = await cm.relay(m.id, 'GET', '/admin/memory'); draw(); }
     catch (e) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'This server has no memory setting yet. Update it first.')); }
+  })();
+  return card;
+}
+/** What the server may do for you: work in any folder, Full auto, chats with root rights, and the commands allowed for good. */
+function permsCard() {
+  const card = h('div', { class: 'card stack' }, ch('server', 'Server permissions', 'Choose how much Claude may do on your server. Nothing here applies to your own computers.'));
+  const body = h('div', { class: 'stack' }, h('div', { class: 'small muted' }, 'Loading…')); card.append(body);
+  (async () => {
+    let m, o;
+    try { const ms = await cm.machines(); m = ms.find((x) => x.secure) || ms.find((x) => x.local) || ms[0]; if (!m) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'No server connected.')); return; } o = await cm.relay(m.id, 'GET', '/admin/options'); }
+    catch { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'This server has no permission settings yet. Update it first.')); return; }
+    const save = async (patch) => { try { o = { ...o, ...(await cm.relay(m.id, 'POST', '/admin/options', patch)) }; draw(); } catch (e) { toast(clean(e)); } };
+    const sw = (title, sub, on, fn, disabled) => h('div', { class: 'row' }, h('div', { class: 'grow' }, title, h('div', { class: 'small muted' }, sub)), disabled ? h('span', { class: 'small muted' }, 'fixed') : toggle(on, fn));
+    const draw = () => {
+      body.innerHTML = '';
+      if (o.outsideAvailable) body.append(sw('Work outside the projects folder', 'Browse the whole server and start a chat in any folder.', o.outside !== false, () => save({ outside: !o.outside })));
+      body.append(sw('Allow Full auto', 'Claude may run anything in a chat that is set to Full auto, without asking.', !!o.bypass, () => save({ bypass: !o.bypass }), o.bypassFixed));
+      body.append(sw('Allow chats with root rights', 'A chat can run as root through sudo, and Claude is told it is root.', !!o.root, () => save({ root: !o.root })));
+      if (o.root && o.rootReady && !o.rootReady.ok) body.append(h('div', { class: 'warnnote' }, h('b', {}, 'Not possible yet: '), o.rootReady.why));
+      body.append(h('div', { class: 'subtitle' }, 'Commands allowed for good'));
+      if (!o.rules.length) body.append(h('div', { class: 'small muted' }, 'None yet. When Claude asks to run a command, choose “Yes, and don’t ask again”.'));
+      for (const r of o.rules) body.append(h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label || r.prefix), h('button', { class: 'ghost sm', onclick: () => save({ removeRule: r.id }) }, 'Remove')));
+      const inp = h('input', { placeholder: 'Add a command, e.g. npm test', style: 'max-width:280px' });
+      const add = () => { const v = inp.value.trim(); if (v) save({ addPrefix: v }); };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') add(); };
+      body.append(h('div', { class: 'row wrap' }, inp, h('button', { class: 'ghost sm', onclick: add }, 'Add')));
+    };
+    draw();
   })();
   return card;
 }

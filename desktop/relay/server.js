@@ -28,6 +28,7 @@ const DISCOVER_PORT = 47600;
 const MODES = ['acceptEdits', 'auto', 'plan', 'manual', 'dontAsk', 'bypassPermissions'];
 const ASK_PROMPT = 'When you need the user to choose between options or make a decision, call the mcp__meter__ask_user tool (2-4 short options) instead of writing the options in your reply, then continue with their answer.';
 const HUB_PROMPT = "You are running on the user's always-on server. The user also has their own laptop, which syncs the same projects folder and your chats. When something has to happen on that laptop (install dependencies or tools there, run or test the app, anything needing their hardware or screen), use mcp__meter__run_on_laptop: it runs there automatically, continuing this conversation, as soon as the laptop is online. Use mcp__meter__laptop_status to see if it is online.";
+const ROOT_PROMPT = 'You are running as root (full administrator rights) on this server, started by the user on purpose. You can read and change any file, install software and manage services. Say what you are about to do before anything destructive or hard to undo (deleting data, changing users, firewall, disks, ssh), and prefer the smallest change that does the job.';
 const TALK_PROMPT = "This is a casual talking session, not a coding session: chat, brainstorm, explain and answer questions in plain, friendly language. Keep answers short unless asked for more. You cannot edit files or run commands here; if the user wants something built or changed, tell them to start a coding session for it.";
 const TALK_DENY = 'Bash Edit Write MultiEdit NotebookEdit Agent';
 const BRIEF = 'The user is listening to your reply read aloud. Keep it brief and conversational: short spoken sentences, no markdown, no lists, no code blocks. Say what you did and what you found.';
@@ -78,6 +79,24 @@ function start(opts) {
   if (!readCfg().token) writeCfg({ token: (opts.seedToken || '').trim() || crypto.randomBytes(publicMode ? 32 : 16).toString('base64url') });
   const token = readCfg().token;
   const getPrefs = (sid) => ({ call: 'off', run: 'auto', kind: 'code', ...((readCfg().prefs || {})[sid] || {}) });
+  const perms = require('./perms');
+  /** Options an owner can switch (Settings → Server): work outside the projects folder, allow Full auto, and the commands allowed for good. */
+  const outsideOk = () => !!root && readCfg().outside !== false;
+  const bypassOk = () => allowBypass || readCfg().bypass === true;
+  const rootAllowed = () => readCfg().allowRoot === true;
+  let sudoCache = { at: 0, ok: false };
+  /** Can this program start Claude with root rights? Either it already is root, or it may use sudo without a password (never asked for one here). */
+  const rootReady = () => {
+    if (typeof process.getuid === 'function' && process.getuid() === 0) return { ok: true, uid0: true };
+    if (process.platform === 'win32' || process.env.FLATPAK_ID) return { ok: false, why: 'Root chats are only possible on a Linux server.' };
+    if (Date.now() - sudoCache.at > 20000) { const r = spawnSync('sudo', ['-n', 'true'], { timeout: 4000 }); sudoCache = { at: Date.now(), ok: r.status === 0 }; }
+    return sudoCache.ok ? { ok: true, uid0: false } : { ok: false, why: `This server may not use sudo without a password for the user "${os.userInfo().username}". To allow it, run "sudo visudo" and add the line: ${os.userInfo().username} ALL=(ALL) NOPASSWD: ALL` };
+  };
+  const allowRules = () => (Array.isArray(readCfg().allowRules) ? readCfg().allowRules : []);
+  const addRule = (r) => { if (!r) return null; const all = allowRules(); const ex = all.find((x) => x.tool === r.tool && x.prefix === r.prefix); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: r.tool, prefix: r.prefix, label: r.label, at: Date.now() }; writeCfg({ allowRules: [...all, n] }); return n; };
+  const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  /** A folder Claude may work in: inside the projects folder, or (when that is switched on) any folder of this server. */
+  const okDir = (p) => inRoot(p) || (outsideOk() && isDir(p));
   const setPrefs = (sid, p) => { const all = readCfg().prefs || {}; all[sid] = { ...(all[sid] || { call: 'off' }), ...p }; writeCfg({ prefs: all }); return all[sid]; };
 
   // ── pairing code (desktop app only) ──
@@ -266,6 +285,9 @@ function start(opts) {
         publish({ ...base, kind: 'question', call: mine ? prefs.call === 'attention' : true, text: String(qs[0].question || 'Claude has a question').slice(0, 200) });
       }
     } else if (name === 'PermissionRequest') {
+      // allowed for good, or this chat is on Full auto: no question
+      if (tool === 'Bash' && perms.anyMatch(allowRules(), tool, h.tool_input)) return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } };
+      if (getPrefs(sid).auto === true && bypassOk()) return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } };
       // the same prompt can reach us twice (a hook in your Claude settings plus the one added for this run): share one question
       const key = sid + '|' + tool + '|' + JSON.stringify(h.tool_input || {});
       let shared = pendingByKey.get(key);
@@ -273,7 +295,7 @@ function start(opts) {
         const req = crypto.randomBytes(4).toString('hex');
         const promise = new Promise((resolve) => {
           const t = setTimeout(() => { pending.delete(req); resolve(null); }, mine ? JOB_PERMISSION_WAIT_MS : PERMISSION_WAIT_MS);
-          const ev = { ...base, kind: 'permission', call: mine ? prefs.call === 'attention' : true, req, tool, text: describe(tool, h.tool_input), input: core.toolInput(tool, h.tool_input) };
+          const ev = { ...base, kind: 'permission', call: mine ? prefs.call === 'attention' : true, req, tool, text: describe(tool, h.tool_input), input: core.toolInput(tool, h.tool_input), suggest: (() => { const r = perms.suggest(tool, h.tool_input); return r ? { label: r.label } : null; })() };
           pending.set(req, { event: ev, resolve: (b) => { clearTimeout(t); pending.delete(req); resolve(b); } });
           publish(ev);
         });
@@ -285,7 +307,8 @@ function start(opts) {
       if (decision === 'allow' || decision === 'deny' || decision === 'allow_always') {
         const d = { behavior: decision === 'deny' ? 'deny' : 'allow' };
         if (decision === 'deny') d.message = 'Denied in Hearth';
-        // "don't ask again": the tool is allowed for the rest of this chat's run (never for Bash, which is too broad to allow in one go)
+        // "don't ask again": a command (its first words) is allowed for good; any other tool is allowed for the rest of this chat's run
+        if (decision === 'allow_always' && tool === 'Bash') addRule(perms.suggest(tool, h.tool_input));
         if (decision === 'allow_always' && tool && tool !== 'Bash') d.updatedPermissions = [{ type: 'addRules', rules: [{ toolName: tool }], behavior: 'allow', destination: 'session' }];
         return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: d } };
       }
@@ -355,7 +378,8 @@ function start(opts) {
   /** Shown in the list: inside the projects folder, and the folder is there (or is still arriving through the file sync). */
   const visibleSession = (s) => {
     if (!root) return true;
-    if (!s.cwd || !under(s.cwd, root)) return false;
+    if (s.cwd && !under(s.cwd, root)) return outsideOk() && isDir(s.cwd) && !['/tmp', '/var/tmp', require('os').tmpdir()].some((t) => under(s.cwd, t));   // a folder elsewhere on this server
+    if (!s.cwd) return false;
     try { return fs.statSync(s.cwd).isDirectory(); } catch { return Date.now() - (s.mtime || 0) < 15 * 60000; }
   };
   /** A chat worth listing on a computer without a projects root: its folder exists, it is not a temp folder, and it is not empty. */
@@ -366,7 +390,7 @@ function start(opts) {
     const claude = findClaude();
     if (!claude) return { error: 500, message: 'Claude Code was not found on this computer. Install it first: https://claude.com/claude-code' };
     let mode = MODES.includes(body.mode) ? body.mode : (publicMode ? 'auto' : 'acceptEdits');
-    if (mode === 'bypassPermissions' && !allowBypass) mode = 'auto';
+    if (mode === 'bypassPermissions' && !bypassOk()) mode = 'auto';
     const settingsFile = path.join(dir, 'run-settings.json');
     const hookCmd = `curl -s -m ${Math.round(JOB_PERMISSION_WAIT_MS / 1000)} -X POST -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:${port}/hook`;
     fs.mkdirSync(dir, { recursive: true });
@@ -381,7 +405,7 @@ function start(opts) {
       cwd = kind === 'talk' ? path.join(root || moveRoot || os.homedir(), 'Talks') : String(body.cwd || '');
       if (kind === 'talk') { try { fs.mkdirSync(cwd, { recursive: true }); } catch { /* checked below */ } }
       try { if (!fs.statSync(cwd).isDirectory()) throw new Error(); } catch { return { error: 400, message: "that folder doesn't exist on this computer" }; }
-      if (!inRoot(cwd)) return { error: 403, message: 'new chats must be inside the projects folder' };
+      if (!okDir(cwd)) return { error: 403, message: outsideOk() ? "that folder doesn't exist on this server" : 'new chats must be inside the projects folder (you can allow other folders in Settings)' };
       key = 'new-' + crypto.randomBytes(4).toString('hex');
     } else {
       const f = core.findSession(sidParam);
@@ -392,7 +416,7 @@ function start(opts) {
       if (old && !old.done) return { error: 409, message: 'Claude is still working on this chat' };
       cwd = s.cwd || os.homedir();
       if (!fs.existsSync(cwd)) return { error: 409, message: "The project's files haven't reached this computer yet (still syncing). Try again in a moment." };
-      if (root && !inRoot(cwd)) return { error: 403, message: 'that chat is outside the projects folder' };
+      if (root && !okDir(cwd)) return { error: 403, message: 'that chat is outside the projects folder' };
       args.push('--resume', sidParam);
       key = sidParam;
     }
@@ -403,12 +427,25 @@ function start(opts) {
       : { command: process.execPath, args: [path.join(__dirname, 'ask-mcp.js')], env: { CM_RELAY_PORT: String(port), CM_JOB: key, CM_HUB: publicMode ? '1' : '' } } } }));
     args.push('--mcp-config', mcpFile, '--allowedTools', publicMode ? 'mcp__meter__ask_user mcp__meter__laptop_status mcp__meter__run_on_laptop' : 'mcp__meter__ask_user',
       '--append-system-prompt', ASK_PROMPT + (publicMode && kind !== 'talk' ? ' ' + HUB_PROMPT : '') + (kind === 'talk' ? ' ' + TALK_PROMPT : '') + (body.brief ? ' ' + BRIEF : ''));
+    // a chat with root rights: only when the owner switched it on, and only through passwordless sudo (or when this program already is root)
+    const asRoot = kind !== 'talk' && (body.root === true || (sidParam !== 'new' && getPrefs(sidParam).root === true));
+    let rootLaunch = false;
+    if (asRoot) {
+      if (!rootAllowed()) return { error: 403, message: 'Chats with root rights are off on this server. Switch them on in Settings → Server first.' };
+      const rr = rootReady(); if (!rr.ok) return { error: 403, message: rr.why };
+      rootLaunch = !rr.uid0;
+      const mi = args.indexOf('--permission-mode');
+      if (mode === 'bypassPermissions' && mi >= 0) args[mi + 1] = 'acceptEdits';   // Claude Code itself refuses its bypass mode as root; Hearth's own Full auto answers the approvals instead
+      const ai = args.indexOf('--append-system-prompt'); if (ai >= 0) args[ai + 1] += ' ' + ROOT_PROMPT;
+    }
     const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
+    const envPass = Object.entries(process.env).filter(([k]) => /^(ANTHROPIC_|CLAUDE_|HTTPS?_PROXY|NO_PROXY)/i.test(k)).map(([k, v]) => `${k}=${v}`);
     const child = process.env.FLATPAK_ID
       ? spawn('flatpak-spawn', ['--host', `--directory=${cwd}`, 'bash', '-lc', 'exec claude "$@"', 'claude', ...args], { stdio: ['pipe', 'pipe', 'ignore'] })
+      : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
       : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
-    const job = { key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null };
+    const job = { key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
     jobs.set(key, job);
     if (agentSync) agentSync.kick('job-start');
     // "call me when it's done" typed into the chat sets the call preference for this chat
@@ -425,7 +462,7 @@ function start(opts) {
         let o; try { o = JSON.parse(line); } catch { continue; }
         const t = o.type;
         if (t === 'system' && o.subtype === 'init') {
-          if (o.session_id && !job.sid) { job.sid = o.session_id; jobs.set(job.sid, job); if (job.wantCall) setPrefs(job.sid, { call: job.wantCall }); if (job.wantKind) setPrefs(job.sid, { kind: job.wantKind }); }
+          if (o.session_id && !job.sid) { job.sid = o.session_id; jobs.set(job.sid, job); if (job.wantCall) setPrefs(job.sid, { call: job.wantCall }); if (job.wantKind) setPrefs(job.sid, { kind: job.wantKind }); if (job.wantRoot) setPrefs(job.sid, { root: true }); if (job.wantAuto) setPrefs(job.sid, { auto: true }); }
           emit(job, { t: 'session', id: o.session_id || '', model: o.model || '' });
         } else if (t === 'stream_event') {
           const dl = ((o.event || {}).delta) || {};
@@ -509,7 +546,7 @@ function start(opts) {
       const ip = clientIp(req);
       if (parts[0] === 'tools') {   // git changes, project notes, connections
         if (!authed(req, res)) return undefined;
-        const r = await tools.route(parts.slice(1), u, req.method === 'GET' ? {} : await bodyJson(req), { inRoot, claude: findClaude() });
+        const r = await tools.route(parts.slice(1), u, req.method === 'GET' ? {} : await bodyJson(req), { inRoot: okDir, claude: findClaude() });
         return json(res, r.code || 200, r.data);
       }
       if (req.method === 'GET') {
@@ -524,11 +561,11 @@ function start(opts) {
         if (parts[0] === 'usage-report') { const n = Number(u.searchParams.get('days')); const extra = []; if (hubSync) { const st = path.join(dir, 'elsewhere'); try { for (const m of fs.readdirSync(st)) for (const f of fs.readdirSync(path.join(st, m))) if (f.endsWith('.jsonl')) { const fp = path.join(st, m, f), ss = fs.statSync(fp); extra.push({ file: fp, id: f.slice(0, -6), mtime: ss.mtimeMs, size: ss.size }); } } catch { /* none */ } }
           return json(res, 200, { ...core.report(n === 0 ? 0 : Math.max(1, Math.min(365, n || 30)), extra), scope: hubSync ? 'account' : 'device' }); }
         if (parts[0] === 'stats') return json(res, 200, core.stats(Math.max(1, Math.min(90, Number(u.searchParams.get('days')) || 30))));
-        if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || inRoot(cwd)) ? cwd : '', findClaude())); }
+        if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || okDir(cwd)) ? cwd : '', findClaude())); }
         if (parts[0] === 'projects' && parts.length === 1) return json(res, 200, listProjects());
         if (parts[0] === 'usage') return json(res, 200, usage);
         if (parts[0] === 'weekplan') return json(res, 200, weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(u.searchParams.get('tz')) || 0));
-        if (parts[0] === 'projects' && parts[1] === 'exists') { const c = String(u.searchParams.get('cwd') || ''); let ok = false; try { ok = fs.statSync(c).isDirectory() && (!root || inRoot(c)); } catch { /* no */ } return json(res, 200, { exists: ok }); }
+        if (parts[0] === 'projects' && parts[1] === 'exists') { const c = String(u.searchParams.get('cwd') || ''); let ok = false; try { ok = fs.statSync(c).isDirectory() && (!root || okDir(c)); } catch { /* no */ } return json(res, 200, { exists: ok }); }
         if (parts[0] === 'sync' && !parts[1]) return json(res, 200, await syncStatus(u.searchParams.get('folder') || 'claude-projects'));
         if (parts[0] === 'projects' && parts[1] === 'export') {
           const cwd = String(u.searchParams.get('cwd') || ''), dirp = claudeDir(cwd);
@@ -559,6 +596,18 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
+        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+        if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
+          const want = String(u.searchParams.get('path') || '') || root || os.homedir();
+          let p; try { p = fs.realpathSync(want); if (!fs.statSync(p).isDirectory()) throw new Error(); } catch { return json(res, 404, { error: 'no such folder' }); }
+          if (!okDir(p)) return json(res, 403, { error: 'outside the projects folder' });
+          const hidden = u.searchParams.get('hidden') === '1';
+          let names = []; try { names = fs.readdirSync(p, { withFileTypes: true }); } catch { return json(res, 403, { error: 'this folder cannot be read' }); }
+          const dirs = names.filter((d) => (d.isDirectory() || (d.isSymbolicLink() && isDir(path.join(p, d.name)))) && (hidden || !d.name.startsWith('.'))).map((d) => d.name)
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).slice(0, 500).map((n) => ({ name: n, path: path.join(p, n), git: fs.existsSync(path.join(p, n, '.git')) }));
+          const up = path.dirname(p);
+          return json(res, 200, { path: p, parent: up !== p && okDir(up) ? up : null, dirs, home: os.homedir(), root, outside: outsideOk() });
+        }
         if (parts[0] === 'admin' && parts[1] === 'memory') {
           const memory = require('./memory'), v8 = require('v8');
           const pct = memory.pctOf(readCfg()), MB = 1048576;
@@ -575,7 +624,7 @@ function start(opts) {
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
           const quiet = new Set([...jobs.values()].filter((j) => j.done).map((j) => j.sid || j.key));
-          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) : worthListing(f, sm)), 300, quiet).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind }));
+          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true }));
           const have = new Set(own.map((x) => x.id));
           const away = hubSync ? hubSync.elsewhere().filter((e) => !have.has(e.id) && e.cwd).map((e) => ({ id: e.id, title: e.title, cwd: e.cwd, mtime: Math.floor(e.mtime), live: false, busy: false, running: far.has(e.id), kind: getPrefs(e.id).kind, elsewhere: e.machine })) : [];
           return json(res, 200, [...own, ...away].sort((x, y) => y.mtime - x.mtime));
@@ -731,7 +780,7 @@ function start(opts) {
           const sid = u.searchParams.get('session');
           if (sid) { const f = core.findSession(sid); cwd = f ? core.summarize(f).cwd : ''; }
           try { if (!fs.statSync(cwd).isDirectory()) throw new Error(); } catch { return json(res, 400, { error: 'unknown project folder' }); }
-          if (!inRoot(cwd)) return json(res, 403, { error: 'outside the projects folder' });
+          if (!okDir(cwd)) return json(res, 403, { error: 'outside the projects folder' });
           const name = path.basename(String(u.searchParams.get('name') || 'file')).replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'file';
           let data;
           try { data = await readBody(req, 25e6); } catch { return json(res, 413, { error: 'file too large (25 MB max)' }); }
@@ -743,6 +792,31 @@ function start(opts) {
         }
         const b = await bodyJson(req);
         if (parts[0] === 'usage' && parts[1] === 'refresh') return json(res, 200, await checkUsage());
+        if (parts[0] === 'admin' && parts[1] === 'options') {   // switches for the server owner
+          if (b.outside !== undefined) writeCfg({ outside: !!b.outside });
+          if (b.bypass !== undefined) writeCfg({ bypass: !!b.bypass });
+          if (b.root !== undefined) writeCfg({ allowRoot: !!b.root });
+          if (b.removeRule) writeCfg({ allowRules: allowRules().filter((r) => r.id !== String(b.removeRule)) });
+          if (b.addPrefix !== undefined) { const r = perms.fromPrefix(b.addPrefix); if (!r) return json(res, 400, { error: 'That cannot be allowed for good: use a plain command like "npm test" (no ; & | > or dangerous commands).' }); addRule(r); }
+          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+        }
+        if (parts[0] === 'fs' && parts[1] === 'mkdir') {   // make a folder on this server (a place to work)
+          const parentDir = String(b.path || ''), name = String(b.name || '').trim();
+          if (!name || name.length > 80 || /[\\/\0]/.test(name) || name === '.' || name === '..') return json(res, 400, { error: 'Give the folder a plain name (no slashes).' });
+          let p; try { p = fs.realpathSync(parentDir); if (!fs.statSync(p).isDirectory()) throw new Error(); } catch { return json(res, 404, { error: 'no such folder' }); }
+          if (!okDir(p)) return json(res, 403, { error: 'outside the projects folder' });
+          const target = path.join(p, name);
+          if (fs.existsSync(target)) return json(res, 409, { error: 'there is already a folder called ' + name });
+          try { fs.mkdirSync(target); } catch (e) { return json(res, 403, { error: 'cannot create it here: ' + e.code }); }
+          return json(res, 200, { path: target });
+        }
+        if (parts[0] === 'sessions' && parts[2] === 'auto') {   // Full auto for this chat, also while Claude is working: every approval it asks (and the ones waiting) is allowed until you turn it off
+          const sid = parts[1], on = !!b.on;
+          if (on && !bypassOk()) return json(res, 403, { error: 'Full auto is off on this server. Switch it on in Settings first.' });
+          setPrefs(sid, { auto: on });
+          if (on) for (const [req, p] of [...pending]) if (p.event.session === sid && p.event.kind === 'permission') { p.resolve('allow'); publish({ kind: 'resolved', req, session: sid }); }
+          return json(res, 200, { ok: true, auto: on });
+        }
         if (parts[0] === 'admin' && parts[1] === 'memory') {   // share of the free memory this server may use (0 = no limit of its own); it takes effect when the server starts again
           const p = Number(b.pct);
           if (!(p === 0 || (Number.isFinite(p) && p >= 5 && p <= 95))) return json(res, 400, { error: 'pct must be 0 (no limit) or 5 to 95' });
@@ -913,7 +987,7 @@ function start(opts) {
           const run = validRun(b.run) ? b.run : prefs0.run;   // a per-message choice wins over the chat's setting
           if (publicMode && sidr === 'new' && String(run).startsWith('pc:')) {   // a new chat that should start on one of your computers
             const kind = b.kind === 'talk' ? 'talk' : 'code', cwd = String(b.cwd || '');
-            if (kind !== 'talk' && (!root || !inRoot(cwd))) return json(res, 400, { error: 'Choose a project folder inside the projects folder.' });
+            if (kind !== 'talk' && (!root || !inRoot(cwd))) return json(res, 400, { error: 'A folder outside the projects folder only runs on the server. Pick “Server” to work there.' });
             const target = targetFor(run);
             work.push({ id: crypto.randomBytes(6).toString('hex'), session: '', newChat: true, kind, target, rel: kind === 'talk' ? 'Talks' : path.relative(root, cwd), text: (root ? String(b.text || '').split(root).join(chathub.MARK) : String(b.text || '')).slice(0, 20000), mode: MODES.includes(b.mode) ? b.mode : 'auto', model: b.model || '', effort: b.effort || '', call: 'off', created: Date.now() });
             saveWork(); wake();
@@ -921,7 +995,8 @@ function start(opts) {
             res.end(JSON.stringify({ t: 'queued', to: target, online: isOnline(target) }) + '\n' + JSON.stringify({ t: 'end' }) + '\n');
             return undefined;
           }
-          if (publicMode && sidr !== 'new' && (run === 'laptop' || String(run).startsWith('pc:') || (run === 'auto' && laptopOnline()))) {
+          const elsewhereHere = (() => { if (sidr === 'new' || !root) return false; const f0 = core.findSession(sidr); const c0 = f0 && core.summarize(f0).cwd; return !!c0 && !under(c0, root); })();   // a folder outside the projects folder exists only on this server
+          if (publicMode && sidr !== 'new' && !elsewhereHere && (run === 'laptop' || String(run).startsWith('pc:') || (run === 'auto' && laptopOnline()))) {
             const f = core.findSession(sidr);
             if (!f) return json(res, 404, { error: 'no such session' });
             const s0 = core.summarize(f);

@@ -230,7 +230,7 @@ function drawPane() {
   const main = h('div', { class: 'chatmain' });
   if (s.isNew) main.append(h('button', { class: 'ghost sm backbtn', onclick: backToChats }, '← All chats'));
   main.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
-    h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
+    h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), me.root || s.root ? 'root' : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
     s.id ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
@@ -270,6 +270,12 @@ function backToChats() {
 const draftKey = (s) => s.id || ('new|' + (s.mid || ''));
 const drafts = () => { try { return JSON.parse(localStorage.getItem('cm.drafts') || '{}'); } catch { return {}; } };
 function saveDraft(s, text) { const d = drafts(); if (text) d[draftKey(s)] = text; else delete d[draftKey(s)]; try { localStorage.setItem('cm.drafts', JSON.stringify(d)); } catch { /* full */ } }
+/** Full auto switched on or off while Claude is working: the server allows every approval of this chat (and the ones waiting) at once. A chat that does not exist yet starts in the chosen mode. */
+async function setChatAuto(on) {
+  const s = SS.sel; if (!s || !s.id) return;
+  try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/auto`, { on }); if (on) { toast('Full auto is on for this chat. Claude asks for nothing now.'); SS.perms = SS.perms.filter((p) => p.ev.session !== s.id); renderPerms(); } }
+  catch (e) { toast(clean(e)); }
+}
 /** The Stop button: ends the run (also one that was started from another device) and says so when there is nothing to stop. */
 async function stopClaude() {
   const s = SS.sel; if (!s) return;
@@ -322,7 +328,7 @@ function composer() {
   const sel = (opts, cur, fn) => h('select', { class: 'sel', onchange: (e) => fn(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));
   const box = h('div', { class: 'composer' }, h('div', { class: 'cbox' }, menu, h('div', { id: 'files', class: 'files' }), ta,
     h('div', { class: 'row cfoot' },
-      sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; drawPane(); }),
+      sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; drawPane(); setChatAuto(v === 'bypassPermissions'); }),
       sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; }),
       sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; }),
       h('div', { class: 'grow' }),
@@ -394,7 +400,41 @@ function runOnPicker(s) {
   if (!(SS.computers || []).some((c) => c.kind === 'computer')) return null;
   return h('div', { class: 'stack', style: 'align-items:center;gap:6px' }, h('div', { class: 'muted small' }, 'Which computer should work on it?'), h('div', { class: 'row wrap', style: 'justify-content:center' }, runChips(SS.runOn || 'vps', (v) => { SS.runOn = v; renderMsgs(); }, false)));
 }
+/** Server options (root chats, working outside the projects folder), asked once per server. */
+function serverOpts(mid) {
+  SS.sopts = SS.sopts || {};
+  if (SS.sopts[mid] === undefined) { SS.sopts[mid] = null; cm.relay(mid, 'GET', '/admin/options').then((o) => { SS.sopts[mid] = o; if (SS.sel && SS.sel.isNew && SS.sel.mid === mid) renderMsgs(); }).catch(() => { SS.sopts[mid] = false; }); }
+  return SS.sopts[mid] || null;
+}
+/** Browse the folders of the server, pick one to work in, or make a new one. */
+function openServerBrowser(s) {
+  const mid = s.mid, over = h('div', { class: 'overlay' }), box = h('div', { class: 'modal browser' });
+  let cur = null, hidden = false;
+  const close = () => over.remove();
+  const err = h('div', { class: 'small err' }), list = h('div', { class: 'blist' }), where = h('div', { class: 'mono small ellip' }), nameIn = h('input', { placeholder: 'New folder name' });
+  const load = async (p) => {
+    try {
+      const r = await cm.relay(mid, 'GET', '/fs?path=' + encodeURIComponent(p || '') + (hidden ? '&hidden=1' : '')); cur = r; err.textContent = '';
+      where.textContent = r.path; where.title = r.path; list.innerHTML = '';
+      if (r.parent) list.append(h('button', { class: 'bitem up', onclick: () => load(r.parent) }, '↑ ..'));
+      for (const d of r.dirs) list.append(h('button', { class: 'bitem', onclick: () => load(d.path) }, h('span', {}, '📁 ' + d.name), d.git ? h('span', { class: 'small muted' }, 'git') : null));
+      if (!r.dirs.length) list.append(h('div', { class: 'small muted', style: 'padding:10px' }, 'No folders in here.'));
+    } catch (e) { err.textContent = clean(e); }
+  };
+  const mk = async () => {
+    const n = nameIn.value.trim(); if (!n || !cur) return;
+    try { const r = await cm.relay(mid, 'POST', '/fs/mkdir', { path: cur.path, name: n }); nameIn.value = ''; await load(r.path); } catch (e) { err.textContent = clean(e); }
+  };
+  nameIn.onkeydown = (e) => { if (e.key === 'Enter') mk(); };
+  box.append(h('div', { class: 'row' }, h('h3', { class: 'grow' }, 'Pick a folder on the server'), h('button', { class: 'ghost sm', onclick: close }, 'Close')), where, list,
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, nameIn), h('button', { class: 'ghost sm', onclick: mk }, 'Make folder')),
+    h('div', { class: 'row wrap' }, chip('Show hidden folders', hidden, () => { hidden = !hidden; load(cur && cur.path); }), h('div', { class: 'grow' }),
+      h('button', { class: 'primary', onclick: () => { if (!cur) return; s.cwd = cur.path; SS.lastCwd = cur.path; close(); renderMsgs(); } }, 'Work in this folder')), err);
+  over.append(box); over.onclick = (e) => { if (e.target === over) close(); }; document.body.append(over);
+  load(s.cwd || '');
+}
 function serverIntro(s, info) {
+  const so = serverOpts(s.mid);
   const nameIn = h('input', { placeholder: 'New project name, e.g. budget-app' }), err = h('div', { class: 'small err' });
   const go = async () => {
     try { const r = await cm.relay(s.mid, 'POST', '/projects', { name: nameIn.value.trim() }); s.cwd = r.path; SS.lastCwd = r.path; SS.projects[s.mid] = null; err.textContent = ''; const t = $('#composer-text'); if (t) t.focus(); renderMsgs(); }
@@ -405,6 +445,9 @@ function serverIntro(s, info) {
     h('div', { class: 'muted small' }, 'Projects folder on ' + ((SS.machines.find((m) => m.id === s.mid) || {}).name || 'the server')),
     h('div', { class: 'row', style: 'width:100%;max-width:560px' }, h('div', { class: 'grow' }, nameIn), h('button', { class: 'primary', onclick: go }, 'Create')), err,
     h('div', { class: 'row wrap', style: 'justify-content:center;max-width:560px' }, info.projects.slice(0, 8).map((p) => chip(p.name, s.cwd === p.path, () => { s.cwd = p.path; SS.lastCwd = p.path; renderMsgs(); }))),
+    h('div', { class: 'row wrap', style: 'justify-content:center' }, so && so.outside !== false ? h('button', { class: 'ghost sm', onclick: () => openServerBrowser(s) }, 'Browse the server…') : null,
+      so && so.root ? chip('Run as root', !!s.root, () => { s.root = !s.root; renderMsgs(); }) : null),
+    s.root ? h('div', { class: 'small err' }, 'Root chat: Claude gets full administrator rights on this server and knows it. Be sure of what you ask.') : null,
     s.cwd ? h('div', { class: 'small muted' }, 'Starting in ' + s.cwd) : h('div', { class: 'small muted' }, 'Create a project or pick one, then describe what you want.'));
 }
 
@@ -526,7 +569,7 @@ function sendMsg(text) {
     else if (ev.t === 'end') { finish(); return; }
     if (live) scheduleLive();
   };
-  cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
+  cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, root: s.isNew && s.root ? true : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
     .catch((e) => { if (viewing()) SS.chatErr = clean(e); finish(); });
 }
 
@@ -560,7 +603,8 @@ function permPreview(ev) {
 /** The approval prompt, as in Claude Code: 1 Yes · 2 Yes, don't ask again · 3 No. Answer with the keys 1, 2, 3 (or Y / N, Esc) or by clicking. */
 function permCard(p) {
   const ev = p.ev, tool = ev.tool || 'a tool';
-  const opts = [['1', 'Yes', 'allow'], ...(ev.tool && ev.tool !== 'Bash' ? [['2', `Yes, and don’t ask again for ${tool} in this chat`, 'allow_always']] : []), [String(ev.tool && ev.tool !== 'Bash' ? 3 : 2), 'No', 'deny']];
+  const again = ev.tool === 'Bash' ? (ev.suggest ? `Yes, and don’t ask again for “${ev.suggest.label}”` : null) : (ev.tool ? `Yes, and don’t ask again for ${tool} in this chat` : null);
+  const opts = [['1', 'Yes', 'allow'], ...(again ? [['2', again, 'allow_always']] : []), [String(again ? 3 : 2), 'No', 'deny']];
   return h('div', { class: 'perm pc', tabindex: '0', 'data-req': ev.req },
     h('div', { class: 'label' }, ev.tool ? `Claude wants to use ${tool}` : 'Claude needs your OK'), permPreview(ev),
     h('div', { class: 'popts' }, opts.map(([k, l, b]) => h('button', { class: 'popt' + (b === 'deny' ? ' no' : ''), onclick: () => decide(p, b) }, h('kbd', {}, k), l))));

@@ -154,8 +154,8 @@ fun SessionsScreen() {
     BackHandler(v !is View.Home) { view = View.Home }
     when (v) {
         is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }) { m, s -> view = View.Chat(m, s) }
-        is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind)) }
-        is View.Chat -> Chat(v.m, v.s, v.voice, onClear = { view = View.Chat(v.m, Sess("", "New session", v.s.cwd, 0, false, kind = v.s.kind)) }) { view = View.Home }
+        is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind, asRoot -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind, root = asRoot)) }
+        is View.Chat -> Chat(v.m, v.s, v.voice, onClear = { view = View.Chat(v.m, Sess("", "New session", v.s.cwd, 0, false, kind = v.s.kind, root = v.s.root)) }) { view = View.Home }
     }
 }
 
@@ -329,8 +329,38 @@ private fun defaultMachine(machines: List<Machine>, c: android.content.Context):
     return machines.firstOrNull { it.host == last && !it.secure } ?: machines.firstOrNull { !it.secure } ?: machines.first()
 }
 
+/** Browse the folders of the server, pick one to work in, or make a new one. */
 @Composable
-private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machine, String, String) -> Unit) {
+private fun FolderBrowser(m: Machine, start: String, onPick: (String) -> Unit, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var cur by remember { mutableStateOf<Relay.Listing?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var hidden by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    fun load(p: String) { scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.browse(m, p, hidden) } }.onSuccess { cur = it; err = null }.onFailure { err = it.message ?: "Can't open that folder" } } }
+    LaunchedEffect(Unit) { load(start) }
+    BackHandler { onClose() }
+    Screen {
+        Header("Pick a folder") { TextAction("Close", onClose) }
+        Txt(m.name + (cur?.let { " · " + it.path } ?: ""), T.small.copy(fontFamily = FontFamily.Monospace), muted = true)
+        err?.let { Txt(it, T.small, color = MaterialTheme.colorScheme.error) }
+        val l = cur
+        if (l != null) {
+            Button("Work in this folder", Modifier.fillMaxWidth()) { onPick(l.path) }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { Field(name, { name = it }, "New folder name") }
+                TextAction("Make") { if (name.isNotBlank()) scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.makeDir(m, l.path, name.trim()) } }.onSuccess { name = ""; load(it) }.onFailure { err = it.message } } }
+            }
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("Show hidden folders", hidden) { hidden = !hidden; load(l.path) } }
+            if (l.parent != null) Card(Modifier.clickable { load(l.parent) }) { Txt("↑ ..", T.body, muted = true) }
+            l.dirs.forEach { d -> Card(Modifier.clickable { load(d.path) }) { Row(verticalAlignment = Alignment.CenterVertically) { Txt(d.name, T.body, modifier = Modifier.weight(1f)); if (d.git) Txt("git", T.small, muted = true) } } }
+            if (l.dirs.isEmpty()) Txt("No folders in here.", T.small, muted = true)
+        } else if (err == null) Txt("Loading…", T.small, muted = true)
+    }
+}
+
+@Composable
+private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machine, String, String, Boolean) -> Unit) {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var sel by remember { mutableStateOf(defaultMachine(machines, c)) }
@@ -345,7 +375,12 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
         projects = null; root = null; err = null
         runCatching { withContext(Dispatchers.IO) { Relay.projects(m) } }.onSuccess { root = it.first; projects = it.second }.onFailure { err = it.message ?: "Can't reach ${m.name}" }
     }
-    fun go(path: String) { if (!m.secure) Store.setLastMachine(c, m.host); start(m, path, "code") }
+    var opts by remember(m) { mutableStateOf<Relay.Options?>(null) }
+    var asRoot by remember(m) { mutableStateOf(false) }
+    var browse by remember { mutableStateOf(false) }
+    LaunchedEffect(m) { opts = if (m.secure) runCatching { withContext(Dispatchers.IO) { Relay.options(m) } }.getOrNull() else null }
+    fun go(path: String) { if (!m.secure) Store.setLastMachine(c, m.host); start(m, path, "code", asRoot && opts?.root == true) }
+    if (browse) { FolderBrowser(m, root ?: "", onPick = { browse = false; go(it) }, onClose = { browse = false }); return }
     Screen {
         Header("New session") { TextAction("Back", back) }
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -375,9 +410,19 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
                 Spacer(Modifier.height(6.dp))
                 Txt("A normal conversation, no project. It uses the cheaper Haiku model and can't change any files, so it costs far fewer tokens.", T.small, muted = true)
                 Spacer(Modifier.height(12.dp))
-                Button("Start talking", Modifier.fillMaxWidth()) { start(m, "", "talk") }
+                Button("Start talking", Modifier.fillMaxWidth()) { start(m, "", "talk", false) }
             }
             return@Screen
+        }
+        val o = opts
+        if (o != null && (o.root || (o.outside && o.outsideAvailable))) Card {
+            Label("On the server")
+            Spacer(Modifier.height(8.dp))
+            if (o.outside && o.outsideAvailable) { Button("Browse the server…", Modifier.fillMaxWidth()) { browse = true }; Spacer(Modifier.height(4.dp)) }
+            if (o.root) {
+                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("Run as root", asRoot) { asRoot = !asRoot } }
+                if (asRoot) { Spacer(Modifier.height(6.dp)); Txt("Root chat: Claude gets full administrator rights on this server and knows it. Be sure of what you ask.", T.small, color = MaterialTheme.colorScheme.error) }
+            }
         }
         if (root != null) Card {
             Label("New project")
@@ -488,7 +533,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model.ifBlank { null }, effort = effort.ifBlank { null }, run = if (isNew && m.secure && Ui.newRun != "vps") Ui.newRun else null) { t, tx, e ->
+                    Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model.ifBlank { null }, effort = effort.ifBlank { null }, run = if (isNew && m.secure && Ui.newRun != "vps") Ui.newRun else null, root = isNew && sess.root) { t, tx, e ->
                         when (t) {
                             "session" -> if (isNew && tx.isNotEmpty()) sess = sess.copy(id = tx, title = text.take(60))
                             "prefs" -> call = tx
@@ -531,7 +576,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
-                Txt(listOf(if (sess.kind == "talk") "Talk" else folder(sess.cwd), m.name, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
+                Txt(listOf(if (sess.kind == "talk") "Talk" else folder(sess.cwd), m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
                 }
             }
             if (sess.id.isNotEmpty()) { TextAction("Talk") { voice = true }; Spacer(Modifier.width(16.dp)) }
@@ -542,7 +587,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Label("How much can Claude do on its own?")
             ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v } }
+                listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
             }
             if (mode == "bypassPermissions") Txt("Full auto lets Claude run any command on ${m.name} without asking.", T.small, color = cs.primary)
             if (m.secure) {
@@ -631,7 +676,7 @@ private fun PermDock(m: Machine, a: CallEvent, done: () -> Unit) {
     val dark = cs.background.luminance() < .5f
     fun decide(b: String) { scope.launch(Dispatchers.IO) { runCatching { CallApi.decide(m, a.req, b) } }; done() }
     val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
-    val always = a.tool.isNotEmpty() && a.tool != "Bash"
+    val againLabel = if (a.tool == "Bash") (if (a.suggest.isNotEmpty()) "Yes, and don't ask again for \"${a.suggest}\"" else null) else if (a.tool.isNotEmpty()) "Yes, and don't ask again for ${a.tool} in this chat" else null
     Column(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, top = 8.dp)) {
         Column(Modifier.fillMaxWidth().clip(shape).background(cs.surfaceVariant).border(1.dp, cs.primary, shape).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Label(if (a.tool.isNotEmpty()) "Claude wants to use ${a.tool}" else "Claude needs your OK")
@@ -642,7 +687,7 @@ private fun PermDock(m: Machine, a: CallEvent, done: () -> Unit) {
                     Text(l, style = T.small.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp), color = col, softWrap = false)
                 }
             }
-            val opts = listOfNotNull("Yes" to "allow", if (always) "Yes, and don't ask again for ${a.tool} in this chat" to "allow_always" else null, "No" to "deny")
+            val opts = listOfNotNull("Yes" to "allow", if (againLabel != null) againLabel to "allow_always" else null, "No" to "deny")
             opts.forEachIndexed { i, (label, b) ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, if (b == "deny") cs.outline else cs.primary.copy(alpha = .6f), RoundedCornerShape(12.dp)).clickable { decide(b) }.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 8.dp, vertical = 2.dp)) { Txt("${i + 1}", T.small.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = if (b == "deny") cs.onSurfaceVariant else cs.primary) }

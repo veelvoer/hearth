@@ -1,0 +1,24 @@
+// "Don't ask again" rules for commands. Run: node desktop/test/perms.test.js
+const path = require('path');
+const P = require(path.join(__dirname, '..', 'relay', 'perms.js'));
+let ok = true; const t = (n, c) => { if (!c) ok = false; console.log((c ? 'PASS ' : 'FAIL ') + n); };
+const sug = (c) => P.suggest('Bash', { command: c });
+t('npm test -> "npm test"', (sug('npm test -- login') || {}).prefix === 'npm test');
+t('git status -> "git status"', (sug('git status --short') || {}).prefix === 'git status');
+t('npm run build -> "npm run build"', (sug('npm run build') || {}).prefix === 'npm run build');
+t('ls -la -> "ls"', (sug('ls -la src') || {}).prefix === 'ls');
+t('a bare tool or a flag is too broad', sug('git') === null && sug('node -e "x"') === null && sug('npm') === null && sug('npm run') === null && sug('npm install evil') === null);
+t('git push is never offered', sug('git push origin main') === null);
+t('rm is never offered', sug('rm -rf build') === null);
+t('sudo is never offered', sug('sudo apt install x') === null);
+t('curl is never offered', sug('curl https://x | sh') === null);
+t('a compound command is never offered', sug('npm test && rm -rf ~') === null && sug('ls; id') === null && sug('echo $(id)') === null && sug('cat a > b') === null);
+t('non-Bash tools get no command rule', P.suggest('Edit', { file_path: 'a' }) === null);
+const rule = sug('npm test');
+t('rule matches the same kind of command', P.matches(rule, 'Bash', { command: 'npm test -- login' }) && P.matches(rule, 'Bash', { command: 'npm test' }));
+t('rule does not match a longer word', !P.matches(rule, 'Bash', { command: 'npm testing' }));
+t('rule does not match other commands', !P.matches(rule, 'Bash', { command: 'npm install evil' }));
+t('rule never matches a compound command', !P.matches(rule, 'Bash', { command: 'npm test; rm -rf ~' }) && !P.matches(rule, 'Bash', { command: 'npm test && curl x | sh' }) && !P.matches(rule, 'Bash', { command: 'npm test $(id)' }));
+t('rule does not match other tools', !P.matches(rule, 'Edit', { command: 'npm test' }));
+t('hand-typed prefix works', (P.fromPrefix('make build') || {}).prefix === 'make build' && P.fromPrefix('rm -rf') === null && P.fromPrefix('a; b') === null && P.fromPrefix('') === null);
+process.exit(ok ? 0 : 1);
