@@ -651,6 +651,8 @@ private fun PermissionsCard() {
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Allow chats with root rights", T.body); Txt("A chat can run as root through sudo, and Claude is told it is root.", T.small, muted = true) }; Switch(v.root, { save(org.json.JSONObject().put("root", it)) }) }
         if (v.root && !v.rootOk) { Spacer(Modifier.height(6.dp)); Txt("Not possible yet: " + v.rootWhy, T.small, color = MaterialTheme.colorScheme.error) }
+        if (v.root && v.rootOk) { Spacer(Modifier.height(6.dp)); Txt("Ready. Friends' prompts in shared chats never run as root.", T.small, muted = true) }
+        if (v.root) TextAction("Check again") { save(org.json.JSONObject().put("recheck", true)) }
         Spacer(Modifier.height(14.dp))
         Txt("Commands allowed for good", T.body.copy(fontWeight = FontWeight.SemiBold))
         if (v.rules.isEmpty()) Txt("None yet. When Claude asks to run a command, choose \"Yes, and don't ask again\".", T.small, muted = true)

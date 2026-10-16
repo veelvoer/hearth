@@ -424,11 +424,11 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
             return@Screen
         }
         val o = opts
-        if (o != null && (o.root || (o.outside && o.outsideAvailable))) Card {
+        if (o != null && ((o.root && o.rootOk) || (o.outside && o.outsideAvailable))) Card {
             Label("On the server")
             Spacer(Modifier.height(8.dp))
             if (o.outside && o.outsideAvailable) { Button("Browse the server…", Modifier.fillMaxWidth()) { browse = true }; Spacer(Modifier.height(4.dp)) }
-            if (o.root) {
+            if (o.root && o.rootOk) {
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("Run as root", asRoot) { asRoot = !asRoot } }
                 if (asRoot) { Spacer(Modifier.height(6.dp)); Txt("Root chat: Claude gets full administrator rights on this server and knows it. Be sure of what you ask.", T.small, color = MaterialTheme.colorScheme.error) }
             }

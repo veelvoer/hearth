@@ -28,7 +28,7 @@ const DISCOVER_PORT = 47600;
 const MODES = ['acceptEdits', 'auto', 'plan', 'manual', 'dontAsk', 'bypassPermissions'];
 const ASK_PROMPT = 'When you need the user to choose between options or make a decision, call the mcp__meter__ask_user tool (2-4 short options) instead of writing the options in your reply, then continue with their answer.';
 const HUB_PROMPT = "You are running on the user's always-on server. The user also has their own laptop, which syncs the same projects folder and your chats. When something has to happen on that laptop (install dependencies or tools there, run or test the app, anything needing their hardware or screen), use mcp__meter__run_on_laptop: it runs there automatically, continuing this conversation, as soon as the laptop is online. Use mcp__meter__laptop_status to see if it is online.";
-const ROOT_PROMPT = 'You are running as root (full administrator rights) on this server, started by the user on purpose. You can read and change any file, install software and manage services. Say what you are about to do before anything destructive or hard to undo (deleting data, changing users, firewall, disks, ssh), and prefer the smallest change that does the job.';
+const ROOT_PROMPT = 'You are running as root (full administrator rights) on this server, started by the user on purpose. Files you create or change inside the project folder must stay owned by the normal user (run chown for them), so the user can still edit them. You can read and change any file, install software and manage services. Say what you are about to do before anything destructive or hard to undo (deleting data, changing users, firewall, disks, ssh), and prefer the smallest change that does the job.';
 const TALK_PROMPT = "This is a casual talking session, not a coding session: chat, brainstorm, explain and answer questions in plain, friendly language. Keep answers short unless asked for more. You cannot edit files or run commands here; if the user wants something built or changed, tell them to start a coding session for it.";
 const TALK_DENY = 'Bash Edit Write MultiEdit NotebookEdit Agent';
 const BRIEF = 'The user is listening to your reply read aloud. Keep it brief and conversational: short spoken sentences, no markdown, no lists, no code blocks. Say what you did and what you found.';
@@ -84,13 +84,17 @@ function start(opts) {
   const outsideOk = () => !!root && readCfg().outside !== false;
   const bypassOk = () => allowBypass || readCfg().bypass === true;
   const rootAllowed = () => readCfg().allowRoot === true;
-  let sudoCache = { at: 0, ok: false };
-  /** Can this program start Claude with root rights? Either it already is root, or it may use sudo without a password (never asked for one here). */
-  const rootReady = () => {
-    if (typeof process.getuid === 'function' && process.getuid() === 0) return { ok: true, uid0: true };
+  let sudoCache = { at: 0, ok: false, out: '' };
+  const sudoLine = () => `${os.userInfo().username} ALL=(ALL) NOPASSWD: ALL`;
+  /** Really starts a tiny command as root the way a root chat does, and reads who it ran as. */
+  const sudoProbe = () => { const r = spawnSync('sudo', ['-n', 'env', `HOME=${os.homedir()}`, 'id', '-u'], { timeout: 6000, encoding: 'utf8' }); return { ok: r.status === 0 && String(r.stdout).trim() === '0', out: String(r.stdout || '').trim(), err: String(r.stderr || '').trim().slice(0, 200) }; };
+  /** Can this program start Claude with root rights? Either it already is root, or it may use sudo without a password (never asked for one here). [fresh] looks again now. */
+  const rootReady = (fresh) => {
+    if (typeof process.getuid === 'function' && process.getuid() === 0) return { ok: true, uid0: true, how: 'This server program already runs as root.' };
     if (process.platform === 'win32' || process.env.FLATPAK_ID) return { ok: false, why: 'Root chats are only possible on a Linux server.' };
-    if (Date.now() - sudoCache.at > 20000) { const r = spawnSync('sudo', ['-n', 'true'], { timeout: 4000 }); sudoCache = { at: Date.now(), ok: r.status === 0 }; }
-    return sudoCache.ok ? { ok: true, uid0: false } : { ok: false, why: `This server may not use sudo without a password for the user "${os.userInfo().username}". To allow it, run "sudo visudo" and add the line: ${os.userInfo().username} ALL=(ALL) NOPASSWD: ALL` };
+    if (fresh || Date.now() - sudoCache.at > 20000) { const p = sudoProbe(); sudoCache = { at: Date.now(), ok: p.ok, out: p.out, err: p.err }; }
+    return sudoCache.ok ? { ok: true, uid0: false, how: `Passwordless sudo works for "${os.userInfo().username}".` }
+      : { ok: false, line: sudoLine(), why: `This server may not use sudo without a password for the user "${os.userInfo().username}". To allow it, run "sudo visudo" and add the line: ${sudoLine()}` + (sudoCache.err ? `  (sudo said: ${sudoCache.err})` : '') };
   };
   const allowRules = () => (Array.isArray(readCfg().allowRules) ? readCfg().allowRules : []);
   const addRule = (r) => { if (!r) return null; const all = allowRules(); const ex = all.find((x) => x.tool === r.tool && x.prefix === r.prefix); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: r.tool, prefix: r.prefix, label: r.label, at: Date.now() }; writeCfg({ allowRules: [...all, n] }); return n; };
@@ -233,10 +237,13 @@ function start(opts) {
   let link = null, linkGen = 0;   // this computer's link to a server (laptop side)
   const pendingByKey = new Map();
   /** Ends a process and everything it started (on Windows the shell around Claude would otherwise keep it running), and force-ends it if it does not go. */
-  function killTree(child) {
+  function killTree(child, viaSudo) {
     if (!child || child.exitCode !== null || child.killed) return;
     try { if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); else child.kill('SIGTERM'); } catch { /* gone */ }
-    const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 4000); t.unref();
+    const t = setTimeout(() => {
+      if (viaSudo && child.pid) { try { spawnSync('sudo', ['-n', 'pkill', '-KILL', '-P', String(child.pid)], { timeout: 4000 }); } catch { /* best effort */ } }   // Claude runs as root below sudo: we may not signal it ourselves
+      try { child.kill('SIGKILL'); } catch { /* gone */ }
+    }, 4000); t.unref();
     child.once('close', () => clearTimeout(t));
   }
   /** The Stop button: end the run of this chat here, and withdraw an approval it was waiting for. False when no run of it is going on in this program. */
@@ -244,7 +251,7 @@ function start(opts) {
     const j = sid && jobs.get(sid);
     if (!j || j.done) return false;
     for (const [req, p] of [...pending]) if (p.event.session === sid || p.event.session === j.sid) { p.resolve(null); publish({ kind: 'resolved', req, session: p.event.session }); }
-    killTree(j.child);
+    killTree(j.child, j.rootLaunch);
     return true;
   }
   const away = () => !!readCfg().away;
@@ -430,10 +437,13 @@ function start(opts) {
     args.push('--mcp-config', mcpFile, '--allowedTools', publicMode ? 'mcp__meter__ask_user mcp__meter__laptop_status mcp__meter__run_on_laptop' : 'mcp__meter__ask_user',
       '--append-system-prompt', ASK_PROMPT + (publicMode && kind !== 'talk' ? ' ' + HUB_PROMPT : '') + (kind === 'talk' ? ' ' + TALK_PROMPT : '') + (body.brief ? ' ' + BRIEF : ''));
     // a chat with root rights: only when the owner switched it on, and only through passwordless sudo (or when this program already is root)
-    const asRoot = kind !== 'talk' && (body.root === true || (sidParam !== 'new' && getPrefs(sidParam).root === true));
-    let rootLaunch = false;
+    const wasRoot = sidParam !== 'new' && getPrefs(sidParam).root === true;
+    let asRoot = !body.noRoot && kind !== 'talk' && (body.root === true || wasRoot);   // a friend's approved prompt (noRoot) never runs as root
+    let rootLaunch = false, droppedRoot = false;
+    if (asRoot && body.root !== true && (!rootAllowed() || !rootReady().ok)) { asRoot = false; droppedRoot = true; }   // an old root chat goes on without root rights when root is off or not possible now
+    if (droppedRoot) { const ai0 = args.indexOf('--append-system-prompt'); if (ai0 >= 0) args[ai0 + 1] += ' This chat was started with root rights, but it now runs WITHOUT root rights. Say so if a command fails because of permissions.'; }
     if (asRoot) {
-      if (!rootAllowed()) return { error: 403, message: 'Chats with root rights are off on this server. Switch them on in Settings → Server first.' };
+      if (!rootAllowed()) return { error: 403, message: 'Chats with root rights are off on this server. Switch them on in Settings → Server permissions first.' };
       const rr = rootReady(); if (!rr.ok) return { error: 403, message: rr.why };
       rootLaunch = !rr.uid0;
       const mi = args.indexOf('--permission-mode');
@@ -447,7 +457,7 @@ function start(opts) {
       : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
       : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
-    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
+    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, rootLaunch, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
     jobs.set(key, job);
     if (agentSync) agentSync.kick('job-start');
     // "call me when it's done" typed into the chat sets the call preference for this chat
@@ -493,6 +503,10 @@ function start(opts) {
       announceDone(job);
       for (const f of job.onDone) { try { f(job); } catch (e) { onLog('onDone: ' + e.message); } }
       try { shares.jobDone(job.sid || job.key); } catch (e) { onLog('shares: ' + e.message); }
+      if (job.rootLaunch && typeof process.getuid === 'function') {   // files Claude made as root in your Claude folder go back to you, so later chats can still write them
+        const own = `${process.getuid()}:${process.getgid()}`; const h = os.homedir();
+        try { const c = spawn('sudo', ['-n', 'chown', '-R', own, path.join(h, '.claude'), path.join(h, '.claude.json')], { stdio: 'ignore' }); c.on('error', () => {}); c.unref(); } catch { /* best effort */ }
+      }
       bumpChats(); if (agentSync) agentSync.kick('job-done');
       try { fs.unlinkSync(mcpFile); } catch { /* gone */ }
       setTimeout(() => { for (const [k, v] of jobs) if (v === job) jobs.delete(k); }, 120000).unref();
@@ -549,7 +563,7 @@ function start(opts) {
     busy: (sid) => { const j = jobs.get(sid); return !!(j && !j.done); },
     onEvent: (ev) => { publish({ ...baseFor(ev.session, ev.cwd), ...ev }); },
     start: ({ sid, text, mode, by, reqId, mid }) => {   // the host's Claude runs an approved prompt in the shared chat
-      const r = startJob({ text, mode }, sid);
+      const r = startJob({ text, mode, noRoot: true }, sid);
       if (r.error) return r.error === 409 ? { busy: true } : { error: r.message };
       r.job.by = by; r.job.byReq = reqId; r.job.byMember = mid;
       return { job: r.job };
@@ -918,9 +932,10 @@ function start(opts) {
           if (b.outside !== undefined) writeCfg({ outside: !!b.outside });
           if (b.bypass !== undefined) writeCfg({ bypass: !!b.bypass });
           if (b.root !== undefined) writeCfg({ allowRoot: !!b.root });
+          if (b.recheck) rootReady(true);
           if (b.removeRule) writeCfg({ allowRules: allowRules().filter((r) => r.id !== String(b.removeRule)) });
           if (b.addPrefix !== undefined) { const r = perms.fromPrefix(b.addPrefix); if (!r) return json(res, 400, { error: 'That cannot be allowed for good: use a plain command like "npm test" (no ; & | > or dangerous commands).' }); addRule(r); }
-          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), rootReady: rootReady(!!b.recheck), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         }
         if (parts[0] === 'fs' && parts[1] === 'mkdir') {   // make a folder on this server (a place to work)
           const parentDir = String(b.path || ''), name = String(b.name || '').trim();
@@ -931,6 +946,13 @@ function start(opts) {
           if (fs.existsSync(target)) return json(res, 409, { error: 'there is already a folder called ' + name });
           try { fs.mkdirSync(target); } catch (e) { return json(res, 403, { error: 'cannot create it here: ' + e.code }); }
           return json(res, 200, { path: target });
+        }
+        if (parts[0] === 'sessions' && parts[2] === 'root') {   // give an existing chat root rights, or take them away again
+          const sid = parts[1], on = !!b.on;
+          if (!core.findSession(sid)) return json(res, 404, { error: 'no such session' });
+          if (on) { if (!rootAllowed()) return json(res, 403, { error: 'Chats with root rights are off on this server. Switch them on in Settings → Server permissions first.' }); const rr = rootReady(); if (!rr.ok) return json(res, 403, { error: rr.why }); }
+          if (jobs.has(sid) && !jobs.get(sid).done) return json(res, 409, { error: 'Claude is working on this chat right now. Try again when it has finished.' });
+          setPrefs(sid, { root: on }); return json(res, 200, { ok: true, root: on });
         }
         if (parts[0] === 'sessions' && parts[2] === 'auto') {   // Full auto for this chat, also while Claude is working: every approval it asks (and the ones waiting) is allowed until you turn it off
           const sid = parts[1], on = !!b.on;

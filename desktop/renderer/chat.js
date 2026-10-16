@@ -258,6 +258,8 @@ function drawPane() {
       rc('Phone call', callRow), rc('Run on', runRow),
       rc('Folder', mach.local && s.cwd ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'mono small ellip', title: s.cwd }, s.cwd), h('div', {}, h('button', { class: 'ghost sm', onclick: () => cm.openPath(s.cwd) }, 'Open folder'))) : (s.cwd ? h('div', { class: 'mono small', style: 'overflow-wrap:anywhere' }, s.cwd) : null)),
       rc('Move to server', moveBox(s, mach)), rc('Continue here', continueBox(s, mach)),
+      s.id && !guest && (me.root || s.root || (SS.sopts && SS.sopts[s.mid] && SS.sopts[s.mid].root)) ? rc('Root rights', h('div', { class: 'small' }, me.root ? 'This chat runs as root. Claude knows it has full administrator rights.' : 'This chat runs without root rights.'),
+        h('div', {}, h('button', { class: 'ghost sm', onclick: async () => { try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/root`, { on: !me.root }); await pollLive(); drawPane(); toast(me.root ? 'Root rights removed.' : 'This chat runs as root now.'); } catch (e) { toast(clean(e)); } } }, me.root ? 'Take root rights away' : 'Run this chat as root'))) : null,
       me.shared >= 0 ? rc('Sharing', h('div', { class: 'small' }, me.shared ? `Shared with ${me.shared} ${me.shared === 1 ? 'person' : 'people'}. They send, you decide.` : 'Shared, nobody has joined yet.'), h('div', {}, h('button', { class: 'ghost sm', onclick: () => shOpenShare(s) }, 'Manage'))) : null,
       rc('This chat', h('div', { class: 'kv' }, h('span', {}, 'Tokens'), h('b', {}, me.tokens ? fmtN(me.tokens) : '–')), h('div', { class: 'kv' }, h('span', {}, 'Tool calls'), h('b', {}, String(tools))),
         h('div', { class: 'kv' }, h('span', {}, 'Cost at API prices'), h('b', {}, me.cost ? '$' + me.cost.toFixed(2) : '–')))));
@@ -457,7 +459,8 @@ function serverIntro(s, info) {
     h('div', { class: 'row', style: 'width:100%;max-width:560px' }, h('div', { class: 'grow' }, nameIn), h('button', { class: 'primary', onclick: go }, 'Create')), err,
     h('div', { class: 'row wrap', style: 'justify-content:center;max-width:560px' }, info.projects.slice(0, 8).map((p) => chip(p.name, s.cwd === p.path, () => { s.cwd = p.path; SS.lastCwd = p.path; renderMsgs(); }))),
     h('div', { class: 'row wrap', style: 'justify-content:center' }, so && so.outside !== false ? h('button', { class: 'ghost sm', onclick: () => openServerBrowser(s) }, 'Browse the server…') : null,
-      so && so.root ? chip('Run as root', !!s.root, () => { s.root = !s.root; renderMsgs(); }) : null),
+      so && so.root && so.rootReady && so.rootReady.ok ? chip('Run as root', !!s.root, () => { s.root = !s.root; renderMsgs(); }) : null),
+    so && so.root && so.rootReady && !so.rootReady.ok ? h('div', { class: 'small err', style: 'max-width:520px;text-align:center' }, 'Root chats are switched on, but not possible yet: ' + so.rootReady.why) : null,
     s.root ? h('div', { class: 'small err' }, 'Root chat: Claude gets full administrator rights on this server and knows it. Be sure of what you ask.') : null,
     s.cwd ? h('div', { class: 'small muted' }, 'Starting in ' + s.cwd) : h('div', { class: 'small muted' }, 'Create a project or pick one, then describe what you want.'));
 }

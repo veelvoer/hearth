@@ -467,8 +467,13 @@ function permsCard() {
       body.innerHTML = '';
       if (o.outsideAvailable) body.append(sw('Work outside the projects folder', 'Browse the whole server and start a chat in any folder.', o.outside !== false, () => save({ outside: !o.outside })));
       body.append(sw('Allow Full auto', 'Claude may run anything in a chat that is set to Full auto, without asking.', !!o.bypass, () => save({ bypass: !o.bypass }), o.bypassFixed));
-      body.append(sw('Allow chats with root rights', 'A chat can run as root through sudo, and Claude is told it is root.', !!o.root, () => save({ root: !o.root })));
-      if (o.root && o.rootReady && !o.rootReady.ok) body.append(h('div', { class: 'warnnote' }, h('b', {}, 'Not possible yet: '), o.rootReady.why));
+      body.append(sw('Allow chats with root rights', 'A chat can run as root through sudo, and Claude is told it is root. Friends’ prompts in a shared chat never run as root.', !!o.root, () => save({ root: !o.root })));
+      if (o.root) {
+        const rr = o.rootReady || {};
+        const status = h('div', { class: rr.ok ? 'small' : 'warnnote' }, rr.ok ? h('span', {}, h('b', { style: 'color:#4CAF7D' }, '● Ready. '), rr.how || '') : h('span', {}, h('b', {}, 'Not possible yet: '), rr.why || 'sudo is not available.'));
+        const test = h('button', { class: 'ghost sm', onclick: async (e) => { e.target.disabled = true; e.target.textContent = 'Checking…'; try { o = { ...o, ...(await cm.relay(m.id, 'POST', '/admin/options', { recheck: true })) }; } catch (er) { toast(clean(er)); } draw(); } }, 'Check again');
+        body.append(status, h('div', { class: 'row wrap' }, test, !rr.ok && rr.line ? h('button', { class: 'ghost sm', onclick: () => { try { navigator.clipboard.writeText(rr.line); toast('Copied. Add it with: sudo visudo'); } catch { toast(rr.line); } } }, 'Copy the sudoers line') : null));
+      }
       body.append(h('div', { class: 'subtitle' }, 'Commands allowed for good'));
       if (!o.rules.length) body.append(h('div', { class: 'small muted' }, 'None yet. When Claude asks to run a command, choose “Yes, and don’t ask again”.'));
       for (const r of o.rules) body.append(h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label || r.prefix), h('button', { class: 'ghost sm', onclick: () => save({ removeRule: r.id }) }, 'Remove')));
