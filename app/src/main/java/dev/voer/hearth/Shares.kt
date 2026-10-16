@@ -141,6 +141,7 @@ object Shares {
     fun postJson(m: Machine, path: String, body: JSONObject): JSONObject = post(m.base, m.token, path, body)
     fun askHostShare(m: Machine, shareId: String, to: String, text: String) { post(m.base, m.token, "/shares/$shareId/ask", JSONObject().put("to", to).put("text", text)) }
     fun askFromGuest(m: Machine, sid: String, to: String, text: String) { post(m.base, m.token, "/sessions/$sid/ask", JSONObject().put("to", to).put("text", text)) }
+}
 
 /** Paste an invite link and your name: the shared chat appears in your list like any chat. */
 @Composable

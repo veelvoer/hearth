@@ -463,6 +463,7 @@ private fun sess0Shared(s: Sess) = s.shared >= 0
 
 @Composable
 private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () -> Unit = {}, back: () -> Unit) {
+    val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var sess by remember { mutableStateOf(s0) }
     val msgs = remember { mutableStateListOf<Msg>() }
