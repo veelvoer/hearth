@@ -583,19 +583,6 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             parts.clear(); sending = false; reload()
         }
     }
-    fun send() {
-        val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
-        if (text.isEmpty() || uploading) return
-        if (text.equals("/clear", ignoreCase = true)) { input = ""; files.clear(); onClear(); return }   // like /clear in Claude Code: a fresh start in the same project
-        input = ""; files.clear()
-        if (sharedChat && gInfo != null) {   // a shared chat: the prompt goes to whoever's usage is chosen
-            val others = gInfo!!.people.firstOrNull { it.id == choice }
-            if (guest && choice == "host") { doSend(text); return }
-            if (guest && choice == "mine") { runOwnShared(text); return }
-            if (choice != "mine" && others != null) { scope.launch { runCatching { withContext(Dispatchers.IO) { if (guest) Shares.askFromGuest(m, sess.id, choice, text) else Shares.askHostShare(m, gInfo!!.shareId, choice, text) } }.onSuccess { err = "Sent to ${others.name}. They have to approve it first, then their own Claude answers here." }.onFailure { err = it.message } }; return }
-        }
-        if (sending || serverBusy) queued.add(text) else doSend(text)
-    }
     /** Your own usage in a shared chat: the prompt runs on your own server, and the answer is posted into the chat. [by]/[req]: someone asked for it and you said yes. */
     fun runOwnShared(t: String, by: String? = null, req: String? = null, mode: String = "acceptEdits") {
         val gi = gInfo ?: return
@@ -622,6 +609,19 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (req != null) runCatching { Shares.postJson(m, "/sessions/${sess.id}/requests/$req", JSONObject().put("decision", if (failed.isEmpty()) "done" else "failed").put("note", failed)) }
             withContext(Dispatchers.Main) { ownBusy = false; reload() }
         }
+    }
+    fun send() {
+        val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
+        if (text.isEmpty() || uploading) return
+        if (text.equals("/clear", ignoreCase = true)) { input = ""; files.clear(); onClear(); return }   // like /clear in Claude Code: a fresh start in the same project
+        input = ""; files.clear()
+        if (sharedChat && gInfo != null) {   // a shared chat: the prompt goes to whoever's usage is chosen
+            val others = gInfo!!.people.firstOrNull { it.id == choice }
+            if (guest && choice == "host") { doSend(text); return }
+            if (guest && choice == "mine") { runOwnShared(text); return }
+            if (choice != "mine" && others != null) { scope.launch { runCatching { withContext(Dispatchers.IO) { if (guest) Shares.askFromGuest(m, sess.id, choice, text) else Shares.askHostShare(m, gInfo!!.shareId, choice, text) } }.onSuccess { err = "Sent to ${others.name}. They have to approve it first, then their own Claude answers here." }.onFailure { err = it.message } }; return }
+        }
+        if (sending || serverBusy) queued.add(text) else doSend(text)
     }
     // a friend you gave "always run" for: their request to use your Claude runs without a question
     val handledInc = remember { mutableSetOf<String>() }
