@@ -177,6 +177,9 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
     return ok({ ok: true });
   }
   const workers = (s) => { for (const [k, w] of Object.entries(s.working || {})) if (now() - w.since > WORK_TTL) delete s.working[k]; return Object.values(s.working || {}).map((w) => w.name); };
+  // the note that tells the host's Claude what others did with their own Claude is for Claude, not for the people reading the chat
+  const CTX = /^\[In this shared chat, others used their own Claude since your last turn:[\s\S]*?\]\n\n/;
+  const clearContext = (m) => (m && m.role === 'user' && typeof m.text === 'string' && CTX.test(m.text) ? { ...m, text: m.text.replace(CTX, '') } : m);
   /** The chat as everyone sees it: the real messages, with the others' own-Claude messages in their place by time, and who is working now. */
   function merge(s, list) {
     const out = list.slice(), extra = (s.log || []).filter((e) => !list.length || e.ts >= (list[0].ts || 0) - 60000);
@@ -185,7 +188,7 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
       out.splice(at, 0, { role: e.role, text: e.text, name: e.name, ts: e.ts, own: true });
     }
     for (const w of workers(s)) out.push({ role: 'meta', text: `${w} is working…`, ts: now() });
-    return out;
+    return out.map(clearContext);
   }
   /** What the host's own Claude has not heard yet: what others did with their own accounts. Marks it as heard. */
   function contextFor(s) {

@@ -630,7 +630,7 @@ function start(opts) {
     }
     if (parts[0] === 'sessions' && parts[1] === sid) {
       const sub = parts[2];
-      if (M === 'GET' && sub === 'messages') { const f = core.findSession(sid); if (!f) return json(res, 404, { error: 'This chat is no longer on the server.' }); return json(res, 200, shares.merge(sh, core.messages(sid, Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80))))); }
+      if (M === 'GET' && sub === 'messages') { const f = core.findSession(sid); if (!f) return json(res, 404, { error: 'This chat is no longer on the server.' }); return json(res, 200, shares.merge(sh, core.messages(sid, 400))); }
       if (M === 'GET' && sub === 'state') { const j = jobs.get(sid), f = core.findSession(sid), quiet = !!(j && j.done), running = !!(j && !j.done), busy = running || (!quiet && !!f && (Date.now() - f.mtime) / 1000 < 20); return json(res, 200, { running, busy }); }
       if (M === 'GET' && sub === 'prefs') return json(res, 200, { call: 'off', run: 'vps', kind: 'code', shared: shares.guestInfo(sh, mem) });
       if (M === 'GET' && sub === 'stream') { const j = jobs.get(sid); if (!j) return json(res, 404, { error: 'not running' }); return attach(res, j, Math.max(0, Number(u.searchParams.get('from')) || 0)); }
@@ -752,7 +752,7 @@ function start(opts) {
         }
         if (parts[0] === 'sessions' && parts[2] === 'messages') {
           const ew = hubSync && hubSync.findElsewhere(parts[1]);
-          const tail = Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80));
+          const tail = shares.bySession(parts[1]) ? 400 : Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80));   // a shared chat shows the same stretch to everyone
           // messages that were sent but wait for a laptop that is off: show them, so a sent prompt never seems to vanish
           const waiting = work.filter((w) => w.session === parts[1] && w.text).map((w) => ({ role: 'user', text: String(root ? w.text.split(chathub.MARK).join(root) : w.text), pending: true }));
           const withWaiting = (list) => { const n = (t) => String(t || '').replace(/\s+/g, ' ').trim(), seen = list.filter((m) => m.role === 'user').slice(-40).map((m) => n(m.text)); return [...list, ...waiting.filter((w) => !seen.includes(n(w.text)))]; };

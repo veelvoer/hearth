@@ -100,8 +100,18 @@ const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) =
   const fake = await req('POST', `/sessions/${sid}/post`, g, { role: 'user', text: 'x', req: 'nope' }); ok('43 posting as somebody else is refused', fake.code === 403);
   await req('POST', `/sessions/${sid}/working`, g, { on: true }); ok('44 who is working shows', (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.role === 'meta' && /Sam's Claude is working/.test(m.text))); await req('POST', `/sessions/${sid}/working`, g, { on: false });
   await sleep(1600); await req('POST', `/sessions/${sid}/send`, tok, { text: 'host asks directly again', mode: 'acceptEdits' }); await sleep(1500);
-  ok('45 the host\'s own Claude hears what the others did with theirs', (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.role === 'user' && /others used their own Claude/.test(m.text) && /answer from the friend's own account/.test(m.text)));
+  ok('45 the host\'s own Claude hears what the others did with theirs (the fake Claude repeats what it was told)', (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.role === 'assistant' && /others used their own Claude/.test(m.text) && /answer from the friend's own account/.test(m.text)));
   const mine3 = await req('POST', `/sessions/${sid}/ask`, g, { to: 'host', text: 'friend asks host via ask' }); ok('46 a friend can also ask the host through "ask"', mine3.code === 200);
+  // everyone sees the same chat: host, two friends, the same list in the same order
+  const inv4 = await req('POST', `/shares/${sh.j.id}/invite`, tok, {}); const j4 = await req('POST', '/shares/join', null, { invite: inv4.j.invite, name: 'Lee' });
+  const strip = (l) => JSON.stringify(l.filter((m) => m.role !== 'meta' || !/working/.test(m.text)).map((m) => [m.role, m.text, m.name || '', m.ts || 0]));
+  const A = strip((await req('GET', `/sessions/${sid}/messages`, tok)).j), B = strip((await req('GET', `/sessions/${sid}/messages`, g)).j), C = strip((await req('GET', `/sessions/${j4.j.key ? sid : sid}/messages`, j4.j.key)).j);
+  ok('47 host and two friends get exactly the same messages', A === B && B === C, `${A.length} ${B.length} ${C.length}`);
+  ok('48 the note for the host\'s Claude is not shown as a message of the host', !JSON.parse(A).some((m) => m[0] === 'user' && /others used their own Claude/.test(m[1])));
+  const order = JSON.parse(A).map((m) => m[3]); ok('49 messages are in time order', order.every((t, i) => i === 0 || t >= order[i - 1] || order[i - 1] === 0 || t === 0));
+  const slist = (x) => JSON.stringify((x.j || []).map((s) => [s.id, s.title]));
+  ok('50 the list entry of the chat is the same title for everyone', JSON.parse(slist(await req('GET', '/sessions', g)))[0][1] === JSON.parse(slist(await req('GET', '/sessions', tok))).find((x) => x[0] === sid)[1]);
+  await req('DELETE', `/shares/${sh.j.id}/members/${j4.j.member}`, tok);
   // restart: waiting requests survive
   await req('POST', `/shares/${sh.j.id}/members/${mid}`, tok, { grant: { auto: false, mode: 'plan' } }); await sleep(1600);
   await req('POST', `/sessions/${sid}/send`, g, { text: 'survives a restart' }); await sleep(300);
