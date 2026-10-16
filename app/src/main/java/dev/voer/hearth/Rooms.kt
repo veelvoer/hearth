@@ -37,24 +37,46 @@ data class RoomView(val title: String, val host: String, val role: String, val m
 
 object Rooms {
     private fun prefs(c: Context) = c.getSharedPreferences("rooms", Context.MODE_PRIVATE)
-    fun joined(c: Context): List<RoomEntry> = runCatching {
-        val a = JSONArray(prefs(c).getString("joined", "[]"))
-        List(a.length()) { a.getJSONObject(it).let { o -> RoomEntry("g:" + o.getString("id") + ":" + o.getString("member"), null, o.getString("url"), o.getString("token"), o.getString("id"), o.getString("title"), o.optString("host"), o.getString("member")) } }
-    }.getOrDefault(emptyList())
-    fun saveJoined(c: Context, l: List<RoomEntry>) {
-        val a = JSONArray(); l.forEach { a.put(JSONObject().put("id", it.id).put("member", it.member).put("url", it.url).put("token", it.token).put("title", it.title).put("host", it.hostName)) }
-        prefs(c).edit().putString("joined", a.toString()).apply()
+
+    // Everything about the shared chats you joined (invites used, your folder, your Claude chat, "always run" choices) is a list of items with a time, kept on your own
+    // server too, so all your phones and computers show the same chats. The newest write of an item wins. Same keys as the desktop app.
+    private fun items(c: Context): JSONObject = runCatching { JSONObject(prefs(c).getString("items", "{}") ?: "{}") }.getOrDefault(JSONObject())
+    private fun saveItems(c: Context, o: JSONObject) = prefs(c).edit().putString("items", o.toString()).apply()
+    private fun value(c: Context, k: String): Any? = items(c).optJSONObject(k)?.let { if (it.isNull("v")) null else it.get("v") }
+    fun set(c: Context, k: String, v: Any?) { val o = items(c); o.put(k, JSONObject().put("v", v ?: JSONObject.NULL).put("t", System.currentTimeMillis())); saveItems(c, o) }
+    /** Sends what this device has, takes what the server (and so the other devices) has newer. True when something new arrived. */
+    fun sync(c: Context, m: Machine): Boolean {
+        val mine = items(c)
+        val r = postTo(m, "/rooms-sync", JSONObject().put("items", mine)).optJSONObject("items") ?: return false
+        var changed = false
+        r.keys().forEach { k -> val it = r.getJSONObject(k); val cur = mine.optJSONObject(k); if (cur == null || cur.optLong("t") < it.optLong("t")) { mine.put(k, it); changed = true } }
+        if (changed) saveItems(c, mine)
+        return changed
     }
-    fun myName(c: Context) = prefs(c).getString("name", "") ?: ""
-    fun setMyName(c: Context, n: String) = prefs(c).edit().putString("name", n).apply()
-    fun cwd(c: Context, key: String) = prefs(c).getString("cwd:$key", "") ?: ""
-    fun setCwd(c: Context, key: String, v: String) = prefs(c).edit().putString("cwd:$key", v).apply()
-    fun session(c: Context, key: String) = prefs(c).getString("sess:$key", "") ?: ""
-    fun setSession(c: Context, key: String, v: String) = prefs(c).edit().putString("sess:$key", v).apply()
-    fun autoMode(c: Context, key: String, from: String) = prefs(c).getString("auto:$key:$from", null)
-    fun setAuto(c: Context, key: String, from: String, mode: String?) = prefs(c).edit().apply { if (mode == null) remove("auto:$key:$from") else putString("auto:$key:$from", mode) }.apply()
-    fun seen(c: Context, key: String) = prefs(c).getLong("seen:$key", 0L)
-    fun setSeen(c: Context, key: String, v: Long) = prefs(c).edit().putLong("seen:$key", v).apply()
+    private fun postTo(m: Machine, path: String, body: JSONObject): JSONObject {
+        val c = URL(urlOf(m) + path).openConnection() as HttpURLConnection
+        c.connectTimeout = 8_000; c.readTimeout = 15_000; c.requestMethod = "POST"; c.doOutput = true
+        c.setRequestProperty("Authorization", "Bearer " + m.token); c.setRequestProperty("Content-Type", "application/json")
+        try { c.outputStream.use { it.write(body.toString().toByteArray()) }; return JSONObject((if (c.responseCode == 200) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty().ifBlank { "{}" }) } finally { c.disconnect() }
+    }
+
+    fun joined(c: Context): List<RoomEntry> {
+        val o = items(c); val out = ArrayList<RoomEntry>()
+        o.keys().forEach { k -> if (k.startsWith("j:")) o.getJSONObject(k).optJSONObject("v")?.let { v -> out += RoomEntry("g:" + v.getString("id") + ":" + v.getString("member"), null, v.getString("url"), v.getString("token"), v.getString("id"), v.optString("title"), v.optString("host"), v.getString("member")) } }
+        return out
+    }
+    fun addJoined(c: Context, e: RoomEntry) = set(c, "j:${e.id}:${e.member}", JSONObject().put("id", e.id).put("member", e.member).put("url", e.url).put("token", e.token).put("title", e.title).put("host", e.hostName))
+    fun dropJoined(c: Context, e: RoomEntry) = set(c, "j:${e.id}:${e.member}", null)
+    fun myName(c: Context) = (value(c, "name") as? String) ?: ""
+    fun setMyName(c: Context, n: String) = set(c, "name", n)
+    fun cwd(c: Context, key: String) = (value(c, "cfg:$key") as? JSONObject)?.optString("cwd").orEmpty()
+    fun setCwd(c: Context, key: String, v: String) = set(c, "cfg:$key", JSONObject().put("cwd", v))
+    fun session(c: Context, key: String) = (value(c, "s:$key") as? JSONObject)?.optString("id").orEmpty()
+    fun seen(c: Context, key: String) = (value(c, "s:$key") as? JSONObject)?.optLong("seen", 0L) ?: 0L
+    fun setSession(c: Context, key: String, id: String) = set(c, "s:$key", JSONObject().put("id", id).put("seen", seen(c, key)))
+    fun setSeen(c: Context, key: String, n: Long) = set(c, "s:$key", JSONObject().put("id", session(c, key)).put("seen", n))
+    fun autoMode(c: Context, key: String, from: String) = value(c, "a:$key:$from") as? String
+    fun setAuto(c: Context, key: String, from: String, mode: String?) = set(c, "a:$key:$from", mode)
 
     /** One call to a room on a server: with the host's own key, or with the guest key from an invite. */
     fun call(e: RoomEntry, method: String, path: String, body: JSONObject? = null): JSONObject {
@@ -111,9 +133,9 @@ fun RoomsScreen(machines: List<Machine>, joinLink: String?, back: () -> Unit) {
     var folder by remember { mutableStateOf("") }
     var link by remember { mutableStateOf(joinLink ?: "") }
     var name by remember { mutableStateOf(Rooms.myName(c)) }
-    val host = machines.firstOrNull { it.secure } ?: machines.firstOrNull()
+    val host = machines.firstOrNull { it.secure }   // shared chats always live on your server
     fun reload() { scope.launch { val h = if (host != null) runCatching { withContext(Dispatchers.IO) { Rooms.list(host) } }.getOrDefault(emptyList()) else emptyList(); list = h + Rooms.joined(c) } }
-    LaunchedEffect(Unit) { while (true) { reload(); delay(5_000) } }
+    LaunchedEffect(Unit) { while (true) { if (host != null) runCatching { withContext(Dispatchers.IO) { Rooms.sync(c, host) } }; reload(); delay(5_000) } }
     val o = open
     if (o != null) { RoomScreen(o) { open = null; reload() }; return }
     BackHandler { if (form.isNotEmpty()) form = "" else back() }
@@ -146,7 +168,7 @@ fun RoomsScreen(machines: List<Machine>, joinLink: String?, back: () -> Unit) {
                 Button("Join") {
                     val nm = name.trim().ifBlank { "Guest" }; Rooms.setMyName(c, nm)
                     scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { Rooms.join(link, nm) } }.onSuccess { e -> Rooms.saveJoined(c, Rooms.joined(c) + e); form = ""; err = null; reload(); open = e }.onFailure { err = it.message }
+                        runCatching { withContext(Dispatchers.IO) { Rooms.join(link, nm) } }.onSuccess { e -> Rooms.addJoined(c, e); form = ""; err = null; reload(); open = e }.onFailure { err = it.message }
                     }
                 }
                 TextAction("Cancel") { form = "" }
@@ -156,6 +178,7 @@ fun RoomsScreen(machines: List<Machine>, joinLink: String?, back: () -> Unit) {
                 if (host != null) Button("Share a chat", Modifier.weight(1f)) { form = "new" }
                 Button("Join", Modifier.weight(1f)) { form = "join" }
             }
+            if (host == null) Txt("Shared chats run on your server, so they keep going when your phone is off and every device sees the same chat. Connect a server first (Settings).", T.small, color = MaterialTheme.colorScheme.error)
             if (list.isEmpty()) Txt("No shared chats yet. Start one, or join with an invite from a friend.", T.small, muted = true)
             list.forEach { e ->
                 Card(Modifier.clickable { open = e }) {
@@ -196,8 +219,8 @@ private fun RoomScreen(e: RoomEntry, close: () -> Unit) {
     /** Your own account: a prompt runs on your own computer or server and the answer is posted to the shared chat. [by] = someone asked for it (their message is in the chat already), [req] is reported done or failed. */
     fun runOwn(t: String, by: String? = null, req: String? = null, mode: String = "acceptEdits") {
         val cur = v ?: return
-        val own = Store.machines(c).let { l -> l.firstOrNull { !it.secure } ?: l.firstOrNull() }
-        if (own == null) { err = "Connect your own computer or server first."; return }
+        val own = Store.machines(c).firstOrNull { it.secure }   // always your server, never a laptop
+        if (own == null) { err = "Shared chats run on your server. Connect a server first (Settings)."; return }
         if (ownBusy) { err = "Your Claude is still working on the last one."; return }
         ownBusy = true
         val seen = Rooms.seen(c, e.key); val sess = Rooms.session(c, e.key); val dir = Rooms.cwd(c, e.key)
@@ -210,7 +233,7 @@ private fun RoomScreen(e: RoomEntry, close: () -> Unit) {
             runCatching {
                 if (by == null) Rooms.call(e, "POST", "/${e.id}/messages", JSONObject().put("text", t))
                 Rooms.call(e, "POST", "/${e.id}/working", JSONObject().put("on", true))
-                Relay.send(own, sess, prompt, mode, cwd = if (sess.isEmpty() && dir.isNotEmpty()) dir else null, kind = if (sess.isEmpty() && dir.isEmpty()) "talk" else null) { ty, tx, er ->
+                Relay.send(own, sess, prompt, mode, cwd = if (sess.isEmpty() && dir.isNotEmpty()) dir else null, kind = if (sess.isEmpty() && dir.isEmpty()) "talk" else null, run = "vps") { ty, tx, er ->
                     when (ty) { "session" -> if (tx.isNotEmpty()) Rooms.setSession(c, e.key, tx); "delta" -> out.append(tx); "fail" -> failed = tx.ifBlank { "Your Claude failed" } }
                 }
             }.onFailure { failed = it.message ?: "Your Claude failed" }
@@ -306,8 +329,8 @@ private fun RoomScreen(e: RoomEntry, close: () -> Unit) {
         if (!host) {
             Txt("Asking someone's Claude uses their account. " + (if (cur.auto) "${cur.host} gave you full permission: prompts for them run at once." else "They decide, and can change your prompt first."), T.small, muted = true)
             var dir by remember { mutableStateOf(Rooms.cwd(c, e.key)) }
-            Field(dir, { dir = it.trim(); Rooms.setCwd(c, e.key, dir) }, "Folder for your Claude on your computer (empty = just talk)", mono = true)
-            TextAction("Leave this shared chat") { act("/leave", JSONObject(), after = { Rooms.saveJoined(c, Rooms.joined(c).filter { it.key != e.key }); close() }) }
+            Field(dir, { dir = it.trim(); Rooms.setCwd(c, e.key, dir) }, "Folder for your Claude on your server (empty = just talk)", mono = true)
+            TextAction("Leave this shared chat") { act("/leave", JSONObject(), after = { Rooms.dropJoined(c, e); close() }) }
         } else {
             if (cur.people.isNotEmpty()) {
                 Label("People in this chat")

@@ -1,13 +1,46 @@
 'use strict';
 /* Shared chats: work in one chat with someone else, each with their own Claude account, or ask the host to run a prompt on theirs. See relay/rooms.js. */
 const RM = { list: [], sel: null, view: null, seq: 0, sig: '', timer: 0, busy: false, err: null, ownBusy: false, form: null };
-const rmJoined = () => { try { return JSON.parse(localStorage.getItem('cm.joined') || '[]'); } catch { return []; } };
-const rmSaveJoined = (l) => localStorage.setItem('cm.joined', JSON.stringify(l));
-const rmSess = () => { try { return JSON.parse(localStorage.getItem('cm.roomSess') || '{}'); } catch { return {}; } };
-const rmCfg = () => { try { return JSON.parse(localStorage.getItem('cm.roomCfg') || '{}'); } catch { return {}; } };
+/** Everything about the shared chats you joined (the invites you used, your folder, your Claude chat, your "always run" choices) lives in one list of
+ *  items with a time. It is kept on your own server too, so all your phones and computers show the same chats. The newest write of an item wins. */
+const RS = { items: (() => { try { return JSON.parse(localStorage.getItem('cm.rsync') || '{}'); } catch { return {}; } })(), timer: 0, last: 0, busy: false };
+const rsVal = (k, d) => { const it = RS.items[k]; return it && it.v != null ? it.v : d; };
+function rsSet(k, v) { RS.items[k] = { v: v === undefined ? null : v, t: Date.now() }; localStorage.setItem('cm.rsync', JSON.stringify(RS.items)); clearTimeout(RS.timer); RS.timer = setTimeout(rsSync, 800); }
+async function rsSync() {
+  if (RS.busy) return; RS.busy = true;
+  try {
+    const ms = await cm.machines(), m = ms.find((x) => x.secure); if (!m) return;
+    const r = await cm.relay(m.id, 'POST', '/rooms-sync', { items: RS.items });
+    let changed = false;
+    for (const [k, it] of Object.entries(r.items || {})) { const cur = RS.items[k]; if (!cur || cur.t < it.t) { RS.items[k] = it; changed = true; } }
+    localStorage.setItem('cm.rsync', JSON.stringify(RS.items)); RS.last = Date.now();
+    if (changed && tab === 'shared') { await rmLoadList(); rmSide(); if (!RM.sel && !RM.form) rmDraw(); }
+  } catch { /* no server reachable: the local copy is used and pushed later */ }
+  finally { RS.busy = false; }
+}
+// old versions kept these in separate places: bring them in once
+(function () {
+  if (localStorage.getItem('cm.rsyncMigrated')) return; localStorage.setItem('cm.rsyncMigrated', '1');
+  const t = Date.now() - 1; const get = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || d); } catch { return JSON.parse(d); } };
+  for (const j of get('cm.joined', '[]')) RS.items['j:' + j.id + ':' + j.member] = { v: j, t };
+  for (const [k, v] of Object.entries(get('cm.roomCfg', '{}'))) RS.items['cfg:' + k] = { v, t };
+  for (const [k, v] of Object.entries(get('cm.roomSess', '{}'))) RS.items['s:' + k] = { v, t };
+  for (const [k, v] of Object.entries(get('cm.roomAuto', '{}'))) RS.items['a:' + k] = { v, t };
+  localStorage.setItem('cm.rsync', JSON.stringify(RS.items));
+})();
+const rmJoined = () => Object.entries(RS.items).filter(([k, it]) => k.startsWith('j:') && it.v).map(([, it]) => it.v);
+const rmAddJoined = (j) => rsSet('j:' + j.id + ':' + j.member, j);
+const rmDropJoined = (id, member) => rsSet('j:' + id + ':' + member, null);
+const rmSess = (key) => rsVal('s:' + key, {});
+const rmSetSess = (key, v) => rsSet('s:' + key, v);
+const rmCfg = (key) => rsVal('cfg:' + key, {});
+const rmAutoMode = (key, mid) => rsVal('a:' + key + ':' + mid, null);
+const rmSetAuto = (key, mid, mode) => rsSet('a:' + key + ':' + mid, mode);
+const rmMyName = () => rsVal('name', localStorage.getItem('cm.myName') || '');
 const rmMachineUrl = (m) => `${m.secure ? 'https' : 'http'}://${m.host}${m.port && m.port !== 443 && m.port !== 80 ? ':' + m.port : ''}`;
-/** Your own server (or this computer) hosts the rooms you start. */
-async function rmHostMachine() { const ms = await cm.machines(); return ms.find((x) => x.secure) || ms.find((x) => x.local) || ms[0] || null; }
+/** Shared chats always live on your server (so they keep going when your computer is off, and every device sees the same). */
+async function rmHostMachine() { const ms = await cm.machines(); return ms.find((x) => x.secure) || null; }
+const rmNeedServer = () => h('div', { class: 'warnnote' }, 'Shared chats run on your server, so they keep going when your computer is off and every device sees the same chat. Connect a server first (Settings → Computers and servers).');
 const rmCall = (e, method, path, body) => e.kind === 'host' ? cm.relay(e.mid, method, '/rooms' + path, body) : cm.roomCall(e.conn, method, '/rooms' + path, body);
 
 async function rmLoadList() {
@@ -34,10 +67,12 @@ async function rmPoll(force) {
 function sharedView() {
   const root = h('div', { class: 'rmwrap' }, h('div', { class: 'rmside', id: 'rmside' }), h('div', { class: 'rmmain', id: 'rmmain' }));
   clearInterval(RM.timer); RM.dom = null; RM.sideSig = '';
+  rsSync();
   setTimeout(async () => { await rmLoadList(); if (!RM.sel && !RM.form && RM.list[0]) RM.sel = RM.list[0].key; rmDraw(); if (RM.sel) rmPoll(true); }, 0);
   RM.timer = setInterval(async () => {
     if (tab !== 'shared') { clearInterval(RM.timer); return; }
     if (RM.sel) rmPoll(false);
+    if (Date.now() - RS.last > 6000) rsSync();
     const before = RM.sideSig; await rmLoadList(); if (tab === 'shared') rmSide(); if (before !== RM.sideSig && !RM.sel && !RM.form) rmDraw();
   }, 2500);
   return root;
@@ -112,7 +147,7 @@ function rmHead(e, v) {
   const host = e.kind === 'host';
   return h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, v.title),
     h('div', { class: 'small muted ellip' }, [host ? 'You host this chat' : 'Hosted by ' + v.host, v.members.map((m) => m.name).join(', ') || 'only you so far'].join(' · '))),
-    host ? h('button', { class: 'ghost sm', onclick: () => rmInvite(e) }, 'Invite') : h('button', { class: 'ghost sm', onclick: async () => { if (!confirm('Leave this shared chat?')) return; try { await rmCall(e, 'POST', `/${e.id}/leave`, {}); } catch { /* gone anyway */ } rmSaveJoined(rmJoined().filter((j) => !(j.id === e.id && j.member === e.member))); RM.sel = null; RM.dom = null; await rmLoadList(); rmDraw(); } }, 'Leave'),
+    host ? h('button', { class: 'ghost sm', onclick: () => rmInvite(e) }, 'Invite') : h('button', { class: 'ghost sm', onclick: async () => { if (!confirm('Leave this shared chat?')) return; try { await rmCall(e, 'POST', `/${e.id}/leave`, {}); } catch { /* gone anyway */ } rmDropJoined(e.id, e.member); RM.sel = null; RM.dom = null; await rmLoadList(); rmDraw(); } }, 'Leave'),
     host ? h('button', { class: 'ghost sm', onclick: async () => { if (!confirm('Delete this shared chat for everyone?')) return; try { await rmCall(e, 'DELETE', `/${e.id}`); } catch (er) { toast(clean(er)); } RM.sel = null; RM.dom = null; await rmLoadList(); rmDraw(); } }, 'Delete') : null);
 }
 /** Cards for prompts that wait for YOUR decision: on the host those asked of the host, for a friend those asked of them. Existing cards stay untouched (what you edited stays). */
@@ -122,7 +157,7 @@ function rmRequests(e, v) {
   const have = new Map([...D.reqs.children].map((c) => [c.dataset.id, c]));
   for (const [id, c] of have) if (!mineToDecide.some((q) => q.id === id)) c.remove();
   for (const q of mineToDecide) if (!have.has(q.id)) {
-    const auto = !host && rmAuto()[e.key + ':' + q.mid];
+    const auto = !host && rmAutoMode(e.key, q.mid);
     if (auto) { if (!D.handled.has(q.id)) { D.handled.add(q.id); rmRunRequest(e, v, q, q.text, auto); } continue; }
     D.reqs.append(rmRequestCard(e, v, q));
   }
@@ -130,7 +165,6 @@ function rmRequests(e, v) {
   const sig = JSON.stringify(waiting.map((q) => q.id + q.toName));
   if (D.sig.wait !== sig) { D.sig.wait = sig; let w = D.reqs.querySelector('.rmwait'); if (w) w.remove(); if (waiting.length) D.reqs.prepend(h('div', { class: 'small muted rmwait', style: 'padding:0 26px' }, waiting.map((q) => `Waiting for ${q.toName} to approve: “${q.text.slice(0, 60)}”`).join(' · '))); }
 }
-const rmAuto = () => { try { return JSON.parse(localStorage.getItem('cm.roomAuto') || '{}'); } catch { return {}; } };
 function rmRequestCard(e, v, q) {
   const host = e.kind === 'host';
   const ta = h('textarea', { rows: 3, class: 'rmedit' }); ta.value = q.text;
@@ -142,7 +176,7 @@ function rmRequestCard(e, v, q) {
     try {
       if (host) { await rmCall(e, 'POST', `/${e.id}/requests/${q.id}`, { decision, text: ta.value, mode: mode.value, always: always.checked }); }
       else if (decision === 'deny') await rmCall(e, 'POST', `/${e.id}/requests/${q.id}`, { decision: 'deny' });
-      else { if (always.checked) { const a = rmAuto(); a[e.key + ':' + q.mid] = mode.value; localStorage.setItem('cm.roomAuto', JSON.stringify(a)); } RM.dom && RM.dom.handled.add(q.id); await rmRunRequest(e, v, q, ta.value, mode.value); }
+      else { if (always.checked) rmSetAuto(e.key, q.mid, mode.value); RM.dom && RM.dom.handled.add(q.id); await rmRunRequest(e, v, q, ta.value, mode.value); }
       rmPoll(true);
     } catch (er) { toast(clean(er)); } finally { busy.v = false; }
   };
@@ -184,23 +218,23 @@ function rmButtons(e, v) {
 }
 function rmNewForm() {
   const title = h('input', { placeholder: 'Name, e.g. Landing page with Sam' }), folder = h('input', { placeholder: '/path/to/project on your server', style: 'font-family:ui-monospace,monospace' }), err = h('div', { class: 'small err' });
-  (async () => { const m = await rmHostMachine(); if (!m) return; try { const info = await cm.relay(m.id, 'GET', '/projects'); folder.value = (SS.lastCwd && SS.lastCwd.startsWith('/') && SS.lastCwd) || ((info.projects || [])[0] || {}).path || ''; } catch { /* type it */ } })();
+  (async () => { const m = await rmHostMachine(); if (!m) { err.replaceChildren(rmNeedServer()); return; } try { const info = await cm.relay(m.id, 'GET', '/projects'); folder.value = (SS.lastCwd && SS.lastCwd.startsWith('/') && SS.lastCwd) || ((info.projects || [])[0] || {}).path || ''; } catch { /* type it */ } })();
   const go = async () => {
-    try { const m = await rmHostMachine(); if (!m) throw new Error('Connect a server first.'); const r = await cm.relay(m.id, 'POST', '/rooms', { title: title.value, cwd: folder.value.trim() }); await rmLoadList(); rmSelect('h:' + r.id); }
+    try { const m = await rmHostMachine(); if (!m) throw new Error('Shared chats run on your server. Connect a server first.'); const r = await cm.relay(m.id, 'POST', '/rooms', { title: title.value, cwd: folder.value.trim() }); await rmLoadList(); rmSelect('h:' + r.id); }
     catch (e) { err.textContent = clean(e); }
   };
   return h('div', { class: 'rmform stack' }, h('h2', {}, 'Share a chat'), h('p', { class: 'muted' }, 'Your Claude works in this folder on your server. Friends join with an invite and see everything said here. Nobody gets your login: they use their own account, or they ask you.'),
     title, folder, h('div', { class: 'row' }, h('button', { class: 'primary', onclick: go }, 'Create'), h('button', { class: 'ghost', onclick: () => { RM.form = null; rmDraw(); } }, 'Cancel')), err);
 }
 function rmJoinForm() {
-  const link = h('input', { placeholder: 'Paste the invite link from your friend' }), name = h('input', { placeholder: 'Your name', value: localStorage.getItem('cm.myName') || '' }), err = h('div', { class: 'small err' });
+  const link = h('input', { placeholder: 'Paste the invite link from your friend' }), name = h('input', { placeholder: 'Your name', value: rmMyName() }), err = h('div', { class: 'small err' });
   const go = async () => {
     try {
       const u = new URL(link.value.trim().replace(/^hearth:\/\/room/, 'https://x/room'));
       const url = u.searchParams.get('url'), invite = u.searchParams.get('invite'); if (!url || !invite) throw new Error('That is not an invite link.');
-      const nm = name.value.trim() || 'Guest'; localStorage.setItem('cm.myName', nm);
+      const nm = name.value.trim() || 'Guest'; rsSet('name', nm);
       const r = await cm.roomCall({ url, token: '' }, 'POST', '/rooms/join', { invite, name: nm });
-      const l = rmJoined(); l.push({ id: r.room, member: r.member, url, token: r.token, title: r.title, host: r.host }); rmSaveJoined(l);
+      rmAddJoined({ id: r.room, member: r.member, url, token: r.token, title: r.title, host: r.host });
       RM.form = null; await rmLoadList(); rmSelect('g:' + r.room + ':' + r.member);
     } catch (e) { err.textContent = /Invalid URL/.test(String(e.message)) ? 'That is not an invite link.' : clean(e); }
   };
@@ -222,20 +256,19 @@ async function rmInvite(e) {
 }
 
 function rmOwnSettings(e) {
-  const key = e.key, cfg = rmCfg()[key] || {};
-  const inp = h('input', { placeholder: 'Folder for your Claude, on your computer (empty = just talk, no files)', value: cfg.cwd || '', style: 'font-family:ui-monospace,monospace;font-size:12px', onchange: (ev) => { const c = rmCfg(); c[key] = { ...(c[key] || {}), cwd: ev.target.value.trim() }; localStorage.setItem('cm.roomCfg', JSON.stringify(c)); } });
+  const key = e.key, cfg = rmCfg(key);
+  const inp = h('input', { placeholder: 'Folder for your Claude on your server (empty = just talk, no files)', value: cfg.cwd || '', style: 'font-family:ui-monospace,monospace;font-size:12px', onchange: (ev) => { rsSet('cfg:' + key, { ...rmCfg(key), cwd: ev.target.value.trim() }); } });
   return h('div', { class: 'small muted' }, 'Your Claude works in: ', inp);
 }
 /** A prompt runs on YOUR own Claude account (your own computer or server), and the answer is posted into the shared chat.
  *  opts.by: the prompt comes from someone else's request (their message is already in the chat); opts.req: that request, reported done or failed when it ends. */
 async function rmRunLocal(e, v, text, opts = {}) {
   if (RM.ownBusy) { toast('Your Claude is still working on the last one.'); throw new Error('busy'); }
-  const cfg = rmCfg()[e.key] || {};
-  if (!SS.machines.length) SS.machines = await cm.machines();
-  const mid = typeof defaultMachineId === 'function' ? defaultMachineId() : null;
-  const machine = (SS.machines.find((m) => m.id === mid) || SS.machines.find((m) => !m.secure) || SS.machines[0]);
-  if (!machine) { toast('Connect your own computer or server first (Settings).'); throw new Error('no machine'); }
-  const sess = rmSess(), last = (sess[e.key] || {});
+  const cfg = rmCfg(e.key);
+  SS.machines = await cm.machines();
+  const machine = SS.machines.find((m) => m.secure);   // always your server, never a laptop: it keeps going when your computer is off
+  if (!machine) { toast('Shared chats run on your server. Connect a server first (Settings).'); throw new Error('no server'); }
+  const last = rmSess(e.key);
   const seen = last.seen || 0, others = v.messages.filter((m) => m.n > seen && m.from !== v.me && m.kind !== 'status').slice(-40);
   const people = [v.host, ...v.members.map((m) => m.name)].join(', ');
   const prompt = `You are in a shared chat called "${v.title}" with ${people}. ` + (opts.by ? `The next message comes from ${opts.by}, not from the owner of this account. Answer it directly.` : `Answer ${v.myName} directly.`)
@@ -247,20 +280,20 @@ async function rmRunLocal(e, v, text, opts = {}) {
     const sid = rand(); let out = '', failed = '';
     const finish = async () => {
       delete chatHandlers[sid]; RM.ownBusy = false;
-      const s = rmSess(); s[e.key] = { id: s[e.key] && s[e.key].id || last.id, seen: v.seq }; localStorage.setItem('cm.roomSess', JSON.stringify(s));
+      rmSetSess(e.key, { id: rmSess(e.key).id || last.id, seen: v.seq });
       try { if (out.trim() || failed) await rmCall(e, 'POST', `/${e.id}/messages`, { text: out.trim() || `(${failed})`, kind: 'assistant' }); } catch { /* host gone */ }
       try { await rmCall(e, 'POST', `/${e.id}/working`, { on: false }); } catch { /* ignore */ }
       if (opts.req) { try { await rmCall(e, 'POST', `/${e.id}/requests/${opts.req}`, { decision: failed ? 'failed' : 'done', note: failed }); } catch { /* ignore */ } }
       rmPoll(false); resolve();
     };
     chatHandlers[sid] = (ev) => {
-      if (ev.t === 'session' && ev.id) { const s = rmSess(); s[e.key] = { ...(s[e.key] || {}), id: ev.id }; localStorage.setItem('cm.roomSess', JSON.stringify(s)); }
+      if (ev.t === 'session' && ev.id) rmSetSess(e.key, { ...rmSess(e.key), id: ev.id });
       else if (ev.t === 'delta') out += ev.text;
       else if (ev.t === 'fail') { failed = ev.text || 'Your Claude failed'; finish(); }
       else if (ev.t === 'end') finish();
     };
     const talk = !cfg.cwd;
-    cm.send(machine.id, last.id || null, prompt, opts.mode && opts.mode !== 'plan' ? opts.mode : (opts.mode === 'plan' ? 'plan' : 'acceptEdits'), false, sid, talk ? { kind: 'talk' } : { cwd: cfg.cwd }).catch((er) => { failed = clean(er); finish(); });
+    cm.send(machine.id, last.id || null, prompt, opts.mode || 'acceptEdits', false, sid, { run: 'vps', ...(talk ? { kind: 'talk' } : { cwd: cfg.cwd }) }).catch((er) => { failed = clean(er); finish(); });
   });
 }
 const rmRunOwn = (e, v, text) => rmRunLocal(e, v, text).catch(() => {});

@@ -550,7 +550,25 @@ function start(opts) {
       return undefined;
     },
   });
+  // ── the shared chats you joined, kept on your own server so every phone and computer of yours has the same list ──
+  const syncFile = path.join(dir, 'roomsync.json');
+  let roomSync = (() => { try { return JSON.parse(fs.readFileSync(syncFile, 'utf8')) || {}; } catch { return {}; } })();
+  const mergeSync = (inc) => {   // per item, the newest write wins (also deletions)
+    let changed = false;
+    for (const [k, it] of Object.entries(inc && typeof inc === 'object' ? inc : {})) {
+      if (!/^[A-Za-z0-9:._-]{1,120}$/.test(k) || !it || typeof it.t !== 'number') continue;
+      const cur = roomSync[k]; if (cur && cur.t >= it.t) continue;
+      if (JSON.stringify(it.v ?? null).length > 4000) continue;
+      roomSync[k] = { v: it.v === undefined ? null : it.v, t: it.t }; changed = true;
+    }
+    if (changed) { const keys = Object.keys(roomSync); if (keys.length > 600) for (const k of keys.sort((a, b) => roomSync[a].t - roomSync[b].t).slice(0, keys.length - 600)) delete roomSync[k]; try { fs.writeFileSync(syncFile, JSON.stringify(roomSync), { mode: 0o600 }); } catch { /* best effort */ } }
+    return roomSync;
+  };
   const roomsHttp = async (req, res, u, parts, ip) => {
+    if (parts[0] === 'rooms-sync') {   // owner only: never reachable with a guest key
+      if (!authed(req, res)) return undefined;
+      return json(res, 200, { items: req.method === 'POST' ? mergeSync((await bodyJson(req)).items) : roomSync });
+    }
     if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });
     const f = failures.get(ip);
     if (f && f.until > Date.now()) return json(res, 429, { error: 'too many failed attempts, try again later' });
@@ -571,7 +589,7 @@ function start(opts) {
     try {
       const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
       const ip = clientIp(req);
-      if (parts[0] === 'rooms') return roomsHttp(req, res, u, parts, ip);
+      if (parts[0] === 'rooms' || parts[0] === 'rooms-sync') return roomsHttp(req, res, u, parts, ip);
       if (parts[0] === 'tools') {   // git changes, project notes, connections
         if (!authed(req, res)) return undefined;
         const r = await tools.route(parts.slice(1), u, req.method === 'GET' ? {} : await bodyJson(req), { inRoot: okDir, claude: findClaude() });

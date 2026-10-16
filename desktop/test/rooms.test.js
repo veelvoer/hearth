@@ -69,6 +69,11 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   const fd = await req('POST', `/rooms/${id}/requests/${hq.j.id}`, g, { decision: 'approve', text: 'host asks the friend, edited', mode: 'plan' }); ok('33 the friend approves and edits', fd.code === 200 && fd.j.text === 'host asks the friend, edited');
   const fdn = await req('POST', `/rooms/${id}/requests/${hq.j.id}`, g, { decision: 'done' }); ok('34 and reports it done', fdn.code === 200);
   const gk = await req('POST', `/rooms/${id}/requests`, g3, { to: mid, text: 'guest asks guest' }); ok('35 a guest can ask another guest', gk.code === 200);
+  // the joined list is kept on the server so all devices share it
+  const s1 = await req('POST', '/rooms-sync', tok, { items: { 'j:abc:m1': { v: { id: 'abc', title: 'A' }, t: 100 }, 'name': { v: 'Sam', t: 100 } } }); ok('37 the joined list can be stored on the server', s1.code === 200 && s1.j.items['j:abc:m1'].v.title === 'A');
+  const s2 = await req('POST', '/rooms-sync', tok, { items: { 'j:abc:m1': { v: null, t: 90 }, 'name': { v: 'Eve', t: 200 }, 'bad key!': { v: 1, t: 1 } } }); ok('38 the newest write wins, an older one is ignored', s2.j.items['j:abc:m1'].v && s2.j.items['name'].v === 'Eve' && !s2.j.items['bad key!']);
+  const s3 = await req('POST', '/rooms-sync', tok, { items: { 'j:abc:m1': { v: null, t: 300 } } }); ok('39 a deletion is a write too', s3.j.items['j:abc:m1'].v === null);
+  const s4 = await req('GET', '/rooms-sync', g3); ok('40 a guest key cannot read it', s4.code === 401);
   const rm = await req('DELETE', `/rooms/${id}/members/${mid}`, tok); const after = await req('GET', `/rooms/${id}`, g); ok('26 a removed friend is locked out', rm.code === 200 && after.code === 401);
   const hv9 = await req('GET', `/rooms/${id}?since=0`, tok); ok('36 removing a friend drops the requests waiting for them', !hv9.j.requests.some((q) => q.to === mid && q.status === 'pending'));
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
