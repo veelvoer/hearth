@@ -58,7 +58,19 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   const seen = await req('GET', `/rooms/${id}?since=${hv3.j.seq}`, tok); ok('24 polling with since returns only new messages', seen.j.messages.length === 0);
   const hostAsk = await req('POST', `/rooms/${id}/ask`, tok, { text: 'host asks directly' }); await sleep(2500);
   const hv4 = await req('GET', `/rooms/${id}?since=0`, tok); ok('25 the host can run a prompt at once', hostAsk.code === 200 && hv4.j.messages.filter((m) => m.via === 'host').pop().text.includes('host asks directly'));
+  // the other direction: the host asks the friend's Claude, and only the friend decides
+  const j3 = await req('POST', '/rooms/join', null, { invite: (await req('POST', `/rooms/${id}/invite`, tok, {})).j.invite, name: 'Kim' }); const g3 = j3.j.token;
+  const hq = await req('POST', `/rooms/${id}/requests`, tok, { to: mid, text: 'host asks the friend' }); ok('27 the host can ask a friend to use their account', hq.code === 200 && hq.j.status === 'pending');
+  const own0 = await req('POST', `/rooms/${id}/requests`, tok, { to: 'host', text: 'x' }); ok('28 asking yourself is refused', own0.code === 400);
+  const gv5 = await req('GET', `/rooms/${id}?since=0`, g); ok('29 the friend sees the request for them', gv5.j.requests.some((q) => q.to === mid && q.status === 'pending' && q.name === 'Host'));
+  const kv = await req('GET', `/rooms/${id}?since=0`, g3); ok('30 somebody else does not see it', !kv.j.requests.some((q) => q.id === hq.j.id));
+  const hd = await req('POST', `/rooms/${id}/requests/${hq.j.id}`, tok, { decision: 'approve' }); ok('31 the host cannot decide for the friend', hd.code === 403);
+  const kd = await req('POST', `/rooms/${id}/requests/${hq.j.id}`, g3, { decision: 'approve' }); ok('32 another guest cannot decide either', kd.code === 403);
+  const fd = await req('POST', `/rooms/${id}/requests/${hq.j.id}`, g, { decision: 'approve', text: 'host asks the friend, edited', mode: 'plan' }); ok('33 the friend approves and edits', fd.code === 200 && fd.j.text === 'host asks the friend, edited');
+  const fdn = await req('POST', `/rooms/${id}/requests/${hq.j.id}`, g, { decision: 'done' }); ok('34 and reports it done', fdn.code === 200);
+  const gk = await req('POST', `/rooms/${id}/requests`, g3, { to: mid, text: 'guest asks guest' }); ok('35 a guest can ask another guest', gk.code === 200);
   const rm = await req('DELETE', `/rooms/${id}/members/${mid}`, tok); const after = await req('GET', `/rooms/${id}`, g); ok('26 a removed friend is locked out', rm.code === 200 && after.code === 401);
+  const hv9 = await req('GET', `/rooms/${id}?since=0`, tok); ok('36 removing a friend drops the requests waiting for them', !hv9.j.requests.some((q) => q.to === mid && q.status === 'pending'));
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

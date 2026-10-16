@@ -30,8 +30,8 @@ import java.net.URL
 
 /** Shared chats on the phone: work in one chat with someone else, each with their own Claude account, or ask the host to run a prompt on theirs. */
 data class RoomEntry(val key: String, val host: Machine?, val url: String, val token: String, val id: String, val title: String, val hostName: String, val member: String = "", val pending: Int = 0, val people: Int = 0)
-data class RoomMsg(val n: Long, val kind: String, val from: String, val name: String, val via: String, val text: String)
-data class RoomReq(val id: String, val name: String, val text: String, val status: String, val edited: Boolean)
+data class RoomMsg(val n: Long, val kind: String, val from: String, val name: String, val via: String, val text: String, val to: String = "")
+data class RoomReq(val id: String, val mid: String, val name: String, val to: String, val toName: String, val text: String, val status: String, val edited: Boolean)
 data class RoomPerson(val id: String, val name: String, val auto: Boolean, val mode: String)
 data class RoomView(val title: String, val host: String, val role: String, val me: String, val myName: String, val auto: Boolean, val seq: Long, val msgs: List<RoomMsg>, val people: List<RoomPerson>, val reqs: List<RoomReq>, val working: List<String>)
 
@@ -51,6 +51,8 @@ object Rooms {
     fun setCwd(c: Context, key: String, v: String) = prefs(c).edit().putString("cwd:$key", v).apply()
     fun session(c: Context, key: String) = prefs(c).getString("sess:$key", "") ?: ""
     fun setSession(c: Context, key: String, v: String) = prefs(c).edit().putString("sess:$key", v).apply()
+    fun autoMode(c: Context, key: String, from: String) = prefs(c).getString("auto:$key:$from", null)
+    fun setAuto(c: Context, key: String, from: String, mode: String?) = prefs(c).edit().apply { if (mode == null) remove("auto:$key:$from") else putString("auto:$key:$from", mode) }.apply()
     fun seen(c: Context, key: String) = prefs(c).getLong("seen:$key", 0L)
     fun setSeen(c: Context, key: String, v: Long) = prefs(c).edit().putLong("seen:$key", v).apply()
 
@@ -84,9 +86,9 @@ object Rooms {
         val o = call(e, "GET", "/${e.id}?since=$since")
         val ma = o.getJSONArray("messages"); val pa = o.getJSONArray("members"); val ra = o.getJSONArray("requests"); val wa = o.getJSONArray("working")
         return RoomView(o.getString("title"), o.optString("host"), o.getString("role"), o.getString("me"), o.optString("myName"), o.optJSONObject("grant")?.optBoolean("auto") ?: false, o.optLong("seq"),
-            List(ma.length()) { ma.getJSONObject(it).let { m -> RoomMsg(m.getLong("n"), m.optString("kind"), m.optString("from"), m.optString("name"), m.optString("via"), m.optString("text")) } },
+            List(ma.length()) { ma.getJSONObject(it).let { m -> RoomMsg(m.getLong("n"), m.optString("kind"), m.optString("from"), m.optString("name"), m.optString("via"), m.optString("text"), m.optString("to")) } },
             List(pa.length()) { pa.getJSONObject(it).let { m -> RoomPerson(m.getString("id"), m.getString("name"), m.optJSONObject("grant")?.optBoolean("auto") ?: false, m.optJSONObject("grant")?.optString("mode") ?: "plan") } },
-            List(ra.length()) { ra.getJSONObject(it).let { q -> RoomReq(q.getString("id"), q.optString("name"), q.optString("text"), q.optString("status"), q.optBoolean("edited")) } },
+            List(ra.length()) { ra.getJSONObject(it).let { q -> RoomReq(q.getString("id"), q.optString("mid"), q.optString("name"), q.optString("to", "host"), q.optString("toName"), q.optString("text"), q.optString("status"), q.optBoolean("edited")) } },
             List(wa.length()) { wa.getJSONObject(it).optString("name") })
     }
     fun join(link: String, name: String): RoomEntry {
@@ -191,29 +193,46 @@ private fun RoomScreen(e: RoomEntry, close: () -> Unit) {
     BackHandler { close() }
     fun act(path: String, body: JSONObject, method: String = "POST", after: () -> Unit = {}) { scope.launch { runCatching { withContext(Dispatchers.IO) { Rooms.call(e, method, "/${e.id}$path", body) } }.onSuccess { after(); poll() }.onFailure { err = it.message } } }
     fun take(): String { val t = text.trim(); text = ""; return t }
-    /** The guest's own account: the prompt runs on their own computer or server, the answer is posted to the shared chat. */
-    fun runOwn(t: String) {
+    /** Your own account: a prompt runs on your own computer or server and the answer is posted to the shared chat. [by] = someone asked for it (their message is in the chat already), [req] is reported done or failed. */
+    fun runOwn(t: String, by: String? = null, req: String? = null, mode: String = "acceptEdits") {
         val cur = v ?: return
         val own = Store.machines(c).let { l -> l.firstOrNull { !it.secure } ?: l.firstOrNull() }
         if (own == null) { err = "Connect your own computer or server first."; return }
+        if (ownBusy) { err = "Your Claude is still working on the last one."; return }
         ownBusy = true
         val seen = Rooms.seen(c, e.key); val sess = Rooms.session(c, e.key); val dir = Rooms.cwd(c, e.key)
         val others = all.filter { it.n > seen && it.from != cur.me && it.kind != "status" }.takeLast(40)
-        val prompt = "You are in a shared chat called \"${cur.title}\" with ${(listOf(cur.host) + cur.people.map { it.name }).joinToString(", ")}. Answer ${cur.myName} directly." +
-            (if (others.isNotEmpty()) "\n\nWhat was said in the chat since your last turn:\n" + others.joinToString("\n") { "${it.name}: ${it.text}" } else "") + "\n\n${cur.myName}: $t"
+        val prompt = "You are in a shared chat called \"${cur.title}\" with ${(listOf(cur.host) + cur.people.map { it.name }).joinToString(", ")}. " +
+            (if (by != null) "The next message comes from $by, not from the owner of this account. Answer it directly." else "Answer ${cur.myName} directly.") +
+            (if (others.isNotEmpty()) "\n\nWhat was said in the chat since your last turn:\n" + others.joinToString("\n") { "${it.name}: ${it.text}" } else "") + "\n\n${by ?: cur.myName}: $t"
         scope.launch(Dispatchers.IO) {
             val out = StringBuilder(); var failed = ""
             runCatching {
-                Rooms.call(e, "POST", "/${e.id}/messages", JSONObject().put("text", t)); Rooms.call(e, "POST", "/${e.id}/working", JSONObject().put("on", true))
-                Relay.send(own, sess, prompt, "acceptEdits", cwd = if (sess.isEmpty() && dir.isNotEmpty()) dir else null, kind = if (sess.isEmpty() && dir.isEmpty()) "talk" else null) { ty, tx, er ->
+                if (by == null) Rooms.call(e, "POST", "/${e.id}/messages", JSONObject().put("text", t))
+                Rooms.call(e, "POST", "/${e.id}/working", JSONObject().put("on", true))
+                Relay.send(own, sess, prompt, mode, cwd = if (sess.isEmpty() && dir.isNotEmpty()) dir else null, kind = if (sess.isEmpty() && dir.isEmpty()) "talk" else null) { ty, tx, er ->
                     when (ty) { "session" -> if (tx.isNotEmpty()) Rooms.setSession(c, e.key, tx); "delta" -> out.append(tx); "fail" -> failed = tx.ifBlank { "Your Claude failed" } }
                 }
             }.onFailure { failed = it.message ?: "Your Claude failed" }
             Rooms.setSeen(c, e.key, cur.seq)
             runCatching { if (out.isNotBlank() || failed.isNotEmpty()) Rooms.call(e, "POST", "/${e.id}/messages", JSONObject().put("text", out.toString().trim().ifEmpty { "($failed)" }).put("kind", "assistant")) }
             runCatching { Rooms.call(e, "POST", "/${e.id}/working", JSONObject().put("on", false)) }
+            if (req != null) runCatching { Rooms.call(e, "POST", "/${e.id}/requests/$req", JSONObject().put("decision", if (failed.isEmpty()) "done" else "failed").put("note", failed)) }
             withContext(Dispatchers.Main) { ownBusy = false; poll() }
         }
+    }
+    /** Someone asked for your Claude and you said yes: tell the chat, then run it here. */
+    fun runRequest(q: RoomReq, prompt: String, mode: String) {
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { Rooms.call(e, "POST", "/${e.id}/requests/${q.id}", JSONObject().put("decision", "approve").put("text", prompt).put("mode", mode)) } }
+                .onSuccess { runOwn(prompt, by = q.name, req = q.id, mode = mode) }.onFailure { err = it.message }
+        }
+    }
+    // requests for your own account that you allowed to run by themselves
+    val handled = remember { mutableSetOf<String>() }
+    LaunchedEffect(v?.reqs?.map { it.id + it.status }) {
+        val cu = v ?: return@LaunchedEffect
+        if (!host) cu.reqs.filter { it.status == "pending" && it.to == cu.me && it.id !in handled }.forEach { q -> Rooms.autoMode(c, e.key, q.mid)?.let { m -> handled.add(q.id); runRequest(q, q.text, m) } }
     }
     val cur = v
     Screen {
@@ -243,19 +262,19 @@ private fun RoomScreen(e: RoomEntry, close: () -> Unit) {
             val mine = m.from == cur.me
             val shape = RoundedCornerShape(16.dp)
             Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine && m.kind != "assistant") Alignment.End else Alignment.Start) {
-                Txt(m.name + (when (m.via) { "host" -> " · on the host's account"; "own" -> " · own account"; "ask-host" -> " → asks the host's Claude"; else -> "" }), T.small.copy(fontSize = 12.sp), muted = true)
+                Txt(m.name + (when (m.via) { "host" -> " · on the host's account"; "own" -> " · own account"; "ask-host" -> " → asks the host's Claude"; "ask" -> " → asks ${m.to}'s Claude"; else -> "" }), T.small.copy(fontSize = 12.sp), muted = true)
                 val dark = cs.background.luminance() < .5f
                 Box(Modifier.widthIn(max = 320.dp).clip(shape).background(if (m.kind == "assistant") cs.surfaceVariant else if (dark) androidx.compose.ui.graphics.Color(0xFF2E2A26) else androidx.compose.ui.graphics.Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 10.dp)) { Txt(m.text, T.body) }
             }
         }
         cur.working.forEach { Txt("$it is working…", T.small, muted = true) }
-        if (host) cur.reqs.filter { it.status == "pending" }.forEach { q ->
+        cur.reqs.filter { it.status == "pending" && (if (host) it.to == "host" else it.to == cur.me) }.forEach { q ->
             var edit by remember(q.id) { mutableStateOf(q.text) }
             var mode by remember(q.id) { mutableStateOf("plan") }
             var always by remember(q.id) { mutableStateOf(false) }
             Card {
                 Label("${q.name} wants to ask your Claude")
-                Spacer(Modifier.height(4.dp)); Txt("It runs on your account and your server. You can change the prompt first.", T.small, muted = true)
+                Spacer(Modifier.height(4.dp)); Txt(if (host) "It runs on your account and your server. You can change the prompt first." else "It runs on your own account, on your own computer or server. You can change the prompt first.", T.small, muted = true)
                 Spacer(Modifier.height(8.dp)); Field(edit, { edit = it }, "Prompt", singleLine = false)
                 Spacer(Modifier.height(8.dp))
                 ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { ROOM_MODES.forEach { (k, l) -> Chip(l, mode == k) { mode = k } } }
@@ -263,23 +282,29 @@ private fun RoomScreen(e: RoomEntry, close: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) { Txt("Always run ${q.name}'s prompts without asking", T.small, modifier = Modifier.weight(1f)); Switch(always, { always = it }) }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button("Run it") { act("/requests/${q.id}", JSONObject().put("decision", "approve").put("text", edit).put("mode", mode).put("always", always)) }
+                    Button("Run it") { if (host) act("/requests/${q.id}", JSONObject().put("decision", "approve").put("text", edit).put("mode", mode).put("always", always)) else { if (always) Rooms.setAuto(c, e.key, q.mid, mode); handled.add(q.id); runRequest(q, edit, mode) } }
                     TextAction("Deny") { act("/requests/${q.id}", JSONObject().put("decision", "deny")) }
                 }
             }
-        } else {
-            val waiting = cur.reqs.count { it.status == "pending" }
-            if (waiting > 0) Txt("$waiting request${if (waiting > 1) "s" else ""} waiting for ${cur.host} to approve…", T.small, muted = true)
         }
+        val waiting = cur.reqs.filter { it.status == "pending" && it.mid == cur.me }
+        waiting.forEach { Txt("Waiting for ${it.toName} to approve: \"${it.text.take(60)}\"", T.small, muted = true) }
+        val targets = (if (host) emptyList() else listOf("host" to cur.host)) + cur.people.filter { it.id != cur.me }.map { it.id to it.name }
+        var target by remember(targets.map { it.first }) { mutableStateOf(targets.firstOrNull()?.first ?: "") }
         Field(text, { text = it }, if (host) "Ask your Claude, or just talk to the others…" else "Write something…", singleLine = false)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
             if (host) Button("Ask my Claude") { val t = take(); if (t.isNotEmpty()) act("/ask", JSONObject().put("text", t)) }
             else Button(if (ownBusy) "Working…" else "Send with my account") { val t = take(); if (t.isNotEmpty() && !ownBusy) runOwn(t) }
-            if (!host) Chip("Ask ${cur.host}'s Claude", false) { val t = take(); if (t.isNotEmpty()) act("/requests", JSONObject().put("text", t)) }
             Chip("Just say it", false) { val t = take(); if (t.isNotEmpty()) act("/messages", JSONObject().put("text", t)) }
         }
+        if (targets.isNotEmpty()) {
+            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                targets.forEach { (id, name) -> Chip(name, target == id) { target = id } }
+                Chip("Ask their Claude ›", false) { val t = take(); if (t.isNotEmpty() && target.isNotEmpty()) act("/requests", JSONObject().put("text", t).put("to", target)) }
+            }
+        }
         if (!host) {
-            Txt("Asking ${cur.host}'s Claude uses their account. " + (if (cur.auto) "They gave you full permission: it runs at once." else "They decide, and can change your prompt first."), T.small, muted = true)
+            Txt("Asking someone's Claude uses their account. " + (if (cur.auto) "${cur.host} gave you full permission: prompts for them run at once." else "They decide, and can change your prompt first."), T.small, muted = true)
             var dir by remember { mutableStateOf(Rooms.cwd(c, e.key)) }
             Field(dir, { dir = it.trim(); Rooms.setCwd(c, e.key, dir) }, "Folder for your Claude on your computer (empty = just talk)", mono = true)
             TextAction("Leave this shared chat") { act("/leave", JSONObject(), after = { Rooms.saveJoined(c, Rooms.joined(c).filter { it.key != e.key }); close() }) }

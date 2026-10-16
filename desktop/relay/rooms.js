@@ -37,8 +37,9 @@ function createRooms({ dir, hostName, now = () => Date.now(), run, bypassOk = ()
   function view(r, who, since) {
     const msgs = r.messages.filter((m) => m.n > since);
     const members = Object.values(r.members).filter((m) => !m.revoked).map((m) => ({ id: m.id, name: m.name, joined: m.joined, ...(who.owner ? { grant: grantOf(m) } : {}) }));
-    const reqs = Object.values(r.requests).filter((q) => who.owner || q.mid === who.member.id).sort((a, b) => a.ts - b.ts).slice(-40)
-      .map((q) => ({ id: q.id, mid: q.mid, name: q.name, text: q.text, status: q.status, ts: q.ts, mode: q.mode || null, ...(q.edited ? { edited: true, finalText: who.owner || q.mid === who.member.id ? q.finalText : undefined } : {}), note: q.note || '' }));
+    const toName = (q) => (q.to === 'host' ? hostName : (r.members[q.to] || {}).name || '?');
+    const reqs = Object.values(r.requests).filter((q) => who.owner || q.mid === who.member.id || q.to === who.member.id).sort((a, b) => a.ts - b.ts).slice(-40)
+      .map((q) => ({ id: q.id, mid: q.mid, name: q.name, to: q.to || 'host', toName: toName(q), text: q.text, status: q.status, ts: q.ts, mode: q.mode || null, ...(q.edited ? { edited: true, finalText: who.owner || q.mid === who.member.id ? q.finalText : undefined } : {}), note: q.note || '' }));
     return { id: r.id, title: r.title, cwd: who.owner ? r.cwd : undefined, host: hostName, role: who.owner ? 'host' : 'guest', me: who.owner ? 'host' : who.member.id, myName: who.owner ? hostName : who.member.name,
       grant: who.owner ? undefined : grantOf(who.member), seq: r.seq || 0, messages: msgs, members, requests: reqs, working: live(r), hostBusy: !!busy.get(r.id) };
   }
@@ -120,22 +121,30 @@ function createRooms({ dir, hostName, now = () => Date.now(), run, bypassOk = ()
       enqueue(r, { text, by: '', mode: downgrade(body.mode || 'acceptEdits') }); save();
       return ok({ ok: true, seq: r.seq });
     }
-    if (sub === 'requests' && !parts[2] && method === 'POST') {   // a guest asks the host to run a prompt on the host's account
-      if (who.owner) return fail(400, 'You are the host: use "ask".');
-      const m = who.member, text = clean(body.text, MAX_MSG).trim(); if (!text) return fail(400, 'Empty message.');
-      const mine = Object.values(r.requests).filter((q) => q.mid === m.id);
-      if (mine.filter((q) => q.status === 'pending').length >= MAX_PENDING) return fail(429, 'You have too many requests waiting. Wait for the host.');
+    if (sub === 'requests' && !parts[2] && method === 'POST') {   // ask someone to run a prompt on THEIR account: the host (a guest asks) or a person of the chat (anyone asks)
+      const from = who.owner ? 'host' : who.member.id, fromName = who.owner ? hostName : who.member.name;
+      const to = String(body.to || (who.owner ? '' : 'host'));
+      if (!to) return fail(400, 'Choose whose Claude to ask.');
+      if (to === from) return fail(400, 'That is your own Claude: just send it.');
+      if (to !== 'host' && !(r.members[to] && !r.members[to].revoked)) return fail(404, 'No such person in this chat.');
+      const text = clean(body.text, MAX_MSG).trim(); if (!text) return fail(400, 'Empty message.');
+      const mine = Object.values(r.requests).filter((q) => q.mid === from);
+      if (mine.filter((q) => q.status === 'pending').length >= MAX_PENDING) return fail(429, 'You have too many requests waiting. Wait for an answer.');
       if (mine.some((q) => now() - q.ts < 2000)) return fail(429, 'Slow down a little.');
-      const q = { id: rid(5), mid: m.id, name: m.name, text, ts: now(), status: 'pending' };
+      const q = { id: rid(5), mid: from, name: fromName, to, text, ts: now(), status: 'pending' };
       r.requests[q.id] = q;
-      push(r, { from: m.id, name: m.name, kind: 'user', via: 'ask-host', text });
-      const g = grantOf(m);
-      if (g.auto) { q.status = 'approved'; q.mode = downgrade(g.mode); q.finalText = text; q.note = 'Run automatically (full permission)'; enqueue(r, { text, by: m.name, mode: q.mode }); }
+      const toN = to === 'host' ? hostName : r.members[to].name;
+      push(r, { from, name: fromName, kind: 'user', via: to === 'host' ? 'ask-host' : 'ask', to: toN, text });
+      if (to === 'host' && !who.owner) {
+        const g = grantOf(who.member);
+        if (g.auto) { q.status = 'approved'; q.mode = downgrade(g.mode); q.finalText = text; q.note = 'Run automatically (full permission)'; enqueue(r, { text, by: fromName, mode: q.mode }); }
+      }
       save(); return ok({ id: q.id, status: q.status });
     }
     if (sub === 'requests' && parts[2] && method === 'POST') {   // the host decides
-      if (!who.owner) return fail(403, 'Only the host can decide.');
       const q = r.requests[parts[2]]; if (!q) return fail(404, 'No such request.');
+      if ((q.to || 'host') !== 'host') return memberDecides(r, q, who, body);   // a request to a person's own account: only that person decides, and their app runs it
+      if (!who.owner) return fail(403, 'Only the host can decide.');
       if (q.status !== 'pending') return fail(409, 'Already decided.');
       if (body.decision === 'deny') { q.status = 'denied'; q.note = clean(body.note, 200); push(r, { from: 'system', name: 'Hearth', kind: 'status', text: `${hostName} did not run ${q.name}'s request.` }); save(); return ok({ ok: true }); }
       if (body.decision !== 'approve') return fail(400, 'decision must be approve or deny');
@@ -154,7 +163,7 @@ function createRooms({ dir, hostName, now = () => Date.now(), run, bypassOk = ()
     if (sub === 'members' && parts[2]) {
       if (!who.owner) return fail(403, 'Only the host can do this.');
       const m = r.members[parts[2]]; if (!m || m.revoked) return fail(404, 'No such person.');
-      if (method === 'DELETE') { m.revoked = true; for (const q of Object.values(r.requests)) if (q.mid === m.id && q.status === 'pending') q.status = 'denied'; push(r, { from: 'system', name: 'Hearth', kind: 'status', text: `${m.name} was removed.` }); save(); return ok({ ok: true }); }
+      if (method === 'DELETE') { m.revoked = true; for (const q of Object.values(r.requests)) if ((q.mid === m.id || q.to === m.id) && q.status === 'pending') q.status = 'denied'; push(r, { from: 'system', name: 'Hearth', kind: 'status', text: `${m.name} was removed.` }); save(); return ok({ ok: true }); }
       if (method === 'POST') {
         const g = body.grant || {}; m.grant = { auto: !!g.auto, mode: downgrade(g.mode || 'plan') };
         if (!bypassOk() && g.mode === 'bypassPermissions') m.grant.mode = 'acceptEdits';
@@ -163,6 +172,23 @@ function createRooms({ dir, hostName, now = () => Date.now(), run, bypassOk = ()
     }
     if (sub === 'leave' && method === 'POST' && !who.owner) { const m = who.member; m.revoked = true; push(r, { from: 'system', name: 'Hearth', kind: 'status', text: `${m.name} left.` }); save(); return ok({ ok: true }); }
     return fail(404, 'not found');
+  }
+
+  /** A request for a person's own Claude: they approve (maybe changing the prompt), run it on their own account in their app, and report back. */
+  function memberDecides(r, q, who, body) {
+    if (who.owner || who.member.id !== q.to) return fail(403, 'Only ' + ((r.members[q.to] || {}).name || 'that person') + ' can decide this.');
+    const me = who.member;
+    if (body.decision === 'done' || body.decision === 'failed') {
+      if (q.status !== 'approved') return fail(409, 'Not running.');
+      q.status = body.decision; q.note = clean(body.note, 200); save(); return ok({ ok: true });
+    }
+    if (q.status !== 'pending') return fail(409, 'Already decided.');
+    if (body.decision === 'deny') { q.status = 'denied'; q.note = clean(body.note, 200); push(r, { from: 'system', name: 'Hearth', kind: 'status', text: `${me.name} did not run ${q.name}'s request.` }); save(); return ok({ ok: true }); }
+    if (body.decision !== 'approve') return fail(400, 'decision must be approve, deny, done or failed');
+    const text = clean(body.text == null ? q.text : body.text, MAX_MSG).trim(); if (!text) return fail(400, 'Empty prompt.');
+    q.status = 'approved'; q.finalText = text; q.edited = text !== q.text; q.mode = MODES.includes(body.mode) ? body.mode : 'plan';
+    if (q.edited) push(r, { from: 'system', name: 'Hearth', kind: 'status', text: `${me.name} changed the prompt of ${q.name} before running it.` });
+    save(); return ok({ ok: true, text });
   }
 
   const joinFails = new Map();
