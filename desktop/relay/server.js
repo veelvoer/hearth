@@ -490,6 +490,7 @@ function start(opts) {
       job.listeners.clear();
       announceDone(job);
       for (const f of job.onDone) { try { f(job); } catch (e) { onLog('onDone: ' + e.message); } }
+      try { shares.jobDone(job.sid || job.key); } catch (e) { onLog('shares: ' + e.message); }
       bumpChats(); if (agentSync) agentSync.kick('job-done');
       try { fs.unlinkSync(mcpFile); } catch { /* gone */ }
       setTimeout(() => { for (const [k, v] of jobs) if (v === job) jobs.delete(k); }, 120000).unref();
@@ -540,14 +541,16 @@ function start(opts) {
   };
   const pairPending = () => { pairLive(); return [...pairReqs].filter(([, r]) => r.status === 'pending').map(([id, r]) => ({ id, name: r.name, ip: r.ip, at: r.at })); };
 
-  // ── shared chats (rooms): see rooms.js ──
-  const rooms = require('./rooms').createRooms({
-    dir, hostName: opts.name || os.hostname(), bypassOk, allowCwd: (c) => okDir(c) && isDir(c), log: onLog,
-    run: ({ room, text, mode, session }, done) => {   // the host's Claude answers a prompt for this room
-      const r = startJob({ text, mode, cwd: room.cwd }, session || 'new');
-      if (r.error) return { error: r.message };
-      r.job.onDone.push((job) => done({ text: (job.resultText || job.text || '').trim(), session: job.sid, error: job.error && !(job.resultText || job.text) ? 'Claude reported an error.' : '' }));
-      return undefined;
+  // ── shared chats: a normal chat that other people may open; what they send is a request on the host's account (see shares.js) ──
+  const shares = require('./shares').createShares({
+    dir, hostName: opts.name || os.hostname(), bypassOk, log: onLog,
+    busy: (sid) => { const j = jobs.get(sid); return !!(j && !j.done); },
+    onEvent: (ev) => { publish({ ...baseFor(ev.session, ev.cwd), ...ev }); },
+    start: ({ sid, text, mode, by, reqId, mid }) => {   // the host's Claude runs an approved prompt in the shared chat
+      const r = startJob({ text, mode }, sid);
+      if (r.error) return r.error === 409 ? { busy: true } : { error: r.message };
+      r.job.by = by; r.job.byReq = reqId; r.job.byMember = mid;
+      return { job: r.job };
     },
   });
   // ── the shared chats you joined, kept on your own server so every phone and computer of yours has the same list ──
@@ -564,24 +567,68 @@ function start(opts) {
     if (changed) { const keys = Object.keys(roomSync); if (keys.length > 600) for (const k of keys.sort((a, b) => roomSync[a].t - roomSync[b].t).slice(0, keys.length - 600)) delete roomSync[k]; try { fs.writeFileSync(syncFile, JSON.stringify(roomSync), { mode: 0o600 }); } catch { /* best effort */ } }
     return roomSync;
   };
-  const roomsHttp = async (req, res, u, parts, ip) => {
+  const sharesHttp = async (req, res, u, parts, ip) => {
     if (parts[0] === 'rooms-sync') {   // owner only: never reachable with a guest key
       if (!authed(req, res)) return undefined;
       return json(res, 200, { items: req.method === 'POST' ? mergeSync((await bodyJson(req)).items) : roomSync });
     }
-    if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });
-    const f = failures.get(ip);
-    if (f && f.until > Date.now()) return json(res, 429, { error: 'too many failed attempts, try again later' });
-    const bearer = String(req.headers.authorization || '').replace(/^Bearer /, '');
-    const isJoin = parts[1] === 'join' && req.method === 'POST';
-    const a = Buffer.from(bearer), b = Buffer.from(token);
-    let who = a.length === b.length && crypto.timingSafeEqual(a, b) ? { owner: true } : rooms.guestFor(bearer);
-    if (!who && isJoin) who = {};
-    if (!who) { authed(req, res); return undefined; }   // counts the failure and answers 401
-    const body = req.method === 'GET' ? { since: u.searchParams.get('since') } : await bodyJson(req);
-    const r = rooms.route(req.method, parts.slice(1), body, who, ip);
-    if (isJoin && r.code !== 200) { const n = ((f && f.n) || 0) + 1; failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 }); }
-    return json(res, r.code, r.data);
+    if (parts[0] === 'shares' && parts[1] === 'join' && req.method === 'POST') {   // a friend uses an invite: no key yet
+      if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });
+      const f = failures.get(ip);
+      if (f && f.until > Date.now()) return json(res, 429, { error: 'too many failed attempts, try again later' });
+      const r = shares.join(await bodyJson(req));
+      if (r.code !== 200) { const n = ((f && f.n) || 0) + 1; failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 }); }
+      return json(res, r.code, r.data);
+    }
+    if (!authed(req, res)) return undefined;
+    const M = req.method, b = M === 'GET' ? {} : await bodyJson(req);
+    if (parts[0] === 'sessions' && parts[2] === 'share') {   // share this chat, or see who it is shared with
+      const sid = parts[1], f = core.findSession(sid);
+      if (M === 'GET') { const sh0 = shares.bySession(sid); return json(res, 200, sh0 ? { shared: true, ...shares.view(sh0) } : { shared: false }); }
+      if (!f) return json(res, 404, { error: 'This chat is not on your server yet. Move it to your server first.' });
+      const sm = core.summarize(f); if (!visibleSession(sm)) return json(res, 403, { error: 'This chat is outside the folders of this server.' });
+      const sh1 = shares.ensure(sid, sm.cwd, sm.title); return json(res, 200, { shared: true, ...shares.view(sh1) });
+    }
+    const sh = parts[0] === 'shares' ? shares.get(parts[1]) : null;
+    if (!sh) return json(res, 404, { error: 'No such shared chat.' });
+    if (parts[2] === 'invite' && M === 'POST') return json(res, 200, { ...shares.invite(sh, b.name), share: sh.id });
+    if (parts[2] === 'members' && parts[3] && M === 'POST') { const r = shares.setGrant(sh, parts[3], b.grant); return json(res, r.code, r.data); }
+    if (parts[2] === 'members' && parts[3] && M === 'DELETE') { const r = shares.removeMember(sh, parts[3]); return json(res, r.code, r.data); }
+    if (!parts[2] && M === 'GET') return json(res, 200, { shared: true, ...shares.view(sh) });
+    if (!parts[2] && M === 'DELETE') { const r = shares.unshare(sh); return json(res, r.code, r.data); }
+    return json(res, 404, { error: 'not found' });
+  };
+  /** What a guest key may do: read the one chat, and send prompts to it (which become requests). Nothing else on this server. */
+  const guestHttp = async (req, res, u, parts, ip, g) => {
+    const { share: sh, member: mem } = g, sid = sh.sid, M = req.method;
+    if (M === 'GET' && parts[0] === 'sessions' && parts.length === 1) {
+      const f = core.findSession(sid); if (!f) return json(res, 200, []);
+      const sm = core.summarize(f), j = jobs.get(sid), running = !!(j && !j.done);
+      return json(res, 200, [{ id: sid, title: sm.title || sh.title, cwd: '/Shared by ' + (opts.name || os.hostname()), mtime: Math.floor(f.mtime), live: false, busy: running || (Date.now() - f.mtime) / 1000 < 20, running, kind: 'code', tokens: sm.tokens || 0, model: sm.model || '', shared: 1 }]);
+    }
+    if (M === 'GET' && parts[0] === 'info') return json(res, 200, { name: opts.name || os.hostname(), claude: true, guest: true });
+    if (M === 'GET' && (parts[0] === 'pending' || parts[0] === 'commands')) return json(res, 200, []);
+    if (parts[0] === 'stop' && M === 'POST') {   // a guest may end only a run that was started for them
+      const b = await bodyJson(req), j = jobs.get(String(b.session || ''));
+      if (!j || j.done) return json(res, 200, { ok: false });
+      if (String(b.session) !== sid || j.byMember !== mem.id) return json(res, 403, { error: 'You can only stop a prompt that you sent.' });
+      return json(res, 200, { ok: stopJob(sid) });
+    }
+    if (parts[0] === 'sessions' && parts[1] === sid) {
+      const sub = parts[2];
+      if (M === 'GET' && sub === 'messages') { const f = core.findSession(sid); if (!f) return json(res, 404, { error: 'This chat is no longer on the server.' }); return json(res, 200, core.messages(sid, Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80)))); }
+      if (M === 'GET' && sub === 'state') { const j = jobs.get(sid), f = core.findSession(sid), quiet = !!(j && j.done), running = !!(j && !j.done), busy = running || (!quiet && !!f && (Date.now() - f.mtime) / 1000 < 20); return json(res, 200, { running, busy }); }
+      if (M === 'GET' && sub === 'prefs') return json(res, 200, { call: 'off', run: 'vps', kind: 'code', shared: shares.guestInfo(sh, mem) });
+      if (M === 'GET' && sub === 'stream') { const j = jobs.get(sid); if (!j) return json(res, 404, { error: 'not running' }); return attach(res, j, Math.max(0, Number(u.searchParams.get('from')) || 0)); }
+      if (M === 'POST' && sub === 'send') {
+        const b = await bodyJson(req), r = shares.submit(sh, mem, b.text);
+        if (r.code !== 200) return json(res, r.code, r.data);
+        res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+        res.end(JSON.stringify({ t: 'queued', approval: !r.data.auto, auto: !!r.data.auto, to: opts.name || os.hostname(), online: true, request: r.data.id }) + '\n' + JSON.stringify({ t: 'end' }) + '\n');
+        return undefined;
+      }
+    }
+    return json(res, 403, { error: 'This is not available in a shared chat.' });
   };
 
   // ── routes ──
@@ -589,7 +636,17 @@ function start(opts) {
     try {
       const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
       const ip = clientIp(req);
-      if (parts[0] === 'rooms' || parts[0] === 'rooms-sync') return roomsHttp(req, res, u, parts, ip);
+      const bearerKey = String(req.headers.authorization || '').replace(/^Bearer /, '');
+      if (/^share\./.test(bearerKey)) {   // a friend's key for one shared chat
+        if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });
+        const f = failures.get(ip);
+        if (f && f.until > Date.now()) return json(res, 429, { error: 'too many failed attempts, try again later' });
+        const g = shares.guestFor(bearerKey);
+        if (!g) { authed(req, res); return undefined; }   // counts the failure and answers 401
+        return guestHttp(req, res, u, parts, ip, g);
+      }
+      if (parts[0] === 'rooms-sync' || parts[0] === 'shares' || (parts[0] === 'sessions' && parts[2] === 'share')) return sharesHttp(req, res, u, parts, ip);
+
       if (parts[0] === 'tools') {   // git changes, project notes, connections
         if (!authed(req, res)) return undefined;
         const r = await tools.route(parts.slice(1), u, req.method === 'GET' ? {} : await bodyJson(req), { inRoot: okDir, claude: findClaude() });
@@ -666,11 +723,11 @@ function start(opts) {
         if (parts[0] === 'pair' && parts[1] === 'requests') return json(res, 200, pairPending());
         if (parts[0] === 'computers') return json(res, 200, computersList());
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
-        if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event));
+        if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
           const quiet = new Set([...jobs.values()].filter((j) => j.done).map((j) => j.sid || j.key));
-          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true }));
+          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true, shared: (() => { const sh = shares.bySession(x.id); return sh ? shares.live(sh).length : -1; })() }));
           const have = new Set(own.map((x) => x.id));
           const away = hubSync ? hubSync.elsewhere().filter((e) => !have.has(e.id) && e.cwd).map((e) => ({ id: e.id, title: e.title, cwd: e.cwd, mtime: Math.floor(e.mtime), live: false, busy: false, running: far.has(e.id), kind: getPrefs(e.id).kind, elsewhere: e.machine })) : [];
           return json(res, 200, [...own, ...away].sort((x, y) => y.mtime - x.mtime));
@@ -704,6 +761,7 @@ function start(opts) {
           const since = Number(u.searchParams.get('since') || req.headers['last-event-id']);
           if (Number.isFinite(since) && since >= 0) for (const e of events) if (e.id > since) res.write(`id: ${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
           for (const p of pending.values()) if (!(Number.isFinite(since) && p.event.id <= since)) res.write(`id: ${p.event.id}\ndata: ${JSON.stringify(p.event)}\n\n`);
+          for (const e of shares.pendingEvents()) res.write(`data: ${JSON.stringify({ ...baseFor(e.session, e.cwd), ...e, replay: true })}\n\n`);   // friends' prompts that still wait for you
           clients.add(res);
           const ping = setInterval(() => res.write(': ping\n\n'), 15000);
           res.on('close', () => { clearInterval(ping); clients.delete(res); });
@@ -910,6 +968,7 @@ function start(opts) {
           publish({ kind: 'resolved', req: b.req, session: r.session }); wake(); return json(res, 200, { ok: true });
         }
         if (parts[0] === 'answer') { const p = pending.get(b.req); if (p) { p.resolve(String(b.answer || '').slice(0, 2000)); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
+        if (parts[0] === 'decision' && shares.hasRequest(String(b.req))) { const r = shares.decide(String(b.req), { decision: b.behavior === 'deny' ? 'deny' : 'approve', text: b.text, mode: b.mode, always: !!b.always, note: b.note }); return json(res, r.code, r.data); }
         if (parts[0] === 'decision') { const p = pending.get(b.req); if (p) { p.resolve(b.behavior); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'stop') {
           const sid = String(b.session || '');

@@ -9,11 +9,11 @@ import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.net.URL
 
-data class Machine(val name: String, val host: String, val port: Int, val token: String, val secure: Boolean = false) {
+data class Machine(val name: String, val host: String, val port: Int, val token: String, val secure: Boolean = false, val guest: Boolean = false, val label: String = "", val share: String = "") {
     /** Base URL; a server behind HTTPS is reached on the standard port without showing it. */
     val base get() = (if (secure) "https" else "http") + "://" + host + if ((secure && port == 443) || (!secure && port == 80)) "" else ":$port"
 }
-data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "", val tokens: Long = 0, val model: String = "", val root: Boolean = false)
+data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "", val tokens: Long = 0, val model: String = "", val root: Boolean = false, val shared: Int = -1)
 data class Msg(val role: String, val text: String, val name: String = "", val detail: String = "", val result: String? = null, val err: Boolean = false)
 data class Project(val name: String, val path: String)
 data class Computer(val id: String, val name: String, val online: Boolean, val kind: String)
@@ -109,7 +109,7 @@ object Relay {
         val a = JSONArray(getJson(m, "/sessions"))
         return List(a.length()) {
             val o = a.getJSONObject(it)
-            Sess(o.getString("id"), o.getString("title"), o.optString("cwd"), o.getLong("mtime"), o.optBoolean("live"), o.optBoolean("busy"), o.optBoolean("running"), o.optString("kind", "code").ifBlank { "code" }, o.optString("elsewhere", ""), o.optLong("tokens", 0), o.optString("model", ""), o.optBoolean("root"))
+            Sess(o.getString("id"), o.getString("title"), o.optString("cwd"), o.getLong("mtime"), o.optBoolean("live"), o.optBoolean("busy"), o.optBoolean("running"), o.optString("kind", "code").ifBlank { "code" }, o.optString("elsewhere", ""), o.optLong("tokens", 0), o.optString("model", ""), o.optBoolean("root"), o.optInt("shared", -1))
         }
     }
 
@@ -314,7 +314,7 @@ object Relay {
             val t = o.optString("t")
             if (t == "session" && o.optString("id").isNotEmpty()) chat = o.optString("id")
             if (t == "end" || t == "fail") finished = true
-            val payload = when (t) { "session" -> o.optString("id"); "prefs" -> o.optString("call"); "queued" -> if (o.optBoolean("online")) "now" else "later"; "tool" -> o.optString("name") + "\u0000" + (o.optJSONObject("input")?.let { i -> listOf("command", "file_path", "pattern", "path", "url").firstNotNullOfOrNull { k -> i.optString(k).takeIf { v -> v.isNotBlank() } } }.orEmpty()) + "\u0000" + o.optString("id")
+            val payload = when (t) { "session" -> o.optString("id"); "prefs" -> o.optString("call"); "queued" -> if (o.optBoolean("approval")) "approval:" + o.optString("to") else if (o.optBoolean("auto")) "auto:" + o.optString("to") else if (o.optBoolean("online")) "now" else "later"; "tool" -> o.optString("name") + "\u0000" + (o.optJSONObject("input")?.let { i -> listOf("command", "file_path", "pattern", "path", "url").firstNotNullOfOrNull { k -> i.optString(k).takeIf { v -> v.isNotBlank() } } }.orEmpty()) + "\u0000" + o.optString("id")
                 "result" -> o.optString("id") + "\u0000" + o.optString("text"); else -> o.optString("text") }
             onEvent(t, payload, o.optBoolean("error"))
         }

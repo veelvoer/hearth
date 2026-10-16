@@ -724,3 +724,7 @@ body { background:
 .pnitem { display: flex; gap: 8px; padding: 2px 0; line-height: 1.45; } .pndot { color: var(--clay); flex: none; }
 .pntext { color: var(--muted); font-size: 13.5px; margin-top: 6px; }
 .pnitem code, .pntext code { background: var(--active); border-radius: 5px; padding: 0 5px; font-size: 12.5px; }
+
+/* shared chats */
+.shstatus { display: flex; flex-direction: column; gap: 2px; padding: 0 26px; }
+.shreq.pending { color: var(--clay); } .shreq.denied, .shreq.failed { color: var(--muted); text-decoration: none; }

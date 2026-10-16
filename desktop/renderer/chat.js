@@ -33,6 +33,7 @@ function allSessions() {
       if (!cur || (!cur.running && x.running) || (!hub && x.mtime - cur.mtime > 2500)) out.set(x.id, { ...x, mid: m.id, secure: !!m.secure });
     }
   }
+  for (const g of SS.guests || []) for (const x of SS.live[g.id] || []) out.set('guest:' + g.share, { ...x, mid: g.id, secure: !!g.secure, guest: true, guestHost: g.hostName || '' });   // shared chats of friends
   return [...out.values()];
 }
 /** Which computer should answer in this chat right now? Re-checked on every send, so it follows you when your laptop comes online. */
@@ -47,7 +48,7 @@ function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
   return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s) },
     h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, h('span', { class: 'ellip' }, s.title)),
-    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
+    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared >= 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
 const groupKey = (s) => (s.talk ? 'Talks' : (s.cwd || 'Other'));
@@ -67,7 +68,7 @@ function drawSide() {
     SS.tabsEl.innerHTML = '';
     for (const [key, items] of ordered) SS.tabsEl.append(h('button', { class: 'ptab' + (key === SS.projKey ? ' on' : ''), title: key, onclick: () => { SS.projKey = key; SS.search = ''; drawSide(); } },
       folderName(key), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null));
-    SS.tabsEl.append(h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'));
+    SS.tabsEl.append(h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'), h('button', { class: 'ptab add', title: 'Open a chat a friend shared with you', onclick: shJoinDialog }, 'Join a shared chat'));
   }
   side.innerHTML = '';
   side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
@@ -86,7 +87,8 @@ async function loadList() {
   drawSide();
 }
 async function pollLive() {
-  for (const m of SS.machines) {
+  try { SS.guests = await cm.guests(); } catch { SS.guests = SS.guests || []; }
+  for (const m of [...SS.machines, ...(SS.guests || [])]) {
     try { SS.live[m.id] = await cm.relay(m.id, 'GET', '/sessions'); if (m.id === SS.mid) { SS.list = SS.live[m.id]; SS.err = null; } }
     catch (e) { SS.live[m.id] = null; if (m.id === SS.mid) SS.err = clean(e); }
   }
@@ -126,12 +128,12 @@ function sessionsView() {
   split.append(SS.side, SS.pane); root.append(SS.tabsEl, split);
   drawSide(); drawPane();
   (async () => {
-    SS.machines = await cm.machines();
+    SS.machines = await cm.machines(); try { SS.guests = await cm.guests(); } catch { SS.guests = []; }
     if (!SS.mid || !SS.machines.some((m) => m.id === SS.mid)) SS.mid = defaultMachineId();
     drawSide(); await loadList(); await pollLive();
   })();
   setTimeout(() => { if (SS.sel) { renderMsgs(); renderPerms(); renderFiles(); } }, 0);  // the pane is in the document now
-  SS.timers.push(setInterval(pollLive, 8000), setInterval(() => { if (SS.sel && SS.sel.id && !SS.sending && !SS.voice) loadMsgs(true); }, 3000), setInterval(refreshBusy, 4000));
+  SS.timers.push(setInterval(shLoadGuestInfo, 3000), setInterval(pollLive, 8000), setInterval(() => { if (SS.sel && SS.sel.id && !SS.sending && !SS.voice) loadMsgs(true); }, 3000), setInterval(refreshBusy, 4000));
   return root;
 }
 
@@ -224,7 +226,7 @@ function drawPane() {
       h('p', { class: 'muted' }, 'Pick a chat on the left, or start a new one in any project.'), h('button', { class: 'primary', onclick: newChat }, 'New chat')));
     return;
   }
-  const mach = SS.machines.find((x) => x.id === s.mid) || {};
+  const guest = isGuestMid(s.mid), mach = SS.machines.find((x) => x.id === s.mid) || (guest ? { guest: true, ...((SS.guests || []).find((g) => g.id === s.mid) || {}) } : {});
   const me = allSessions().find((x) => x.id === s.id) || {};
   const working = SS.sending || remoteWorking() || !!(me.running || me.busy);
   const main = h('div', { class: 'chatmain' });
@@ -232,10 +234,12 @@ function drawPane() {
   main.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
     h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), me.root || s.root ? 'root' : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
-    s.id ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
-    s.id ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
+    s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
+    s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
+    s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
     s.id ? ibtn(SS.rightOff ? 'sliders' : 'check', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : ''); drawPane(); }, 'ghost sm') : null));
   main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
+  if (guest) main.append(h('div', { id: 'shstatus', class: 'shstatus' }));
   main.append(h('div', { id: 'perms', class: 'perms' }));
   main.append(composer());
   pane.append(main);
@@ -246,10 +250,14 @@ function drawPane() {
     const callRow = SS.call !== null ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'row wrap' }, chip("When it's done", SS.call === 'done', () => setCall('done')), chip('If it needs me', SS.call === 'attention', () => setCall('attention'))),
       h('span', { class: 'small muted' }, 'You always get a message. A call only happens if you pick one here.')) : null;
     const tools = SS.msgs.filter((m) => m.role === 'tool').length;
+    if (guest) pane.append(h('div', { class: 'rightcol' }, rc('Shared chat', h('div', { class: 'small' }, `This chat belongs to ${mach.hostName || 'a friend'}. You can read everything.`), h('div', { class: 'small muted' }, `What you send is not run at once: ${mach.hostName || 'they'} gets a notification, can change it and runs it on their account, or says no.`),
+      SS.shared && SS.shared.grant && SS.shared.grant.auto ? h('div', { class: 'small', style: 'color:var(--clay)' }, 'You have full permission: what you send runs at once.') : null,
+      h('div', {}, h('button', { class: 'ghost sm', onclick: () => { if (!confirm('Leave this shared chat?')) return; rsSet('g:' + mach.share, null); SS.sel = null; shApply().then(() => { pollLive(); drawSide(); drawPane(); }); } }, 'Leave'))))); else
     pane.append(h('div', { class: 'rightcol' },
       rc('Phone call', callRow), rc('Run on', runRow),
       rc('Folder', mach.local && s.cwd ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'mono small ellip', title: s.cwd }, s.cwd), h('div', {}, h('button', { class: 'ghost sm', onclick: () => cm.openPath(s.cwd) }, 'Open folder'))) : (s.cwd ? h('div', { class: 'mono small', style: 'overflow-wrap:anywhere' }, s.cwd) : null)),
       rc('Move to server', moveBox(s, mach)), rc('Continue here', continueBox(s, mach)),
+      me.shared >= 0 ? rc('Sharing', h('div', { class: 'small' }, me.shared ? `Shared with ${me.shared} ${me.shared === 1 ? 'person' : 'people'}. They send, you decide.` : 'Shared, nobody has joined yet.'), h('div', {}, h('button', { class: 'ghost sm', onclick: () => shOpenShare(s) }, 'Manage'))) : null,
       rc('This chat', h('div', { class: 'kv' }, h('span', {}, 'Tokens'), h('b', {}, me.tokens ? fmtN(me.tokens) : '–')), h('div', { class: 'kv' }, h('span', {}, 'Tool calls'), h('b', {}, String(tools))),
         h('div', { class: 'kv' }, h('span', {}, 'Cost at API prices'), h('b', {}, me.cost ? '$' + me.cost.toFixed(2) : '–')))));
   }
@@ -257,6 +265,7 @@ function drawPane() {
   renderPerms();
   renderMsgs();
   if (SS.voice && SS.voice.el) pane.append(SS.voice.el);
+  if (guest) { shDrawStatus(); shLoadGuestInfo(); }
 }
 
 /** Leaves the new-chat screen: back to the chat you came from, or to the list of chats. */
@@ -297,7 +306,7 @@ function clearChat() {
 }
 function composer() {
   const s = SS.sel;
-  const ta = h('textarea', { id: 'composer-text', rows: 1, placeholder: SS.sending || remoteWorking() ? 'Claude is working. Type to queue a follow-up…' : s.isNew ? 'Describe what you want to do…' : 'Message Claude' });
+  const ta = h('textarea', { id: 'composer-text', rows: 1, placeholder: isGuestMid(s.mid) ? 'Ask the host’s Claude… they approve it first' : SS.sending || remoteWorking() ? 'Claude is working. Type to queue a follow-up…' : s.isNew ? 'Describe what you want to do…' : 'Message Claude' });
   ta.value = drafts()[draftKey(s)] || '';
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(220, ta.scrollHeight) + 'px'; };
   const menu = h('div', { class: 'slashmenu', hidden: true });
@@ -321,6 +330,7 @@ function composer() {
     const refs = SS.files.map((f) => '\n@' + f.path).join('');
     const t = (ta.value.trim() + refs).trim();
     if (!t || SS.uploading) return;
+    if (isGuestMid(s.mid)) { ta.value = ''; saveDraft(s, ''); grow(); shGuestSend(s, t); return; }
     if (/^\/clear\s*$/i.test(t)) { ta.value = ''; saveDraft(s, ''); grow(); clearChat(); return; }
     ta.value = ''; saveDraft(s, ''); SS.files = []; renderFiles(); grow();
     if (SS.sending || remoteWorking()) { SS.queue.push(t); renderLive(); if (!SS.sending) refreshBusy(); } else sendMsg(t);
@@ -328,9 +338,9 @@ function composer() {
   const sel = (opts, cur, fn) => h('select', { class: 'sel', onchange: (e) => fn(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));
   const box = h('div', { class: 'composer' }, h('div', { class: 'cbox' }, menu, h('div', { id: 'files', class: 'files' }), ta,
     h('div', { class: 'row cfoot' },
-      sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; drawPane(); setChatAuto(v === 'bypassPermissions'); }),
+      ...(isGuestMid(s.mid) ? [] : [sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; drawPane(); setChatAuto(v === 'bypassPermissions'); }),
       sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; }),
-      sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; }),
+      sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; })]),
       h('div', { class: 'grow' }),
       SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,
       (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
@@ -587,6 +597,7 @@ function renderPerms() {
   const s = SS.sel;
   for (const p of SS.perms.filter((x) => s && x.ev.session === s.id)) {
     if (p.ev.kind === 'question') { box.append(questionCard(p)); continue; }
+    if (p.ev.kind === 'request') { box.append(requestCard(p)); continue; }
     box.append(permCard(p));
   }
 }
@@ -650,11 +661,11 @@ cm.on('event', ({ machine, ev }) => {
   const viewing = tab === 'sessions' && SS.sel && SS.sel.id === ev.session;
   const proj = folderName(ev.cwd);
   if (ev.kind === 'resolved') { SS.perms = SS.perms.filter((p) => p.ev.req !== ev.req); renderPerms(); return; }
-  if ((ev.kind === 'permission' || ev.kind === 'question') && ev.req) {
+  if ((ev.kind === 'permission' || ev.kind === 'question' || ev.kind === 'request') && ev.req) {
     if (!SS.perms.some((p) => p.ev.req === ev.req)) SS.perms.push({ machine, ev });
     renderPerms();
     if (viewing) { const card = $(`.pc[data-req="${ev.req}"]`); if (card) { card.scrollIntoView({ block: 'nearest' }); const ta = $('#composer-text'); if (!ta || !ta.value) card.focus({ preventScroll: true }); } }
-    if (!viewing) toast(`${proj}: ${ev.kind === 'question' ? 'Claude has a question' : 'Claude needs your OK'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: true }));
+    if (!viewing) toast(ev.kind === 'request' ? `${ev.from || 'A friend'} wants to use your Claude` : `${proj}: ${ev.kind === 'question' ? 'Claude has a question' : 'Claude needs your OK'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: true }));
   } else if ((ev.kind === 'done' || ev.kind === 'error') && !viewing) {
     toast(`${proj}: ${ev.kind === 'error' ? 'something went wrong' : 'Claude is done'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: false }));
   }

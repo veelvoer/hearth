@@ -22,7 +22,7 @@ jobs:
       - name: Command rules test
         run: node desktop/test/perms.test.js
       - name: Shared chats test
-        run: node desktop/test/rooms.test.js
+        run: node desktop/test/shares.test.js
       - name: Stop button test
         run: node desktop/test/stop.test.js
       - name: Server memory test

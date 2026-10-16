@@ -135,7 +135,6 @@ private fun ToolCard(name: String, detail: String, result: String?, err: Boolean
 private sealed interface View {
     data object Home : View
     data object New : View
-    data object Shared : View
     data class Chat(val m: Machine, val s: Sess, val voice: Boolean = false) : View
 }
 
@@ -144,6 +143,12 @@ fun SessionsScreen() {
     val c = LocalContext.current
     var machines by remember(Ui.machinesRev) { mutableStateOf(Store.machines(c)) }
     var view by remember { mutableStateOf<View>(View.Home) }
+    // the shared chats of friends: kept on your own server too, so every device of yours has the same ones
+    var guests by remember { mutableStateOf(Shares.guests(c)) }
+    var joinOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(Ui.machinesRev) { while (true) { machines.firstOrNull { it.secure }?.let { m -> runCatching { withContext(Dispatchers.IO) { Shares.sync(c, m) } } }; guests = Shares.guests(c); delay(8_000) } }
+    LaunchedEffect(Ui.shareRev) { if (Ui.pendingJoin != null) joinOpen = true }
+    if (joinOpen) JoinDialog(Ui.pendingJoin ?: "", { joinOpen = false; Ui.pendingJoin = null }) { g -> joinOpen = false; Ui.pendingJoin = null; guests = Shares.guests(c); view = View.Home;  }
     val po = Ui.pendingOpen
     LaunchedEffect(po) {
         if (po != null) {
@@ -151,19 +156,17 @@ fun SessionsScreen() {
             Ui.pendingOpen = null
         }
     }
-    LaunchedEffect(Ui.shareRev) { if (Ui.pendingJoin != null) view = View.Shared }
     val v = view
     BackHandler(v !is View.Home) { view = View.Home }
     when (v) {
-        is View.Home -> Home(machines, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }, { view = View.Shared }) { m, s -> view = View.Chat(m, s) }
-        is View.Shared -> RoomsScreen(machines, Ui.pendingJoin) { Ui.pendingJoin = null; view = View.Home }
+        is View.Home -> Home(machines, guests, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }, { joinOpen = true }) { m, s -> view = View.Chat(m, s) }
         is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind, asRoot -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind, root = asRoot)) }
         is View.Chat -> Chat(v.m, v.s, v.voice, onClear = { view = View.Chat(v.m, Sess("", "New session", v.s.cwd, 0, false, kind = v.s.kind, root = v.s.root)) }) { view = View.Home }
     }
 }
 
 @Composable
-private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, talk: (Machine) -> Unit, shared: () -> Unit, open: (Machine, Sess) -> Unit) {
+private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, talk: (Machine) -> Unit, join: () -> Unit, open: (Machine, Sess) -> Unit) {
     val c = LocalContext.current
     val lists = remember { mutableStateMapOf<String, List<Sess>?>() }
     val now by tick()
@@ -176,10 +179,10 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             delay(30_000)
         }
     }
-    LaunchedEffect(machines) {
+    LaunchedEffect(machines, guests) {
         while (true) {
             // every computer is asked at the same time and shows up as soon as it answers; a computer that is off must not hold the others back
-            machines.map { mm -> launch { lists[mm.host] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.getOrNull() } }.forEach { it.join() }
+            (machines + guests).map { mm -> launch { lists[mm.host + "|" + mm.token.take(8)] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.getOrNull() } }.forEach { it.join() }
             delay(6_000)
         }
     }
@@ -209,18 +212,19 @@ private fun Home(machines: List<Machine>, save: (List<Machine>) -> Unit, newSess
             return@Screen
         }
         Field(query, { query = it }, "Search chats")
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking) { onlyWorking = false }; Chip("Working", onlyWorking) { onlyWorking = true }; Chip("Shared chats ›", false) { shared() } }
-        val offline = machines.filter { lists.containsKey(it.host) && lists[it.host] == null }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking) { onlyWorking = false }; Chip("Working", onlyWorking) { onlyWorking = true }; Chip("Join a shared chat ›", false) { join() } }
+        fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
+        val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't be reached right now. It will reconnect on its own.", T.small, muted = true)
         // the server holds every chat, so its list is the list (same as on the desktop app); other computers only fill in what it lacks
-        val hub = machines.firstOrNull { it.secure && lists[it.host] != null }
-        val all = machines.flatMap { mm -> (lists[mm.host] ?: emptyList()).map { mm to it } }
-            .groupBy { (_, s) -> s.id }.values.map { g ->
+        val hub = machines.firstOrNull { it.secure && lists[key(it)] != null }
+        val all = (machines + guests).flatMap { mm -> (lists[key(mm)] ?: emptyList()).map { mm to it } }
+            .groupBy { (mm, s) -> if (mm.guest) mm.share + ":" + s.id else s.id }.values.map { g ->
                 g.firstOrNull { (mm, _) -> mm === hub } ?: g.reduce { a, b -> if (a.second.running != b.second.running) (if (a.second.running) a else b) else if (b.second.mtime > a.second.mtime + 2500) b else a }
             }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
             .filter { (_, s) -> (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
-        if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
-        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
+        if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
+        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared >= 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
     }
     }
 }
@@ -473,6 +477,9 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     var model by remember { mutableStateOf(Store.chatModel(appCtx)) }
     var effort by remember { mutableStateOf(Store.chatEffort(appCtx)) }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
+    val guest = m.guest   // a shared chat of a friend: you read it, what you send goes to them to approve
+    var gInfo by remember { mutableStateOf<GuestInfo?>(null) }
+    var shareOpen by remember { mutableStateOf(false) }
     val files = remember { mutableStateListOf<Pair<String, String>>() }   // (name, path on the computer)
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
@@ -494,6 +501,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val list = rememberLazyListState()
     val cs = MaterialTheme.colorScheme
     DisposableEffect(Unit) { Ui.chatOpen = true; onDispose { Ui.chatOpen = false } }
+    if (shareOpen) ShareDialog(m, sess.id, sess.title) { shareOpen = false }
     BackHandler { back() }
 
     suspend fun reload() {
@@ -515,12 +523,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }
         var round = 0
         while (sess.id.isNotEmpty()) {
-            launch { runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission") } } }
+            launch { runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission" || it.kind == "request") } } }
             launch {
                 val w = withContext(Dispatchers.IO) { Relay.working(m, sess.id) }
                 if (w != null) serverBusy = w
                 else if (round++ % 3 == 0) runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.onSuccess { l -> serverBusy = l.firstOrNull { it.id == sess.id }?.let { it.running || it.busy } == true }   // an older server: ask the whole list
             }
+            if (guest) launch { runCatching { withContext(Dispatchers.IO) { Shares.guestInfo(m, sess.id) } }.onSuccess { gInfo = it } }
             if (!sending) reload()
             delay(3_000)
         }
@@ -531,7 +540,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val queued = remember { mutableStateListOf<String>() }   // messages written while Claude is busy: they go out one by one when it is free
     fun doSend(text: String) {
         sending = true; parts.clear(); err = null
-        msgs.add(Msg("user", text)); unsent.add(text to System.currentTimeMillis())
+        if (!guest) { msgs.add(Msg("user", text)); unsent.add(text to System.currentTimeMillis()) }   // a friend's prompt only shows once the host runs it
         val isNew = sess.id.isEmpty()
         scope.launch {
             runCatching {
@@ -540,7 +549,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                         when (t) {
                             "session" -> if (isNew && tx.isNotEmpty()) sess = sess.copy(id = tx, title = text.take(60))
                             "prefs" -> call = tx
-                            "queued" -> err = if (tx == "now") "Sent to your laptop. It runs there now. Progress appears here in a few seconds." else "Queued. It runs on your laptop as soon as it is online."
+                            "queued" -> err = if (tx.startsWith("approval:")) "Sent to ${tx.substringAfter(":")}. They have to approve it first, and may change it." else if (tx.startsWith("auto:")) "It runs at once: ${tx.substringAfter(":")} gave you full permission." else if (tx == "now") "Sent to your laptop. It runs there now. Progress appears here in a few seconds." else "Queued. It runs on your laptop as soon as it is online."
                             "delta" -> { val l = parts.lastOrNull(); if (l != null && !l.tool) parts[parts.size - 1] = Part(false, l.text + tx) else parts.add(Part(false, tx)) }
                             "tool" -> { val f = tx.split('\u0000'); parts.add(Part(true, name = f.getOrElse(0) { "" }, detail = f.getOrElse(1) { "" }, id = f.getOrElse(2) { "" })) }
                             "result" -> { val f = tx.split('\u0000', limit = 2); val i = parts.indexOfFirst { it.tool && it.id == f[0] }
@@ -579,12 +588,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
-                Txt(listOf(if (sess.kind == "talk") "Talk" else folder(sess.cwd), m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
+                Txt(listOf(if (guest) "Shared by ${m.label}" else if (sess.kind == "talk") "Talk" else folder(sess.cwd), if (guest) null else m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
                 }
             }
-            if (sess.id.isNotEmpty()) { TextAction("Talk") { voice = true }; Spacer(Modifier.width(16.dp)) }
-            TextAction(if (options) "Done" else "Options") { options = !options }
-            Spacer(Modifier.width(16.dp))
+            if (sess.id.isNotEmpty() && !guest) { TextAction("Share") { shareOpen = true }; Spacer(Modifier.width(16.dp)) }
+            if (sess.id.isNotEmpty() && !guest) { TextAction("Talk") { voice = true }; Spacer(Modifier.width(16.dp)) }
+            if (!guest) { TextAction(if (options) "Done" else "Options") { options = !options }; Spacer(Modifier.width(16.dp)) }
             TextAction("Close", back)
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -644,23 +653,34 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                     Chip("Show diff", false) { input = "Show me the diff of what you changed."; send() }
                 }
             }
+            if (guest) gInfo?.let { gi -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    gi.reqs.filter { System.currentTimeMillis() - it.ts < 15 * 60_000L || it.status == "pending" }.take(4).reversed().forEach { q ->
+                        val label = when (q.status) { "pending" -> "Waiting for ${gi.host} to approve"; "approved" -> "Approved, starting"; "running" -> "Running"; "done" -> "Done"; "denied" -> "Not run"; else -> "Failed" }
+                        Txt("$label${if (q.edited) " (changed by ${gi.host})" else ""}: \"${q.text.take(70)}\"", T.small, color = if (q.status == "pending") cs.primary else cs.onSurfaceVariant)
+                    }
+                    if (gi.auto) Txt("${gi.host} gave you full permission: what you send runs at once.", T.small, color = cs.primary)
+                }
+            } }
             item { Spacer(Modifier.height(4.dp)) }
         }
         }
         err?.let { Txt(it, T.small, color = cs.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
-        asks.filter { it.kind != "permission" }.forEach { a -> AskCard(m, a) { asks = asks - a } }
+        asks.filter { it.kind != "permission" && it.kind != "request" }.forEach { a -> AskCard(m, a) { asks = asks - a } }
         if (files.isNotEmpty() || uploading) Row(Modifier.padding(horizontal = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             files.toList().forEach { f -> Chip("${f.first.takeLast(24)}  ×", true) { files.remove(f) } }
             if (uploading) Txt("Uploading…", T.small, muted = true, modifier = Modifier.padding(vertical = 8.dp))
         }
         val perm = asks.firstOrNull { it.kind == "permission" }
+        val reqAsk = asks.firstOrNull { it.kind == "request" }
         if (perm != null) PermDock(m, perm) { asks = asks - perm }   // the approval sits right on top of the message box, like in a terminal agent
-        val boxShape = if (perm != null) RoundedCornerShape(0.dp, 0.dp, 24.dp, 24.dp) else RoundedCornerShape(24.dp)
-        Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = if (perm != null) 0.dp else 8.dp)) {
+        else if (reqAsk != null) RequestDock(m, reqAsk) { asks = asks - reqAsk }   // a friend wants to use your Claude
+        val boxShape = if (perm != null || reqAsk != null) RoundedCornerShape(0.dp, 0.dp, 24.dp, 24.dp) else RoundedCornerShape(24.dp)
+        Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = if (perm != null || reqAsk != null) 0.dp else 8.dp)) {
             Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextAction("Attach") { pick.launch("*/*") }
-                Box(Modifier.weight(1f)) { Field(input, { input = it }, if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
+                if (!guest) TextAction("Attach") { pick.launch("*/*") }
+                Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
                 Box(Modifier.size(38.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
                     Txt(if (stop) "■" else if (sending) "…" else "↑", T.body.copy(fontWeight = FontWeight.Bold), color = cs.onPrimary)

@@ -72,6 +72,7 @@ object Ui {
     var machinesRev by mutableIntStateOf(0)
     var pendingOpen by mutableStateOf<PendingOpen?>(null)
     var shareRev by mutableIntStateOf(0)
+    var sharedToast by mutableStateOf<String?>(null)
     var pendingJoin by mutableStateOf<String?>(null)   // an invite link that was opened: the shared chats screen shows it
 
     fun load(c: Context) {

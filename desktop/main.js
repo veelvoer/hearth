@@ -167,7 +167,7 @@ function machines() {
   } catch { /* relay not installed here */ }
   return list;
 }
-const machineById = (id) => machines().find((m) => m.id === id);
+const machineById = (id) => machines().find((m) => m.id === id) || guestMachines().find((m) => m.id === id);
 const pub = (m) => ({ id: m.id, name: m.name, host: m.host, port: m.port, local: !!m.local, secure: !!m.secure });
 const lib = (m) => (m.secure ? https : http);
 
@@ -253,19 +253,36 @@ function startEvents() {
 }
 /** A desktop notification for what happens in a chat. Which kinds you get, and whether you get them while the app is open, is up to you (Settings → Notifications). */
 function notifyEvent(m, ev, force) {
-  const st = S.settings, on = { permission: st.notifyPerm !== false, question: st.notifyQuestion !== false, done: st.notifyDone !== false, error: st.notifyDone !== false }[ev.kind];
+  const st = S.settings, on = { request: st.notifyRequest !== false, permission: st.notifyPerm !== false, question: st.notifyQuestion !== false, done: st.notifyDone !== false, error: st.notifyDone !== false }[ev.kind];
   if (!force) {
     if (on === false || on === undefined) return;
     if (st.notifyFocused !== true && main && !main.isDestroyed() && main.isVisible() && main.isFocused()) return;   // you are looking at the app: it shows this itself
   }
   const proj = String(ev.cwd || '').replace(/\/$/, '').split('/').pop() || 'Claude';
-  const title = ev.kind === 'permission' ? `${proj}: needs your OK` : ev.kind === 'question' ? `${proj}: Claude has a question` : ev.kind === 'error' ? `${proj}: something went wrong` : `${proj}: Claude is done`;
+  const title = ev.kind === 'request' ? `${ev.from || 'A friend'} wants to use your Claude` : ev.kind === 'permission' ? `${proj}: needs your OK` : ev.kind === 'question' ? `${proj}: Claude has a question` : ev.kind === 'error' ? `${proj}: something went wrong` : `${proj}: Claude is done`;
   notify(title, ev.text || ev.title || '', () => { showMain('sessions'); if (ev.session) main.webContents.send('open-session', { machine: m && m.id, session: ev.session, title: ev.title, cwd: ev.cwd, voice: false }); });
 }
 let callWins = new Map();
+const notifiedReq = new Set();
+/** A small window on top of everything when a friend asks to use your Claude: you can run it (plan only), deny it, or open the chat to change it first. */
+function openRequestPopup(m, ev) {
+  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  const w = new BrowserWindow({ width: 380, height: 330, x: width - 400, y: 40, frame: false, alwaysOnTop: true, resizable: false, skipTaskbar: true, backgroundColor: '#1B1A19', icon: iconPath,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true } });
+  w.setAlwaysOnTop(true, 'screen-saver');
+  const key = m.id + ':req:' + ev.req;
+  callWins.set(key, { w, m, ev });
+  w.loadFile(path.join(__dirname, 'renderer', 'call.html'), { query: { key, kind: 'request', title: (ev.from || 'A friend') + ' wants to use your Claude', text: String(ev.text || '').replace(/^[^:]*:\s*/, ''), permission: '1' } });
+  w.on('closed', () => callWins.delete(key));
+  setTimeout(() => { if (!w.isDestroyed()) w.close(); }, 120000);
+}
 function ring(m, ev) {
   if (ev.kind === 'resolved') { if (main && !main.isDestroyed()) main.webContents.send('event', { machine: m.id, ev }); return; }
   if (main && !main.isDestroyed()) main.webContents.send('event', { machine: m.id, ev });
+  if (ev.kind === 'request') {   // a friend asks to use your account: tell you in the app (card + toast, done by the page), by a notification, and by a small window when the app is not in front
+    if (!notifiedReq.has(ev.req)) { notifiedReq.add(ev.req); if (notifiedReq.size > 500) notifiedReq.delete(notifiedReq.values().next().value); notifyEvent(m, ev); if (S.settings.requestPopup !== false && !(main && !main.isDestroyed() && main.isVisible() && main.isFocused())) openRequestPopup(m, ev); }
+    return;
+  }
   notifyEvent(m, ev);   // permissions are answered in the app itself; the notification only tells you to look
   if (S.settings.popup !== true || ev.call === false || !S.settings.callMe) return;   // the always-on-top window is an opt-in
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -586,13 +603,22 @@ h('projects:reject', async (e, names) => {
   await relayJson(m, 'POST', '/sync/projects/reject', names === 'all' ? { all: true } : { names });
   await checkPending().catch(() => {}); return lastPend;
 });
-/** Calls a shared chat on someone else's server with the guest key you got from an invite. Only the /rooms paths, only that server. */
-h('rooms:call', async (e, conn, method, p, body) => {
-  if (!conn || typeof conn.url !== 'string' || !/^\/rooms(\/|$)/.test(String(p)) || !['GET', 'POST', 'DELETE'].includes(method)) throw new Error('Not allowed');
-  const u = new URL(conn.url);
+/** Shared chats you were invited to: each is a guest key for ONE chat on someone else's server. They show up in the chat list like a normal chat. The key opens nothing else there. */
+const guestPub = (g) => ({ id: 'g:' + g.share, name: (g.host || 'A friend') + ': ' + (g.title || 'shared chat'), host: g.hostname, port: g.port, local: false, secure: !!g.secure, guest: true, hostName: g.host || '', share: g.share, title: g.title || '' });
+const guestMachines = () => (Array.isArray(S.guests) ? S.guests : []).map((g) => ({ ...guestPub(g), token: g.key }));
+h('guests', () => guestMachines().map(({ token, ...p }) => p));
+h('guests:set', (e, list) => {   // the list kept in sync through your server
+  S.guests = (Array.isArray(list) ? list : []).filter((g) => g && /^[A-Za-z0-9_-]{4,16}$/.test(String(g.share)) && typeof g.key === 'string' && /^share\./.test(g.key) && typeof g.hostname === 'string' && Number(g.port) > 0)
+    .map((g) => ({ share: String(g.share), key: g.key, hostname: String(g.hostname), port: Number(g.port), secure: !!g.secure, host: String(g.host || '').slice(0, 60), title: String(g.title || '').slice(0, 120) }));
+  save(); return guestMachines().map(({ token, ...p }) => p);
+});
+/** Uses an invite: asks the host's server for a guest key. */
+h('share:join', async (e, url, invite, name) => {
+  const u = new URL(String(url));
   if (!['http:', 'https:'].includes(u.protocol)) throw new Error('Not a server address');
-  const m = { name: 'the host', host: u.hostname, port: Number(u.port) || (u.protocol === 'https:' ? 443 : 80), secure: u.protocol === 'https:', token: String(conn.token || '') };
-  return relayJson(m, method, p, body);
+  const m = { name: 'the host', host: u.hostname, port: Number(u.port) || (u.protocol === 'https:' ? 443 : 80), secure: u.protocol === 'https:', token: '' };
+  const r = await relayJson(m, 'POST', '/shares/join', { invite: String(invite), name: String(name || '').slice(0, 40) });
+  return { share: r.share, key: r.key, session: r.session, title: r.title, host: r.host, member: r.member, hostname: m.host, port: m.port, secure: m.secure };
 });
 h('relay', async (e, id, method, p, body) => {
   const m = machineById(id);

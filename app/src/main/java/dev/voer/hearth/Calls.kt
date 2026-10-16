@@ -62,11 +62,13 @@ object Calls {
     private const val CALL = "call"
     private const val LISTEN = "listen"
     private const val MSG = "messages"
+    private const val REQ = "requests"
 
     fun channels(c: Context) {
         val nm = c.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(LISTEN, "Listening for calls", NotificationManager.IMPORTANCE_MIN))
         nm.createNotificationChannel(NotificationChannel(MSG, "Messages from Claude", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(REQ, "Friends who want to use your Claude", NotificationManager.IMPORTANCE_HIGH))   // pops up on screen
         nm.createNotificationChannel(NotificationChannel(CALL, "Claude calls", NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
                 AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
@@ -89,11 +91,12 @@ object Calls {
 
     fun message(c: Context, m: Machine, e: CallEvent) {
         channels(c)
-        val nid = 2000 + ((if (e.kind == "permission") e.req.hashCode() else e.session.hashCode()) and 0xFFFF)
+        val nid = 2000 + ((if (e.kind == "permission" || e.kind == "request") e.req.hashCode() else e.session.hashCode()) and 0xFFFF)
         val fl = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val open = PendingIntent.getActivity(c, nid, Intent(c, MainActivity::class.java).putExtra("open_host", m.host).putExtra("open_session", e.session)
             .putExtra("open_title", e.title).putExtra("open_cwd", e.cwd).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), fl)
         val title = when (e.kind) {
+            "request" -> "${e.text.substringBefore(':').ifBlank { "A friend" }} wants to use your Claude"
             "permission" -> "${project(e.cwd)}: needs your OK"
             "question" -> "${project(e.cwd)}: Claude has a question"
             "error" -> "${project(e.cwd)}: something went wrong"
@@ -101,13 +104,19 @@ object Calls {
             "started" -> "${project(e.cwd)}: your laptop started"
             else -> "${project(e.cwd)}: Claude is done"
         }
-        val b = NotificationCompat.Builder(c, MSG).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
+        val isReq = e.kind == "request"
+        val b = NotificationCompat.Builder(c, if (isReq) REQ else MSG).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
             .setContentText(e.text.ifEmpty { e.title }).setStyle(NotificationCompat.BigTextStyle().bigText(e.text.ifEmpty { e.title }))
-            .setContentIntent(open).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(open).setAutoCancel(true).setPriority(if (isReq) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
         if (e.kind == "permission" && e.req.isNotEmpty()) {
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
                 Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
             b.addAction(act("allow", "Allow", 1)).addAction(act("deny", "Deny", 2))
+        }
+        if (e.kind == "request" && e.req.isNotEmpty()) {   // a friend asks to use your Claude: run it as it is (plan only) or say no, right from the notification
+            fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
+                Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
+            b.addAction(act("allow", "Run it (plan only)", 1)).addAction(act("deny", "Deny", 2))
         }
         runCatching { c.getSystemService(NotificationManager::class.java).notify(nid, b.build()) }
     }

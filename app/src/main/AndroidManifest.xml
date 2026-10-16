@@ -33,7 +33,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="hearth" android:host="pair"/>
-                <data android:scheme="hearth" android:host="room"/>
+                <data android:scheme="hearth" android:host="share"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

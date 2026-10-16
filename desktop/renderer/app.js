@@ -51,7 +51,7 @@ const ICONS = {
   tour: '<circle cx="12" cy="12" r="9"/><path d="M15.8 8.2l-2.1 5.5-5.5 2.1 2.1-5.5z"/>', tool: '<path d="M14.5 6.5a4 4 0 0 0 4.5 4.5l-8.5 8.5a2.1 2.1 0 0 1-3-3l8.5-8.5a4 4 0 0 0-1.5-1.5z"/>',
 };
 const icon = (n) => h('span', { class: 'ic', html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` });
-const TABS = [['sessions', 'Chats'], ['shared', 'Shared'], ['dashboard', 'Home'], ['history', 'History'], ['settings', 'Settings']];
+const TABS = [['sessions', 'Chats'], ['dashboard', 'Home'], ['history', 'History'], ['settings', 'Settings']];
 
 function renderNav() {
   const nav = $('#nav');
@@ -82,7 +82,7 @@ function morph(fn) {
     return t;
   } catch { return fn(); }
 }
-const TAB_ORDER = ['sessions', 'shared', 'dashboard', 'now', 'history', 'settings'];
+const TAB_ORDER = ['sessions', 'dashboard', 'now', 'history', 'settings'];
 function setTab(t) {
   if (t === tab) return;
   slideDir = TAB_ORDER.indexOf(t) >= TAB_ORDER.indexOf(tab) ? ' fwd' : ' back'; tab = t;
@@ -102,7 +102,7 @@ function render() {
   content.innerHTML = '';
   maybeTutorial();
   if (!S.signedIn) return content.append(loginView());
-  const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, shared: typeof sharedView === 'function' ? sharedView : sessionsView, history: historyView, settings: settingsView }[tab]();
+  const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
   if (keepScroll) holdScroll(keepScroll, prevH, v);
   if (tab === 'history') requestAnimationFrame(drawHistory);
@@ -299,8 +299,9 @@ function settingsView(only) {
   p.append(h('div', { class: 'card stack' }, ch('phone', 'Call me', 'A call window and sound when Claude finishes a task, asks a question or needs permission. It follows the relay’s “away” switch, shared with your phone: turn it on while you are away from the keyboard. Needs relay/install_hooks.py run once.'),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Ring on this computer'), toggle(st.callMe, () => set({ callMe: !st.callMe })))));
   p.append(h('div', { class: 'card stack' }, ch('bell', 'Notifications', 'Hearth asks for your OK inside the app, like a terminal agent. A desktop notification tells you when Claude needs you, so you can answer without watching the window. Clicking it opens the chat.'),
-    ...[['notifyPerm', 'Needs your OK', 'A tool wants to run and you have to allow it.'], ['notifyQuestion', 'Claude asks a question', 'A question with choices waits for you.'], ['notifyDone', 'Claude is done or hit an error', 'A chat finished while you were elsewhere.']]
+    ...[['notifyPerm', 'Needs your OK', 'A tool wants to run and you have to allow it.'], ['notifyRequest', 'A friend wants to use your Claude', 'Someone you shared a chat with sent a prompt that waits for you to run it.'], ['notifyQuestion', 'Claude asks a question', 'A question with choices waits for you.'], ['notifyDone', 'Claude is done or hit an error', 'A chat finished while you were elsewhere.']]
       .map(([k, t, d]) => h('div', { class: 'row' }, h('div', { class: 'grow' }, t, h('div', { class: 'small muted' }, d)), toggle(st[k] !== false, () => set({ [k]: st[k] === false })))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Small window for a friend’s request', h('div', { class: 'small muted' }, 'A window on top of everything, with Run it and Deny, when the app is not in front.')), toggle(st.requestPopup !== false, () => set({ requestPopup: st.requestPopup === false }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Also while the app is open', h('div', { class: 'small muted' }, 'Normally you only get a notification when Hearth is in the background.')), toggle(st.notifyFocused === true, () => set({ notifyFocused: st.notifyFocused !== true }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Pop-up window on top of everything', h('div', { class: 'small muted' }, 'The old always-on-top window, used with “Call me”. Off by default: questions are answered in the app.')), toggle(st.popup === true, () => set({ popup: st.popup !== true }))),
     h('div', {}, h('button', { class: 'ghost sm', onclick: () => cm.testNotify() }, 'Send a test notification'))));
