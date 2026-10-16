@@ -45,7 +45,7 @@ const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) =
   // what the guest may see and do
   const gl = await req('GET', '/sessions', g); ok('7 the guest sees only the shared chat, and not the folder', gl.code === 200 && gl.j.length === 1 && gl.j[0].id === sid && !gl.j[0].cwd.includes(T));
   const gm = await req('GET', `/sessions/${sid}/messages`, g); ok('8 the guest reads the chat like a normal one', gm.code === 200 && gm.j.some((m) => m.role === 'user' && /landing page/.test(m.text)) && gm.j.some((m) => m.role === 'assistant'));
-  for (const [m, p] of [['GET', '/status'], ['GET', '/projects'], ['GET', '/admin/options'], ['GET', '/usage'], ['POST', '/admin/options'], ['GET', '/fs'], ['GET', '/shares/' + sh.j.id], ['POST', `/shares/${sh.j.id}/invite`], ['GET', '/rooms-sync'], ['GET', '/events'], ['GET', '/sessions/other/messages']]) {
+  for (const [m, p] of [['GET', '/status'], ['GET', '/projects'], ['GET', '/admin/options'], ['GET', '/usage'], ['POST', '/admin/options'], ['GET', '/fs'], ['GET', '/shares/' + sh.j.id], ['POST', `/shares/${sh.j.id}/invite`], ['GET', '/rooms-sync'], ['GET', '/nothing'], ['GET', '/sessions/other/messages']]) {
     const r = await req(m, p, g, m === 'POST' ? {} : null); ok(`9 a guest key cannot ${m} ${p}`, r.code === 403 || r.code === 401, String(r.code));
   }
   const pr = await req('GET', `/sessions/${sid}/prefs`, g); ok('10 the guest sees their own status', pr.j.shared && pr.j.shared.myName === 'Sam' && pr.j.shared.grant.auto === false);
@@ -81,15 +81,36 @@ const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) =
   const stopOther = await req('POST', '/stop', g, { session: sid }); ok('26 a guest cannot stop the host\'s own run', stopOther.code === 403);
   await host2; await sleep(1500);
   ok('27 the prompt that had to wait ran after the host\'s', (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.role === 'assistant' && /queued behind the host/.test(m.text)));
+  // the other direction: the host asks a friend to use THE FRIEND'S Claude; the friend's own Claude runs it and the result shows in the chat
+  await req('POST', `/shares/${sh.j.id}/members/${mid}`, tok, { grant: { auto: false, mode: 'plan' } });
+  let gevents = ''; req('GET', '/events', g, null, (b) => { gevents = b; }); await sleep(400);
+  await sleep(1600); const ask = await req('POST', `/shares/${sh.j.id}/ask`, tok, { to: mid, text: 'host wants the friend\'s usage' }); ok('34 the host asks the friend\'s Claude', ask.code === 200 && ask.j.status === 'pending');
+  await sleep(300);
+  const gev = (gevents.match(/data: (.*)/g) || []).map((l) => JSON.parse(l.slice(6))).filter((e) => e.kind === 'request'); ok('35 the friend gets a notification event', gev.length === 1 && gev[0].forMember === mid && /host wants the friend/.test(gev[0].text), JSON.stringify(gev[0] || {}).slice(0, 100));
+  ok('36 the host\'s own waiting list does not show it', !(await req('GET', '/pending', tok)).j.some((e) => e.req === ask.j.id));
+  const gi = (await req('GET', `/sessions/${sid}/prefs`, g)).j.shared; ok('37 the friend sees it as incoming', gi.incoming.length === 1 && gi.incoming[0].fromName === 'Warre' && gi.people.some((p) => p.id === 'host'));
+  const inv3 = await req('POST', `/shares/${sh.j.id}/invite`, tok, {}); const j3 = await req('POST', '/shares/join', null, { invite: inv3.j.invite, name: 'Kim' }); const wrong = await req('POST', `/sessions/${sid}/requests/${ask.j.id}`, j3.j.key, { decision: 'approve' }); ok('38 another friend cannot decide for them', wrong.code === 404);
+  const fd2 = await req('POST', `/sessions/${sid}/requests/${ask.j.id}`, g, { decision: 'approve', text: 'host wants the friend\'s usage, edited', mode: 'plan' }); ok('39 the friend approves and edits', fd2.code === 200 && /edited/.test(fd2.j.text) && fd2.j.from === 'Warre');
+  const pu = await req('POST', `/sessions/${sid}/post`, g, { role: 'user', text: 'host wants the friend\'s usage, edited', req: ask.j.id }); const pa = await req('POST', `/sessions/${sid}/post`, g, { role: 'assistant', text: 'answer from the friend\'s own account', req: ask.j.id });
+  ok('40 the friend\'s app posts the prompt and the answer', pu.code === 200 && pa.code === 200);
+  await req('POST', `/sessions/${sid}/requests/${ask.j.id}`, g, { decision: 'done' });
+  const mh = (await req('GET', `/sessions/${sid}/messages`, tok)).j; const mg = (await req('GET', `/sessions/${sid}/messages`, g)).j;
+  ok('41 everyone sees them in the chat, with who they are', [mh, mg].every((l) => l.some((m) => m.role === 'user' && m.name === 'Warre' && /edited/.test(m.text)) && l.some((m) => m.role === 'assistant' && m.name === "Sam's Claude for Warre")));
+  const own = await req('POST', `/sessions/${sid}/post`, g, { role: 'assistant', text: 'my own question went to my own Claude' }); ok('42 a friend can post what their own Claude said', own.code === 200 && (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.name === "Sam's Claude"));
+  const fake = await req('POST', `/sessions/${sid}/post`, g, { role: 'user', text: 'x', req: 'nope' }); ok('43 posting as somebody else is refused', fake.code === 403);
+  await req('POST', `/sessions/${sid}/working`, g, { on: true }); ok('44 who is working shows', (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.role === 'meta' && /Sam's Claude is working/.test(m.text))); await req('POST', `/sessions/${sid}/working`, g, { on: false });
+  await sleep(1600); await req('POST', `/sessions/${sid}/send`, tok, { text: 'host asks directly again', mode: 'acceptEdits' }); await sleep(1500);
+  ok('45 the host\'s own Claude hears what the others did with theirs', (await req('GET', `/sessions/${sid}/messages`, tok)).j.some((m) => m.role === 'user' && /others used their own Claude/.test(m.text) && /answer from the friend's own account/.test(m.text)));
+  const mine3 = await req('POST', `/sessions/${sid}/ask`, g, { to: 'host', text: 'friend asks host via ask' }); ok('46 a friend can also ask the host through "ask"', mine3.code === 200);
   // restart: waiting requests survive
   await req('POST', `/shares/${sh.j.id}/members/${mid}`, tok, { grant: { auto: false, mode: 'plan' } }); await sleep(1600);
   await req('POST', `/sessions/${sid}/send`, g, { text: 'survives a restart' }); await sleep(300);
   relay.kill(); await sleep(600); relay = startRelay(); await sleep(2000);
-  const p3 = (await req('GET', '/pending', tok)).j.filter((e) => e.kind === 'request'); ok('28 a waiting request survives a restart', p3.length === 1 && /survives a restart/.test(p3[0].text));
+  const p3 = (await req('GET', '/pending', tok)).j.filter((e) => e.kind === 'request'); ok('28 a waiting request survives a restart', p3.some((e) => /survives a restart/.test(e.text)));
   const gv = await req('GET', `/sessions/${sid}/messages`, g); ok('29 and the guest key still works', gv.code === 200);
   // removing a friend
   const rm = await req('DELETE', `/shares/${sh.j.id}/members/${mid}`, tok); ok('30 a removed friend is locked out', rm.code === 200 && (await req('GET', `/sessions/${sid}/messages`, g)).code === 401);
-  ok('31 and their waiting prompt is gone', (await req('GET', '/pending', tok)).j.filter((e) => e.kind === 'request').length === 0);
+  ok('31 and their waiting prompts are gone', (await req('GET', '/pending', tok)).j.filter((e) => e.kind === 'request').length === 0);
   const un = await req('DELETE', `/shares/${sh.j.id}`, tok); ok('32 the host can stop sharing', un.code === 200 && (await req('GET', `/sessions/${sid}/share`, tok)).j.shared === false);
   // the list of shared chats kept on the server for all devices
   const s1 = await req('POST', '/rooms-sync', tok, { items: { 'g:a:b': { v: { name: 'x' }, t: 100 } } }); ok('33 the synced list works', s1.code === 200 && s1.j.items['g:a:b'].v.name === 'x');

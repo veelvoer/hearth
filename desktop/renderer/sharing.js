@@ -112,19 +112,135 @@ function requestCard(p) {
     h('div', { class: 'row wrap' }, mode, h('label', { class: 'row small' }, always, h('span', {}, `Always run ${ev.from || 'their'} prompts without asking (full permission)`))),
     h('div', { class: 'row' }, h('button', { class: 'primary sm', onclick: () => decide('allow') }, 'Run it'), h('button', { class: 'ghost sm', onclick: () => decide('deny') }, 'Deny')));
 }
-/** For a friend: what happened to the prompts they sent (waiting, denied, running...). Polled with the chat. */
+// ───────── whose usage a prompt uses ─────────
+/** The share of the open chat: for a friend the key of the guest machine, for the host the share made on the server. */
+const shGuestOf = (s) => (SS.guests || []).find((g) => g.id === s.mid) || null;
+const shIsShared = (s) => !!s && !!s.id && (isGuestMid(s.mid) || (SS.shareInfo && SS.shareInfo.session === s.id) || (allSessions().find((x) => x.id === s.id) || {}).shared >= 0);
+const shShareId = (s) => { const g = shGuestOf(s); return g ? g.share : (SS.shareInfo && SS.shareInfo.session === s.id ? SS.shareInfo.id : null); };
+/** 'mine' = your own account, 'host' = the host's account (a friend only), or the id of another person. Default: a friend uses the host's, the host uses their own. */
+function shChoice(s) { const id = shShareId(s); const v = id ? rsVal('u:' + id, null) : null; const ok = (SS.sharedPeople || []).some((p) => p.id === v) || v === 'mine'; return ok ? v : (isGuestMid(s.mid) ? 'host' : 'mine'); }
+const shChoiceName = (s) => { const v = shChoice(s); if (v === 'mine') return 'your own usage'; const p = (SS.sharedPeople || []).find((x) => x.id === v); return p ? p.name + '’s usage' : 'someone’s usage'; };
+function shOptions(s) {
+  const id = shShareId(s); const guest = isGuestMid(s.mid), cur = shChoice(s);
+  const list = [['mine', 'My own usage', guest ? 'Runs on your own Claude, on your own server. The answer shows up in this chat for everyone.' : 'Runs on your account, on this server, like any chat.'],
+    ...(SS.sharedPeople || []).map((p) => [p.id, p.name + '’s usage', p.id === 'host' || !guest ? `${p.name} gets a notification first. They can change your prompt, then it runs on their account.` : `${p.name} gets a notification first, and their own Claude answers here.`])];
+  const body = h('div', { class: 'stack' });
+  const w = shModal(h('div', { class: 'row' }, h('h3', { class: 'grow' }, 'Whose usage do I use?'), h('button', { class: 'ghost sm', onclick: () => w.close() }, 'Close')), h('div', { class: 'small muted' }, 'This is for this chat only. Pick whose Claude runs what you send.'), body);
+  const draw = () => {
+    body.innerHTML = '';
+    for (const [k, name, sub] of list) body.append(h('label', { class: 'row', style: 'align-items:flex-start;gap:10px;cursor:pointer' }, (() => { const r = h('input', { type: 'radio', name: 'whose', style: 'width:18px;min-height:0;margin-top:3px;flex:none' }); r.checked = shChoice(s) === k; r.onchange = () => { rsSet('u:' + id, k); SS.sharedChoiceRev = (SS.sharedChoiceRev || 0) + 1; draw(); drawPane(); }; return r; })(), h('div', {}, h('b', {}, name), h('div', { class: 'small muted' }, sub))));
+    if (guest && shChoice(s) === 'mine') {
+      const cfg = rsVal('cfg:' + id, {}), inp = h('input', { placeholder: 'Folder for your Claude on your server (empty = just talk, no files)', value: cfg.cwd || '', style: 'font-family:ui-monospace,monospace;font-size:12px', onchange: (e) => rsSet('cfg:' + id, { ...rsVal('cfg:' + id, {}), cwd: e.target.value.trim() }) });
+      body.append(h('div', { class: 'small muted' }, 'Where your Claude works:'), inp);
+      if (!SS.machines.some((m) => m.secure)) body.append(h('div', { class: 'warnnote' }, 'Your own usage runs on your own server. Connect one first (Settings → Computers and servers).'));
+    }
+  };
+  draw();
+}
+
+// ───────── what the other side is doing: status lines and requests for you ─────────
+/** Polled with the chat. A friend: the prompts they sent and the requests for their Claude. The host: who the chat is shared with and the prompts the host sent to friends. */
 async function shLoadGuestInfo() {
-  const s = SS.sel; if (!s || !s.id || !isGuestMid(s.mid)) { SS.shared = null; return; }
-  try { const p = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/prefs`); if (SS.sel === s) { const was = JSON.stringify(SS.shared); SS.shared = p.shared || null; if (was !== JSON.stringify(SS.shared)) shDrawStatus(); } } catch { /* offline */ }
+  const s = SS.sel; if (!s || !s.id) { SS.shared = null; return; }
+  try {
+    let info = null;
+    if (isGuestMid(s.mid)) { const p = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/prefs`); info = p.shared || null; if (info) { SS.sharedPeople = info.people || []; } }
+    else if ((allSessions().find((x) => x.id === s.id) || {}).shared >= 0) { const p = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/share`); if (p.shared) { SS.shareInfo = p; SS.sharedPeople = [{ id: 'mine-host', name: 'You' }, ...p.members.map((m) => ({ id: m.id, name: m.name }))].filter((x) => x.id !== 'mine-host'); info = { host: 'You', role: 'host', requests: p.requests || [], incoming: [] }; } }
+    if (SS.sel !== s) return;
+    const was = JSON.stringify([SS.shared, SS.sharedChoiceRev]); SS.shared = info; if (was !== JSON.stringify([SS.shared, SS.sharedChoiceRev])) { shDrawStatus(); shAutoIncoming(s); }
+  } catch { /* offline */ }
 }
 function shDrawStatus() {
   const box = $('#shstatus'); if (!box) return;
   box.innerHTML = '';
   const sh = SS.shared; if (!sh) return;
-  const LABEL = { pending: 'Waiting for ' + sh.host + ' to approve', approved: 'Approved, starting', running: 'Running', done: 'Done', denied: 'Not run', failed: 'Failed' };
+  const s = SS.sel;
+  const LABEL = { pending: 'Waiting for the answer of', approved: 'Approved, running', running: 'Running', done: 'Done', denied: 'Not run', failed: 'Failed' };
   for (const q of sh.requests.filter((x) => Date.now() - x.ts < 15 * 60e3 || x.status === 'pending').slice(0, 4).reverse()) {
-    box.append(h('div', { class: 'meta shreq ' + q.status }, `${LABEL[q.status] || q.status}${q.edited ? ' (changed by ' + sh.host + ')' : ''}: “${q.text.length > 70 ? q.text.slice(0, 70) + '…' : q.text}”` + (q.note && q.status !== 'done' ? ' · ' + q.note : '')));
+    const who = q.toName || sh.host;
+    box.append(h('div', { class: 'meta shreq ' + q.status }, `${q.status === 'pending' ? 'Waiting for ' + who + ' to approve' : (LABEL[q.status] || q.status)}${q.edited ? ' (changed by ' + who + ')' : ''}: “${q.text.length > 70 ? q.text.slice(0, 70) + '…' : q.text}”` + (q.note && q.status !== 'done' ? ' · ' + q.note : '')));
   }
+  if (sh.role === 'guest' && sh.grant && sh.grant.auto && shChoice(s) === 'host') box.append(h('div', { class: 'meta', style: 'color:var(--clay)' }, `${sh.host} gave you full permission: what you send runs at once.`));
+  if (s) box.append(h('div', { class: 'meta' }, 'Using ' + shChoiceName(s) + ' · change it under Options'));
+  // requests for YOUR Claude (someone asked to use your usage)
+  const old = $('#shin'); if (old) { old.innerHTML = ''; for (const q of (sh.incoming || []).filter((x) => x.status === 'pending')) old.append(shIncomingCard(s, q)); }
+}
+const shAutoRun = new Set();
+function shAutoIncoming(s) {   // a friend you gave "always run" for: it runs without a question
+  const sh = SS.shared; if (!sh || !s) return; const id = shShareId(s);
+  for (const q of (sh.incoming || []).filter((x) => x.status === 'pending')) { const m = rsVal('a:' + id + ':' + q.from, null); if (m && !shAutoRun.has(q.id)) { shAutoRun.add(q.id); shAcceptIncoming(s, q, q.text, m).catch((e) => toast(clean(e))); } }
+}
+async function shAcceptIncoming(s, q, text, mode) {
+  const r = await cm.relay(s.mid, 'POST', `/sessions/${s.id}/requests/${q.id}`, { decision: 'approve', text, mode });
+  await shRunOwn(s, r.text || text, { by: q.fromName, req: q.id, mode });
+}
+function shIncomingCard(s, q) {
+  const ta = h('textarea', { rows: 3, class: 'rmedit' }); ta.value = q.text;
+  const mode = h('select', { class: 'sel' }, SMODES.map(([k, l]) => h('option', { value: k }, l)));
+  const always = h('input', { type: 'checkbox' }); let busy = false;
+  const go = async (allow) => {
+    if (busy) return; busy = true;
+    try {
+      if (!allow) await cm.relay(s.mid, 'POST', `/sessions/${s.id}/requests/${q.id}`, { decision: 'deny' });
+      else { if (always.checked) rsSet('a:' + shShareId(s) + ':' + q.from, mode.value); shAutoRun.add(q.id); await shAcceptIncoming(s, q, ta.value, mode.value); }
+      shLoadGuestInfo();
+    } catch (e) { toast(clean(e)); busy = false; }
+  };
+  return h('div', { class: 'perm pc rmreq' }, h('div', { class: 'label' }, `${q.fromName} wants to use your Claude`), h('div', { class: 'small muted' }, 'It runs on your own account, on your own server, and the answer shows up in this chat. You can change the prompt first.'), ta,
+    h('div', { class: 'row wrap' }, mode, h('label', { class: 'row small' }, always, h('span', {}, `Always run ${q.fromName}'s prompts without asking`))),
+    h('div', { class: 'row' }, h('button', { class: 'primary sm', onclick: () => go(true) }, 'Run it'), h('button', { class: 'ghost sm', onclick: () => go(false) }, 'Deny')));
+}
+
+/** Runs a prompt on YOUR own account (your own server) and puts the answer in the shared chat. by/req: someone asked for it and you said yes. */
+let shOwnBusy = false;
+async function shRunOwn(s, text, opts = {}) {
+  if (shOwnBusy) { toast('Your Claude is still working on the last one.'); throw new Error('busy'); }
+  SS.machines = await cm.machines();
+  const machine = SS.machines.find((m) => m.secure);
+  if (!machine) { toast('Your own usage runs on your own server. Connect one first (Settings).'); throw new Error('no server'); }
+  const id = shShareId(s), cfg = rsVal('cfg:' + id, {}), st = rsVal('s:' + id, {});
+  const guest = shGuestOf(s), people = (SS.sharedPeople || []).map((p) => p.name).join(', ');
+  const mine = (SS.shared && SS.shared.myName) || shMyName() || 'Me';
+  const others = SS.msgs.filter((m) => (m.ts || 0) > (st.seen || 0) && (m.role === 'user' || m.role === 'assistant') && !(m.own && m.name && m.name.startsWith(mine + "'s Claude"))).slice(-40);
+  const prompt = `You are in a shared chat called "${s.title}" with ${people || 'others'}. ` + (opts.by ? `The next message comes from ${opts.by}, not from the owner of this account. Answer it directly.` : `Answer ${mine} directly.`)
+    + (others.length ? '\n\nWhat was said in the chat since your last turn:\n' + others.map((m) => `${m.name || (m.role === 'user' ? 'Someone' : 'Claude')}: ${m.text}`).join('\n') : '') + `\n\n${opts.by || mine}: ${text}`;
+  shOwnBusy = true;
+  try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/post`, { role: 'user', text, ...(opts.req ? { req: opts.req } : {}) }); await cm.relay(s.mid, 'POST', `/sessions/${s.id}/working`, { on: true }); } catch (e) { shOwnBusy = false; toast(clean(e)); throw e; }
+  loadMsgs(true);
+  return new Promise((resolve) => {
+    const sid = rand(); let out = '', failed = '';
+    const finish = async () => {
+      delete chatHandlers[sid]; shOwnBusy = false;
+      const last = SS.msgs.length ? SS.msgs[SS.msgs.length - 1].ts || Date.now() : Date.now();
+      rsSet('s:' + id, { id: rsVal('s:' + id, {}).id || st.id, seen: Math.max(last, Date.now() - 1) });
+      try { if (out.trim() || failed) await cm.relay(s.mid, 'POST', `/sessions/${s.id}/post`, { role: 'assistant', text: out.trim() || `(${failed})`, ...(opts.req ? { req: opts.req } : {}) }); } catch { /* host gone */ }
+      try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/working`, { on: false }); } catch { /* ignore */ }
+      if (opts.req) { try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/requests/${opts.req}`, { decision: failed ? 'failed' : 'done', note: failed }); } catch { /* ignore */ } }
+      loadMsgs(true); shLoadGuestInfo(); resolve();
+    };
+    chatHandlers[sid] = (ev) => {
+      if (ev.t === 'session' && ev.id) rsSet('s:' + id, { ...rsVal('s:' + id, {}), id: ev.id });
+      else if (ev.t === 'delta') out += ev.text;
+      else if (ev.t === 'fail') { failed = ev.text || 'Your Claude failed'; finish(); }
+      else if (ev.t === 'end') finish();
+    };
+    cm.send(machine.id, st.id || null, prompt, opts.mode || 'acceptEdits', false, sid, { run: 'vps', ...(cfg.cwd ? { cwd: cfg.cwd } : { kind: 'talk' }) }).catch((e) => { failed = clean(e); finish(); });
+  });
+}
+
+/** Sends what you typed in a shared chat to whoever's usage you chose. Returns false when it is just a normal send (the host on their own usage). */
+function shRoute(s, text) {
+  const c = shChoice(s);
+  if (isGuestMid(s.mid)) {
+    if (c === 'host') { shGuestSend(s, text); return true; }
+    if (c === 'mine') { shRunOwn(s, text).catch(() => {}); return true; }
+    cm.relay(s.mid, 'POST', `/sessions/${s.id}/ask`, { to: c, text }).then(() => { toast('Sent. They have to approve it first, and may change it.'); shLoadGuestInfo(); }).catch((e) => toast(clean(e)));
+    return true;
+  }
+  if (c === 'mine') return false;
+  const id = shShareId(s); if (!id) return false;
+  cm.relay(s.mid, 'POST', `/shares/${id}/ask`, { to: c, text }).then(() => { toast('Sent. They have to approve it first, then their own Claude answers here.'); shLoadGuestInfo(); }).catch((e) => toast(clean(e)));
+  return true;
 }
 
 /** A friend sends a prompt: it goes to the host as a request. Nothing is added to the chat until the host runs it. */

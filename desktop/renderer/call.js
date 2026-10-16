@@ -12,7 +12,8 @@ const btn = (label, a, cls = 'ghost') => {
   b.className = cls; b.textContent = label; b.onclick = () => act(a);
   document.getElementById('actions').append(b);
 };
-if (kind === 'request') { btn('Run it (plan only)', 'allow', 'primary'); btn('Change it first', 'chat'); btn('Deny', 'deny'); }
+if (kind === 'request' && q.get('own')) { btn('Open chat to run it', 'chat', 'primary'); btn('Deny', 'deny'); }
+else if (kind === 'request') { btn('Run it (plan only)', 'allow', 'primary'); btn('Change it first', 'chat'); btn('Deny', 'deny'); }
 else if (permission) { btn('Allow', 'allow', 'primary'); btn('Deny', 'deny'); btn('Open chat', 'chat'); }
 else { btn('Talk', 'talk', 'primary'); btn('Open chat', 'chat'); btn('Dismiss', 'dismiss'); }
 

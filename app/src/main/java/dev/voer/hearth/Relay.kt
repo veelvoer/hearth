@@ -14,7 +14,7 @@ data class Machine(val name: String, val host: String, val port: Int, val token:
     val base get() = (if (secure) "https" else "http") + "://" + host + if ((secure && port == 443) || (!secure && port == 80)) "" else ":$port"
 }
 data class Sess(val id: String, val title: String, val cwd: String, val mtime: Long, val live: Boolean, val busy: Boolean = false, val running: Boolean = false, val kind: String = "code", val elsewhere: String = "", val tokens: Long = 0, val model: String = "", val root: Boolean = false, val shared: Int = -1)
-data class Msg(val role: String, val text: String, val name: String = "", val detail: String = "", val result: String? = null, val err: Boolean = false)
+data class Msg(val role: String, val text: String, val name: String = "", val detail: String = "", val result: String? = null, val err: Boolean = false, val own: Boolean = false, val ts: Long = 0)
 data class Project(val name: String, val path: String)
 data class Computer(val id: String, val name: String, val online: Boolean, val kind: String)
 
@@ -119,7 +119,7 @@ object Relay {
             val o = a.getJSONObject(it)
             val inp = o.optJSONObject("input")
             val detail = inp?.let { i -> listOf("command", "file_path", "pattern", "path", "url").firstNotNullOfOrNull { k -> i.optString(k).takeIf { v -> v.isNotBlank() } } }.orEmpty()
-            Msg(o.getString("role"), o.getString("text"), o.optString("name"), detail, if (o.has("result")) o.optString("result") else null, o.optBoolean("error"))
+            Msg(o.getString("role"), o.getString("text"), o.optString("name"), detail, if (o.has("result")) o.optString("result") else null, o.optBoolean("error"), o.optBoolean("own"), o.optLong("ts"))
         }
     }
 

@@ -214,7 +214,7 @@ const listeners = new Map();
 function stopEvents() { for (const l of listeners.values()) { l.stopped = true; l.req && l.req.destroy(); } listeners.clear(); }
 function startEvents() {
   stopEvents();
-  for (const m of machines()) {
+  for (const m of [...machines(), ...guestMachines()]) {   // a friend's shared chat only sends what is meant for you
     const l = { stopped: false, req: null };
     listeners.set(m.id, l);
     (async function loop() {
@@ -222,7 +222,7 @@ function startEvents() {
       while (!l.stopped) {
         try {
           const cur = machineById(m.id) || m;
-          if (S.settings.callMe) await relayJson(cur, 'POST', '/away', { on: true });
+          if (S.settings.callMe && !cur.guest) await relayJson(cur, 'POST', '/away', { on: true });
           wait = 3000;
           await new Promise((resolve) => {
             const req = lib(cur).request({ host: cur.host, port: cur.port, path: '/events', headers: { Authorization: 'Bearer ' + cur.token } }, (res) => {
@@ -272,7 +272,7 @@ function openRequestPopup(m, ev) {
   w.setAlwaysOnTop(true, 'screen-saver');
   const key = m.id + ':req:' + ev.req;
   callWins.set(key, { w, m, ev });
-  w.loadFile(path.join(__dirname, 'renderer', 'call.html'), { query: { key, kind: 'request', title: (ev.from || 'A friend') + ' wants to use your Claude', text: String(ev.text || '').replace(/^[^:]*:\s*/, ''), permission: '1' } });
+  w.loadFile(path.join(__dirname, 'renderer', 'call.html'), { query: { key, kind: 'request', title: (ev.from || 'A friend') + ' wants to use your Claude', text: String(ev.text || '').replace(/^[^:]*:\s*/, ''), permission: '1', own: ev.forMember ? '1' : '' } });
   w.on('closed', () => callWins.delete(key));
   setTimeout(() => { if (!w.isDestroyed()) w.close(); }, 120000);
 }
@@ -610,8 +610,11 @@ h('guests', () => guestMachines().map(({ token, ...p }) => p));
 h('guests:set', (e, list) => {   // the list kept in sync through your server
   S.guests = (Array.isArray(list) ? list : []).filter((g) => g && /^[A-Za-z0-9_-]{4,16}$/.test(String(g.share)) && typeof g.key === 'string' && /^share\./.test(g.key) && typeof g.hostname === 'string' && Number(g.port) > 0)
     .map((g) => ({ share: String(g.share), key: g.key, hostname: String(g.hostname), port: Number(g.port), secure: !!g.secure, host: String(g.host || '').slice(0, 60), title: String(g.title || '').slice(0, 120) }));
-  save(); return guestMachines().map(({ token, ...p }) => p);
+  const sig = JSON.stringify(guestMachines().map((g) => [g.id, g.token, g.host, g.port])); save();
+  if (sig !== lastGuestSig) { lastGuestSig = sig; startEvents(); }
+  return guestMachines().map(({ token, ...p }) => p);
 });
+let lastGuestSig = '';
 /** Uses an invite: asks the host's server for a guest key. */
 h('share:join', async (e, url, invite, name) => {
   const u = new URL(String(url));
@@ -773,7 +776,8 @@ h('call:action', async (e, key, action) => {
   const c = callWins.get(key);
   if (!c) return false;
   const { w, m, ev } = c;
-  if ((action === 'allow' || action === 'deny') && ev.req) await relayJson(m, 'POST', '/decision', { req: ev.req, behavior: action }).catch(() => {});
+  if (ev.forMember && action === 'deny' && ev.req) await relayJson(m, 'POST', `/sessions/${ev.session}/requests/${ev.req}`, { decision: 'deny' }).catch(() => {});
+  else if ((action === 'allow' || action === 'deny') && ev.req) await relayJson(m, 'POST', '/decision', { req: ev.req, behavior: action }).catch(() => {});
   if (action === 'talk' || action === 'chat') {
     showMain('sessions');
     main.webContents.send('open-session', { machine: m.id, session: ev.session, title: ev.title, cwd: ev.cwd, voice: action === 'talk' });

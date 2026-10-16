@@ -51,7 +51,7 @@ function chatItem(s) {
     h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared >= 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
-const groupKey = (s) => (s.talk ? 'Talks' : (s.cwd || 'Other'));
+const groupKey = (s) => (s.guest || s.shared >= 0 ? 'Shared' : s.talk ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
 /** The projects as tabs along the top, and the chats of the open project in the column beside the chat. Searching looks through every project. */
 function drawSide() {
   const side = SS.side;
@@ -172,7 +172,7 @@ async function refreshBusy() {
 }
 function openSessionNow(s, voice) {
   SS.call = 'off';
-  SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = [];
+  SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = []; SS.shared = null; SS.shareInfo = null; SS.sharedPeople = [];
   const run = SS.sel.id && RUNS.get(SS.sel.id); SS.parts = run ? run.parts : []; SS.sending = !!run; SS.queue = qOf(SS.sel);   // a run that is still going shows up again
   if (tab !== 'sessions') setTab('sessions');
   drawSide(); drawPane(); swapPane();
@@ -234,12 +234,13 @@ function drawPane() {
   main.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
     h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), me.root || s.root ? 'root' : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
+    s.id && (guest || me.shared >= 0) ? h('button', { class: 'ghost sm', title: 'Whose usage do I use in this chat?', onclick: () => shOptions(s) }, 'Options') : null,
     s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
     s.id ? ibtn(SS.rightOff ? 'sliders' : 'check', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : ''); drawPane(); }, 'ghost sm') : null));
   main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
-  if (guest) main.append(h('div', { id: 'shstatus', class: 'shstatus' }));
+  if (guest || me.shared >= 0) main.append(h('div', { id: 'shin', class: 'shin' }), h('div', { id: 'shstatus', class: 'shstatus' }));
   main.append(h('div', { id: 'perms', class: 'perms' }));
   main.append(composer());
   pane.append(main);
@@ -265,7 +266,7 @@ function drawPane() {
   renderPerms();
   renderMsgs();
   if (SS.voice && SS.voice.el) pane.append(SS.voice.el);
-  if (guest) { shDrawStatus(); shLoadGuestInfo(); }
+  if (guest || me.shared >= 0) { shDrawStatus(); shLoadGuestInfo(); }
 }
 
 /** Leaves the new-chat screen: back to the chat you came from, or to the list of chats. */
@@ -330,7 +331,7 @@ function composer() {
     const refs = SS.files.map((f) => '\n@' + f.path).join('');
     const t = (ta.value.trim() + refs).trim();
     if (!t || SS.uploading) return;
-    if (isGuestMid(s.mid)) { ta.value = ''; saveDraft(s, ''); grow(); shGuestSend(s, t); return; }
+    if (shIsShared(s) && shChoice(s) !== 'mine' || isGuestMid(s.mid)) { ta.value = ''; saveDraft(s, ''); grow(); if (shRoute(s, t)) return; ta.value = t; return; }
     if (/^\/clear\s*$/i.test(t)) { ta.value = ''; saveDraft(s, ''); grow(); clearChat(); return; }
     ta.value = ''; saveDraft(s, ''); SS.files = []; renderFiles(); grow();
     if (SS.sending || remoteWorking()) { SS.queue.push(t); renderLive(); if (!SS.sending) refreshBusy(); } else sendMsg(t);
@@ -509,8 +510,8 @@ function renderMsgs() {
     if (m.role === 'tool') { if (!tools) { tools = h('div', { class: 'tools' + fresh }); col.append(tools); } tools.append(toolCard(m, 'm' + i)); return; }
     tools = null;
     if (m.role === 'meta') { col.append(h('div', { class: 'meta' }, m.text)); return; }
-    if (m.role === 'user') col.append(h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, m.text));
-    else { const el = assistantEl(m.text); if (fresh) el.classList.add('fresh'); col.append(el); }
+    if (m.role === 'user') col.append(m.own ? h('div', { class: 'rmmsg' }, h('div', { class: 'small muted' }, m.name), h('div', { class: 'msg user' + fresh, style: 'align-self:auto;max-width:100%' }, m.text)) : h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, m.text));
+    else { const el = assistantEl(m.text); if (fresh) el.classList.add('fresh'); if (m.own) { const w = h('div', { class: 'rmmsg claude' }, h('div', { class: 'small muted' }, m.name + ' · own account'), el); col.append(w); } else col.append(el); }
   });
   SS.shown = { key, n: SS.msgs.length };
   col.append(h('div', { id: 'live' }));
@@ -660,6 +661,11 @@ function toast(text, onclick) {
 cm.on('event', ({ machine, ev }) => {
   const viewing = tab === 'sessions' && SS.sel && SS.sel.id === ev.session;
   const proj = folderName(ev.cwd);
+  if (ev.forMember) {   // meant for you as a friend in someone else's shared chat: you decide, your own Claude runs it
+    if (ev.kind === 'request' && !viewing) toast(`${ev.from || 'Someone'} wants to use your Claude`, () => { const hit = allSessions().find((x) => x.id === ev.session && x.mid === machine); openSession(hit || { id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: true }); });
+    if (viewing) shLoadGuestInfo();
+    return;
+  }
   if (ev.kind === 'resolved') { SS.perms = SS.perms.filter((p) => p.ev.req !== ev.req); renderPerms(); return; }
   if ((ev.kind === 'permission' || ev.kind === 'question' || ev.kind === 'request') && ev.req) {
     if (!SS.perms.some((p) => p.ev.req === ev.req)) SS.perms.push({ machine, ev });

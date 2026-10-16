@@ -27,7 +27,7 @@ import kotlin.math.max
 data class CallEvent(val id: Long, val kind: String, val session: String, val title: String, val cwd: String,
                      val text: String, val seconds: Int, val req: String, val machine: String, val call: Boolean = true, val boot: String = "",
                      val question: String = "", val options: List<String> = emptyList(), val multi: Boolean = false,
-                     val tool: String = "", val detail: String = "", val suggest: String = "")
+                     val tool: String = "", val detail: String = "", val suggest: String = "", val forMember: String = "")
 
 object CallApi {
     private fun post(m: Machine, path: String, body: JSONObject) {
@@ -51,7 +51,7 @@ object CallApi {
                     onEvent(CallEvent(o.getLong("id"), o.getString("kind"), o.optString("session"), o.optString("title"),
                         o.optString("cwd"), o.optString("text"), o.optInt("seconds"), o.optString("req"), o.optString("machine"),
                         o.optBoolean("call", true), o.optString("boot"), o.optString("question"),
-                        o.optJSONArray("options")?.let { op -> List(op.length()) { i -> op.getJSONObject(i).optString("label") } } ?: emptyList(), o.optBoolean("multi")))
+                        o.optJSONArray("options")?.let { op -> List(op.length()) { i -> op.getJSONObject(i).optString("label") } } ?: emptyList(), o.optBoolean("multi"), "", "", "", o.optString("forMember")))
                 }
             }
         } finally { c.disconnect() }
@@ -113,7 +113,7 @@ object Calls {
                 Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
             b.addAction(act("allow", "Allow", 1)).addAction(act("deny", "Deny", 2))
         }
-        if (e.kind == "request" && e.req.isNotEmpty()) {   // a friend asks to use your Claude: run it as it is (plan only) or say no, right from the notification
+        if (e.kind == "request" && e.req.isNotEmpty() && e.forMember.isEmpty()) {   // a friend asks to use your Claude: run it as it is (plan only) or say no, right from the notification
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
                 Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
             b.addAction(act("allow", "Run it (plan only)", 1)).addAction(act("deny", "Deny", 2))
@@ -156,7 +156,7 @@ class CallService : Service() {
         Calls.channels(this)
         ServiceCompat.startForeground(this, 1, Calls.listening(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         val g = ++gen
-        if (Store.callMe(this)) Store.machines(this).forEach { m -> Thread { loop(m, g) }.apply { isDaemon = true; start() } }
+        if (Store.callMe(this)) (Store.machines(this) + Shares.guests(this)).forEach { m -> Thread { loop(m, g) }.apply { isDaemon = true; start() } }
         Thread { ticker(g) }.apply { isDaemon = true; start() }
         if (screen == null) {
             screen = object : BroadcastReceiver() {
@@ -171,7 +171,7 @@ class CallService : Service() {
         var wait = 3_000L
         while (g == gen) {
             runCatching {
-                CallApi.setAway(m, true)
+                if (!m.guest) CallApi.setAway(m, true)
                 wait = 3_000L
                 CallApi.listen(m, { g == gen }) { e ->
                     if (e.boot != boot[m.host]) { boot[m.host] = e.boot; lastSeen[m.host] = 0 }

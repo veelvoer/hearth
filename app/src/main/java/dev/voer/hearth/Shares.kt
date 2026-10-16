@@ -32,8 +32,10 @@ import java.net.URL
  *  the host gets a notification, can change the prompt and run it, deny it, or give that friend full permission. */
 data class ShareMember(val id: String, val name: String, val auto: Boolean, val mode: String)
 data class ShareInfo(val id: String, val members: List<ShareMember>)
-data class GuestReq(val id: String, val text: String, val status: String, val ts: Long, val edited: Boolean, val note: String)
-data class GuestInfo(val host: String, val auto: Boolean, val reqs: List<GuestReq>)
+data class GuestReq(val id: String, val text: String, val status: String, val ts: Long, val edited: Boolean, val note: String, val from: String = "", val fromName: String = "", val to: String = "", val toName: String = "")
+data class Person(val id: String, val name: String)
+/** What the other side is doing in a shared chat: for a friend and for the host alike (reqs = prompts you sent to someone's Claude, incoming = prompts someone wants to run on yours). */
+data class GuestInfo(val host: String, val auto: Boolean, val reqs: List<GuestReq>, val incoming: List<GuestReq> = emptyList(), val people: List<Person> = emptyList(), val me: String = "", val myName: String = "", val shareId: String = "")
 
 val SHARE_MODES = listOf("plan" to "Plan only", "acceptEdits" to "Edits", "manual" to "Ask each step", "bypassPermissions" to "Full auto")
 
@@ -104,18 +106,41 @@ object Shares {
     /** The host decides on a friend's request. */
     fun decide(m: Machine, req: String, allow: Boolean, text: String, mode: String, always: Boolean) { post(m.base, m.token, "/decision", JSONObject().put("req", req).put("behavior", if (allow) "allow" else "deny").put("text", text).put("mode", mode).put("always", always)) }
 
-    // the friend
+    // the friend, and the host too: what is going on in the chat
+    private fun parseReq(q: JSONObject) = GuestReq(q.getString("id"), q.optString("text"), q.optString("status"), q.optLong("ts"), q.optBoolean("edited"), q.optString("note"), q.optString("from"), q.optString("fromName"), q.optString("to"), q.optString("toName"))
+    private fun parseReqs(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { parseReq(a.getJSONObject(it)) }
+    private fun parsePeople(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { a.getJSONObject(it).let { p -> Person(p.getString("id"), p.optString("name")) } }
     fun guestInfo(m: Machine, sid: String): GuestInfo? {
         val c = URL(m.base + "/sessions/$sid/prefs").openConnection() as HttpURLConnection
         c.connectTimeout = 8_000; c.readTimeout = 12_000; c.setRequestProperty("Authorization", "Bearer " + m.token)
         try {
             if (c.responseCode != 200) return null
             val s = JSONObject(c.inputStream.bufferedReader().readText()).optJSONObject("shared") ?: return null
-            val a = s.optJSONArray("requests") ?: JSONArray()
-            return GuestInfo(s.optString("host"), s.optJSONObject("grant")?.optBoolean("auto") ?: false, List(a.length()) { a.getJSONObject(it).let { q -> GuestReq(q.getString("id"), q.optString("text"), q.optString("status"), q.optLong("ts"), q.optBoolean("edited"), q.optString("note")) } })
+            return GuestInfo(s.optString("host"), s.optJSONObject("grant")?.optBoolean("auto") ?: false, parseReqs(s.optJSONArray("requests")), parseReqs(s.optJSONArray("incoming")), parsePeople(s.optJSONArray("people")), s.optString("me"), s.optString("myName"), m.share)
         } finally { c.disconnect() }
     }
-}
+    /** The host's view of a shared chat: who it is shared with and the prompts the host sent to friends. Null when the chat is not shared. */
+    fun hostInfo(m: Machine, sid: String): GuestInfo? {
+        val o = post(m.base, m.token, "/sessions/$sid/share", null, "GET")
+        if (!o.optBoolean("shared")) return null
+        val me = Person("host", "You")
+        val others = parsePeople(o.optJSONArray("people")).filter { it.id != "host" }
+        return GuestInfo("You", false, parseReqs(o.optJSONArray("requests")), emptyList(), listOf(me) + others, "host", "You", o.optString("id"))
+    }
+    /** Whose usage a prompt uses in one chat: "mine", "host" (a friend only) or the id of another person. Kept like the other shared things, so it follows you to your other devices. */
+    fun choice(c: Context, share: String, guest: Boolean, people: List<Person>): String { val v = (items(c).optJSONObject("u:$share")?.takeIf { !it.isNull("v") }?.optString("v")); return if (v != null && (v == "mine" || people.any { it.id == v })) v else if (guest) "host" else "mine" }
+    fun setChoice(c: Context, share: String, v: String) = set(c, "u:$share", v)
+    fun cwd(c: Context, share: String): String = items(c).optJSONObject("cfg:$share")?.optJSONObject("v")?.optString("cwd").orEmpty()
+    fun setCwd(c: Context, share: String, v: String) = set(c, "cfg:$share", JSONObject().put("cwd", v))
+    fun ownSession(c: Context, share: String): Pair<String, Long> = (items(c).optJSONObject("s:$share")?.takeIf { !it.isNull("v") }?.opt("v") as? JSONObject)?.let { it.optString("id") to it.optLong("seen") } ?: ("" to 0L)
+    fun setOwnSession(c: Context, share: String, id: String, seen: Long) = set(c, "s:$share", JSONObject().put("id", id).put("seen", seen))
+    fun autoMode(c: Context, share: String, from: String) = items(c).optJSONObject("a:$share:$from")?.takeIf { !it.isNull("v") }?.optString("v")
+    fun setAuto(c: Context, share: String, from: String, mode: String?) = set(c, "a:$share:$from", mode)
+
+    // calls on the shared chat (friend: with the guest machine; host: with the server machine)
+    fun postJson(m: Machine, path: String, body: JSONObject): JSONObject = post(m.base, m.token, path, body)
+    fun askHostShare(m: Machine, shareId: String, to: String, text: String) { post(m.base, m.token, "/shares/$shareId/ask", JSONObject().put("to", to).put("text", text)) }
+    fun askFromGuest(m: Machine, sid: String, to: String, text: String) { post(m.base, m.token, "/sessions/$sid/ask", JSONObject().put("to", to).put("text", text)) }
 
 /** Paste an invite link and your name: the shared chat appears in your list like any chat. */
 @Composable
@@ -216,6 +241,57 @@ fun RequestDock(m: Machine, a: CallEvent, done: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) { Txt("Always run $from's prompts without asking", T.small, modifier = Modifier.weight(1f)); Switch(always, { always = it }) }
             err?.let { Txt(it, T.small, color = cs.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) { Button("Run it") { decide(true) }; TextAction("Deny") { decide(false) } }
+        }
+    }
+}
+
+/** Whose usage do I use in this chat? Mine, the host's, or another person's. Only for this chat. */
+@Composable
+fun UsageDialog(info: GuestInfo?, guest: Boolean, shareKey: String, choice: String, onChanged: () -> Unit, onClose: () -> Unit) {
+    val c = LocalContext.current
+    var dir by remember { mutableStateOf(if (shareKey.isNotEmpty()) Shares.cwd(c, shareKey) else "") }
+    val rows = listOf(Triple("mine", "My own usage", if (guest) "Runs on your own Claude, on your own server. The answer shows up in this chat for everyone." else "Runs on your account, on this server, like any chat.")) +
+        (info?.people.orEmpty().filter { it.id != info?.me }).map { p -> Triple(p.id, p.name + "'s usage", "${p.name} gets a notification first. They can change your prompt, then it runs on their account.") }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Txt("Whose usage do I use?", T.h2) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Txt("This is for this chat only. Pick whose Claude runs what you send.", T.small, muted = true)
+                if (info == null) Txt("Loading…", T.small, muted = true)
+                rows.forEach { (id, name, sub) ->
+                    Row(Modifier.fillMaxWidth().clickable { Shares.setChoice(c, shareKey, id); onChanged() }, verticalAlignment = Alignment.Top) {
+                        androidx.compose.material3.RadioButton(choice == id, { Shares.setChoice(c, shareKey, id); onChanged() })
+                        Column(Modifier.padding(top = 10.dp)) { Txt(name, T.body.copy(fontWeight = FontWeight.SemiBold)); Txt(sub, T.small, muted = true) }
+                    }
+                }
+                if (guest && choice == "mine") {
+                    Txt("Where your Claude works:", T.small, muted = true)
+                    Field(dir, { dir = it.trim(); Shares.setCwd(c, shareKey, dir) }, "Folder on your server (empty = just talk)", mono = true)
+                    if (Store.machines(c).none { it.secure }) Txt("Your own usage runs on your own server. Connect one first (Settings).", T.small, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = { TextAction("Done", onClose) },
+    )
+}
+
+/** Someone asks to use your Claude in this chat: change the prompt if you want, pick how much Claude may do, and run it or deny it. */
+@Composable
+fun IncomingDock(info: GuestInfo, q: GuestReq, onDeny: () -> Unit, onRun: (String, String, Boolean) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    var text by remember(q.id) { mutableStateOf(q.text) }
+    var mode by remember(q.id) { mutableStateOf("plan") }
+    var always by remember(q.id) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    Column(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, top = 8.dp)) {
+        Column(Modifier.fillMaxWidth().clip(shape).background(cs.surfaceVariant).border(1.dp, cs.primary, shape).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Label("${q.fromName} wants to use your Claude")
+            Txt("It runs on your own account, on your own server, and the answer shows up in this chat. You can change the prompt first.", T.small, muted = true)
+            Field(text, { text = it }, "Prompt", singleLine = false)
+            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, mode == k) { mode = k } } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Txt("Always run ${q.fromName}'s prompts without asking", T.small, modifier = Modifier.weight(1f)); Switch(always, { always = it }) }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) { Button("Run it") { onRun(text, mode, always) }; TextAction("Deny", onDeny) }
         }
     }
 }

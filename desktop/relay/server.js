@@ -194,7 +194,9 @@ function start(opts) {
   const pending = new Map(); // permission request id -> {resolve, event}
   const BOOT = crypto.randomBytes(4).toString('hex'); // lets the phone notice a restarted relay (event numbers start over)
   let forward = null, forwardUsage = null;   // set when this computer is linked to a server: its events are passed on so your phone gets them anywhere
+  const guestClients = new Map();   // response -> the member it belongs to: a friend hears only what is meant for them
   const publish = (e) => {
+    if (e.forMember) { e.boot = BOOT; for (const [c, mid] of guestClients) if (mid === e.forMember) { try { c.write(`data: ${JSON.stringify(e)}\n\n`); } catch { /* gone */ } } return e; }
     e.id = ++seq; e.boot = BOOT; events.push(e); if (events.length > 200) events.shift();
     for (const c of clients) c.write(`id: ${e.id}\ndata: ${JSON.stringify(e)}\n\n`);
     if (forward && !e.remote) forward(e);
@@ -592,6 +594,9 @@ function start(opts) {
     const sh = parts[0] === 'shares' ? shares.get(parts[1]) : null;
     if (!sh) return json(res, 404, { error: 'No such shared chat.' });
     if (parts[2] === 'invite' && M === 'POST') return json(res, 200, { ...shares.invite(sh, b.name), share: sh.id });
+    if (parts[2] === 'ask' && M === 'POST') { const r = shares.ask(sh, { id: 'host', name: opts.name || os.hostname() }, String(b.to), b.text); return json(res, r.code, r.data); }
+    if (parts[2] === 'post' && M === 'POST') { const r = shares.post(sh, { id: 'host', name: opts.name || os.hostname() }, b); return json(res, r.code, r.data); }
+    if (parts[2] === 'working' && M === 'POST') { const r = shares.working(sh, { id: 'host', name: opts.name || os.hostname() }, !!b.on); return json(res, r.code, r.data); }
     if (parts[2] === 'members' && parts[3] && M === 'POST') { const r = shares.setGrant(sh, parts[3], b.grant); return json(res, r.code, r.data); }
     if (parts[2] === 'members' && parts[3] && M === 'DELETE') { const r = shares.removeMember(sh, parts[3]); return json(res, r.code, r.data); }
     if (!parts[2] && M === 'GET') return json(res, 200, { shared: true, ...shares.view(sh) });
@@ -607,6 +612,15 @@ function start(opts) {
       return json(res, 200, [{ id: sid, title: sm.title || sh.title, cwd: '/Shared by ' + (opts.name || os.hostname()), mtime: Math.floor(f.mtime), live: false, busy: running || (Date.now() - f.mtime) / 1000 < 20, running, kind: 'code', tokens: sm.tokens || 0, model: sm.model || '', shared: 1 }]);
     }
     if (M === 'GET' && parts[0] === 'info') return json(res, 200, { name: opts.name || os.hostname(), claude: true, guest: true });
+    if (M === 'GET' && parts[0] === 'events') {   // only what is meant for this friend: someone asks to use their Claude
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'keep-alive', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' });
+      res.write(': hello\n\n');
+      for (const e of shares.incomingEvents(sh, mem.id)) res.write(`data: ${JSON.stringify({ ...baseFor(e.session, e.cwd), ...e, replay: true })}\n\n`);
+      guestClients.set(res, mem.id);
+      const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 15000);
+      res.on('close', () => { clearInterval(ping); guestClients.delete(res); });
+      return undefined;
+    }
     if (M === 'GET' && (parts[0] === 'pending' || parts[0] === 'commands')) return json(res, 200, []);
     if (parts[0] === 'stop' && M === 'POST') {   // a guest may end only a run that was started for them
       const b = await bodyJson(req), j = jobs.get(String(b.session || ''));
@@ -616,10 +630,14 @@ function start(opts) {
     }
     if (parts[0] === 'sessions' && parts[1] === sid) {
       const sub = parts[2];
-      if (M === 'GET' && sub === 'messages') { const f = core.findSession(sid); if (!f) return json(res, 404, { error: 'This chat is no longer on the server.' }); return json(res, 200, core.messages(sid, Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80)))); }
+      if (M === 'GET' && sub === 'messages') { const f = core.findSession(sid); if (!f) return json(res, 404, { error: 'This chat is no longer on the server.' }); return json(res, 200, shares.merge(sh, core.messages(sid, Math.max(1, Math.min(1000, Number(u.searchParams.get('tail')) || 80))))); }
       if (M === 'GET' && sub === 'state') { const j = jobs.get(sid), f = core.findSession(sid), quiet = !!(j && j.done), running = !!(j && !j.done), busy = running || (!quiet && !!f && (Date.now() - f.mtime) / 1000 < 20); return json(res, 200, { running, busy }); }
       if (M === 'GET' && sub === 'prefs') return json(res, 200, { call: 'off', run: 'vps', kind: 'code', shared: shares.guestInfo(sh, mem) });
       if (M === 'GET' && sub === 'stream') { const j = jobs.get(sid); if (!j) return json(res, 404, { error: 'not running' }); return attach(res, j, Math.max(0, Number(u.searchParams.get('from')) || 0)); }
+      if (M === 'POST' && sub === 'post') { const r = shares.post(sh, { id: mem.id, name: mem.name }, await bodyJson(req)); return json(res, r.code, r.data); }
+      if (M === 'POST' && sub === 'working') { const b = await bodyJson(req); const r = shares.working(sh, { id: mem.id, name: mem.name }, !!b.on); return json(res, r.code, r.data); }
+      if (M === 'POST' && sub === 'ask') { const b = await bodyJson(req); const r = String(b.to) === 'host' ? shares.submit(sh, mem, b.text) : shares.ask(sh, { id: mem.id, name: mem.name }, String(b.to), b.text); return json(res, r.code, r.data); }
+      if (M === 'POST' && sub === 'requests' && parts[3]) { const r = shares.memberDecides(sh, mem, parts[3], await bodyJson(req)); return json(res, r.code, r.data); }
       if (M === 'POST' && sub === 'send') {
         const b = await bodyJson(req), r = shares.submit(sh, mem, b.text);
         if (r.code !== 200) return json(res, r.code, r.data);
@@ -741,7 +759,7 @@ function start(opts) {
           if (ew) return json(res, 200, withWaiting(core.messagesOf(ew, tail)));
           const f = core.findSession(parts[1]);
           if (f && !visibleSession(core.summarize(f))) return json(res, 403, { error: 'outside the projects folder' });
-          return json(res, 200, withWaiting(core.messages(parts[1], tail)));
+          { const shx = shares.bySession(parts[1]); const list = withWaiting(core.messages(parts[1], tail)); return json(res, 200, shx ? shares.merge(shx, list) : list); }
         }
         if (parts[0] === 'sessions' && parts[2] === 'state') {   // is Claude working on this chat right now? (cheap: the phone asks every few seconds)
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set(), id = parts[1];
@@ -1115,6 +1133,8 @@ function start(opts) {
             res.end(JSON.stringify({ t: 'queued', to: targetFor(run) || 'your computer', online: !!isOnline(targetFor(run)) || (!String(run).startsWith('pc:') && !!laptopOnline()) }) + '\n' + JSON.stringify({ t: 'end' }) + '\n');
             return undefined;
           }
+          const shx = shares.bySession(parts[1]);
+          if (shx && b.text) b.text = shares.contextFor(shx) + String(b.text);   // what others did with their own Claude since the last time
           const r = startJob(b, parts[1]);
           if (r.error) return json(res, r.error, { error: r.message });
           return attach(res, r.job, 0);

@@ -28,13 +28,16 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
 
   // on start: prompts that were approved but not started go back in the line; ones that were running when the server stopped are marked
   for (const s of Object.values(st.shares)) for (const q of Object.values(s.requests)) {
-    if (q.status === 'approved') queue.push({ shareId: s.id, reqId: q.id });
+    if (q.status === 'approved' && toOf(q) === 'host') queue.push({ shareId: s.id, reqId: q.id });
     else if (q.status === 'running') { q.status = 'failed'; q.note = 'The server restarted while this ran.'; }
   }
 
-  const event = (s, q) => ({ kind: 'request', session: s.sid, title: s.title, cwd: s.cwd, req: q.id, from: q.name, text: `${q.name}: ${q.text}`.slice(0, 600), call: false, tool: '', input: { prompt: q.text } });
+  const event = (s, q) => ({ kind: 'request', session: s.sid, title: s.title, cwd: s.cwd, req: q.id, from: q.name, text: `${q.name}: ${q.text}`.slice(0, 600), call: false, tool: '', input: { prompt: q.text }, ...(q.to && q.to !== 'host' ? { forMember: q.to } : {}) });
+  const toOf = (q) => q.to || 'host';
   /** Waiting requests as notification events (so a client that missed the live event still sees them). */
-  const pendingEvents = () => { const out = []; for (const s of Object.values(st.shares)) for (const q of Object.values(s.requests)) if (q.status === 'pending' && !(s.members[q.mid] || {}).revoked) out.push({ ...event(s, q), ts: q.ts, id: 0 }); return out; };
+  const pendingEvents = () => { const out = []; for (const s of Object.values(st.shares)) for (const q of Object.values(s.requests)) if (q.status === 'pending' && toOf(q) === 'host' && !(s.members[q.mid] || {}).revoked) out.push({ ...event(s, q), ts: q.ts, id: 0 }); return out; };
+  /** Requests that wait for a friend's decision (the host asked to use their Claude). */
+  const incomingEvents = (s, mid) => Object.values(s.requests).filter((q) => q.status === 'pending' && toOf(q) === mid).map((q) => ({ ...event(s, q), ts: q.ts, id: 0 }));
   const findRequest = (reqId) => { for (const s of Object.values(st.shares)) if (s.requests[reqId]) return { s, q: s.requests[reqId] }; return null; };
   const hasRequest = (reqId) => !!findRequest(reqId);
 
@@ -43,7 +46,7 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
       const it = queue[i], s = get(it.shareId), q = s && s.requests[it.reqId];
       if (!q || q.status !== 'approved') { queue.splice(i, 1); continue; }
       if (busy(s.sid)) { i++; continue; }
-      const r = start({ sid: s.sid, cwd: s.cwd, text: `${q.name}: ${q.finalText}`, mode: q.mode, by: q.name, reqId: q.id, mid: q.mid });
+      const r = start({ sid: s.sid, cwd: s.cwd, text: contextFor(s) + `${q.name}: ${q.finalText}`, mode: q.mode, by: q.name, reqId: q.id, mid: q.mid });
       if (r && r.busy) { i++; continue; }
       queue.splice(i, 1);
       if (r && r.error) { q.status = 'failed'; q.note = clean(r.error, 200); } else q.status = 'running';
@@ -59,7 +62,7 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
     if (!s) { s = { id: rid(6), sid, cwd, title: clean(title, 120) || 'Shared chat', created: now(), members: {}, invites: {}, requests: {} }; st.shares[s.id] = s; save(); }
     return s;
   }
-  const view = (s) => ({ id: s.id, session: s.sid, title: s.title, members: live(s).map((m) => ({ id: m.id, name: m.name, joined: m.joined, grant: grantOf(m) })), pending: Object.values(s.requests).filter((q) => q.status === 'pending' && !(s.members[q.mid] || {}).revoked).length });
+  const view = (s) => ({ ...ownerInfo(s), id: s.id, session: s.sid, title: s.title, members: live(s).map((m) => ({ id: m.id, name: m.name, joined: m.joined, grant: grantOf(m) })), pending: Object.values(s.requests).filter((q) => q.status === 'pending' && !(s.members[q.mid] || {}).revoked).length });
   function invite(s, name) { const code = rid(16); s.invites[sha(code)] = { exp: now() + INVITE_MS, name: clean(name, 40) }; save(); return { invite: code, expires: now() + INVITE_MS }; }
   function setGrant(s, mid, g) { const m = s.members[mid]; if (!m || m.revoked) return fail(404, 'No such person.'); m.grant = { auto: !!(g && g.auto), mode: downgrade(g && g.mode) }; save(); return ok({ grant: grantOf(m) }); }
   function removeMember(s, mid) {
@@ -74,6 +77,7 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
   function decide(reqId, body) {
     const f = findRequest(reqId); if (!f) return fail(404, 'No such request.');
     const { s, q } = f;
+    if (toOf(q) !== 'host') return fail(403, 'Only ' + ((s.members[toOf(q)] || {}).name || 'that person') + ' can decide this.');
     if (q.status !== 'pending') return fail(409, 'Already decided.');
     const m = s.members[q.mid];
     if (!m || m.revoked) { q.status = 'denied'; q.note = 'Removed'; save(); return fail(409, 'That person was removed.'); }
@@ -121,9 +125,76 @@ function createShares({ dir, hostName, now = () => Date.now(), bypassOk = () => 
     save(); onEvent(event(s, q));
     return ok({ id: q.id, status: 'pending' });
   }
-  const guestInfo = (s, mem) => ({ host: hostName, role: 'guest', title: s.title, me: mem.id, myName: mem.name, grant: grantOf(mem),
-    requests: Object.values(s.requests).filter((q) => q.mid === mem.id).sort((a, b) => b.ts - a.ts).slice(0, 8).map((q) => ({ id: q.id, text: q.text.slice(0, 200), status: q.status, ts: q.ts, edited: !!q.edited, note: q.note || '' })) });
+  const reqView = (q, s) => ({ id: q.id, text: q.text.slice(0, 600), finalText: q.finalText, status: q.status, ts: q.ts, edited: !!q.edited, note: q.note || '', from: q.mid, fromName: q.name, to: toOf(q), toName: toOf(q) === 'host' ? hostName : (s.members[toOf(q)] || {}).name || '?', mode: q.mode || null });
+  const people = (s, exceptId) => [{ id: 'host', name: hostName }, ...live(s).map((m) => ({ id: m.id, name: m.name }))].filter((p) => p.id !== exceptId);
+  const guestInfo = (s, mem) => ({ host: hostName, role: 'guest', title: s.title, me: mem.id, myName: mem.name, grant: grantOf(mem), people: people(s, mem.id),
+    requests: Object.values(s.requests).filter((q) => q.mid === mem.id).sort((a, b) => b.ts - a.ts).slice(0, 8).map((q) => reqView(q, s)),
+    incoming: Object.values(s.requests).filter((q) => toOf(q) === mem.id && (q.status === 'pending' || q.status === 'approved')).sort((a, b) => a.ts - b.ts).map((q) => reqView(q, s)) });
+  const ownerInfo = (s) => ({ people: people(s, 'host'), requests: Object.values(s.requests).filter((q) => q.mid === 'host').sort((a, b) => b.ts - a.ts).slice(0, 8).map((q) => reqView(q, s)) });
+
+  /** Asks a person for THEIR Claude: the host asks a friend, or a friend asks another friend. (A friend asking the host goes through submit.) */
+  function ask(s, from, toId, text0) {
+    const to = s.members[toId]; if (!to || to.revoked) return fail(404, 'No such person in this chat.');
+    if (toId === from.id) return fail(400, 'That is your own Claude.');
+    const text = clean(text0, MAX_TEXT).trim(); if (!text) return fail(400, 'Empty message.');
+    const mine = Object.values(s.requests).filter((q) => q.mid === from.id);
+    if (mine.filter((q) => q.status === 'pending').length >= MAX_PENDING) return fail(429, 'You have too many prompts waiting.');
+    if (mine.some((q) => now() - q.ts < 1500)) return fail(429, 'Slow down a little.');
+    const q = { id: rid(5), mid: from.id, name: from.name, to: toId, text, ts: now(), status: 'pending' };
+    s.requests[q.id] = q; save(); onEvent(event(s, q));
+    return ok({ id: q.id, status: 'pending' });
+  }
+  /** The person who was asked decides: approve (maybe with a changed prompt), deny, or report that their own Claude finished (done / failed). */
+  function memberDecides(s, mem, reqId, body) {
+    const q = s.requests[reqId]; if (!q || toOf(q) !== mem.id) return fail(404, 'No such request.');
+    if (body.decision === 'done' || body.decision === 'failed') { if (q.status !== 'approved') return fail(409, 'Not running.'); q.status = body.decision; q.note = clean(body.note, 200); save(); return ok({ ok: true }); }
+    if (q.status !== 'pending') return fail(409, 'Already decided.');
+    if (body.decision === 'deny') { q.status = 'denied'; q.note = clean(body.note, 200); save(); onEvent({ kind: 'resolved', req: q.id, session: s.sid, forMember: mem.id }); return ok({ ok: true }); }
+    if (body.decision !== 'approve') return fail(400, 'decision must be approve, deny, done or failed');
+    const text = clean(body.text == null ? q.text : body.text, MAX_TEXT).trim(); if (!text) return fail(400, 'Empty prompt.');
+    q.status = 'approved'; q.finalText = text; q.edited = text !== q.text; q.mode = MODES.includes(body.mode) ? body.mode : 'plan';
+    save(); onEvent({ kind: 'resolved', req: q.id, session: s.sid, forMember: mem.id }); return ok({ ok: true, text, mode: q.mode, from: q.name });
+  }
+
+  // ───────── what people's OWN Claude says in the chat ─────────
+  // Their prompts and answers run on their own server and account; here they are kept as extra messages that every view of the chat shows between the real ones.
+  const WORK_TTL = 8 * 60e3;
+  function post(s, who, body) {   // who: { id, name } (the host is id 'host')
+    const role = body.role === 'assistant' ? 'assistant' : 'user', text = clean(body.text, MAX_TEXT).trim(); if (!text) return fail(400, 'Empty message.');
+    let name = who.name, via = '';
+    if (body.req) {   // answering a request: the prompt is the asker's, the answer comes from this person's Claude
+      const q = s.requests[body.req];
+      if (!q || toOf(q) !== who.id || q.status !== 'approved') return fail(403, 'That request is not yours to run.');
+      if (role === 'user') name = q.name; else { name = `${who.name}'s Claude`; via = ' for ' + q.name; }
+    } else if (role === 'assistant') name = `${who.name}'s Claude`;
+    s.log = s.log || []; s.logSeq = (s.logSeq || 0) + 1;
+    s.log.push({ n: s.logSeq, ts: now(), role, name: name + via, text, by: who.id }); if (s.log.length > 400) s.log.splice(0, s.log.length - 400);
+    save(); return ok({ n: s.logSeq });
+  }
+  function working(s, who, on) {
+    s.working = s.working || {};
+    if (on) s.working[who.id] = { name: `${who.name}'s Claude`, since: now() }; else delete s.working[who.id];
+    return ok({ ok: true });
+  }
+  const workers = (s) => { for (const [k, w] of Object.entries(s.working || {})) if (now() - w.since > WORK_TTL) delete s.working[k]; return Object.values(s.working || {}).map((w) => w.name); };
+  /** The chat as everyone sees it: the real messages, with the others' own-Claude messages in their place by time, and who is working now. */
+  function merge(s, list) {
+    const out = list.slice(), extra = (s.log || []).filter((e) => !list.length || e.ts >= (list[0].ts || 0) - 60000);
+    for (const e of extra) {
+      let at = out.length; while (at > 0 && (out[at - 1].ts || 0) > e.ts) at--;
+      out.splice(at, 0, { role: e.role, text: e.text, name: e.name, ts: e.ts, own: true });
+    }
+    for (const w of workers(s)) out.push({ role: 'meta', text: `${w} is working…`, ts: now() });
+    return out;
+  }
+  /** What the host's own Claude has not heard yet: what others did with their own accounts. Marks it as heard. */
+  function contextFor(s) {
+    const seen = s.hostSeen || 0, items = (s.log || []).filter((e) => e.n > seen).slice(-30);
+    if (!items.length) return '';
+    s.hostSeen = items[items.length - 1].n; save();
+    return '[In this shared chat, others used their own Claude since your last turn:\n' + items.map((e) => `${e.name}: ${e.text}`).join('\n') + ']\n\n';
+  }
   /** Who started the run that is going on in a chat (for the Stop button of a guest): the name given when it was started. */
-  return { get, bySession, ensure, view, invite, setGrant, removeMember, unshare, decide, join, guestFor, submit, guestInfo, pendingEvents, hasRequest, jobDone, pump, state: () => st, save, live };
+  return { get, bySession, ensure, view, invite, setGrant, removeMember, unshare, decide, join, guestFor, submit, guestInfo, pendingEvents, incomingEvents, hasRequest, jobDone, pump, ask, memberDecides, post, working, merge, contextFor, ownerInfo, state: () => st, save, live };
 }
 module.exports = { createShares, MODES };

@@ -728,3 +728,5 @@ body { background:
 /* shared chats */
 .shstatus { display: flex; flex-direction: column; gap: 2px; padding: 0 26px; }
 .shreq.pending { color: var(--clay); } .shreq.denied, .shreq.failed { color: var(--muted); text-decoration: none; }
+
+.shin { padding: 0 24px; display: flex; flex-direction: column; gap: 8px; } .shin:empty { display: none; }
