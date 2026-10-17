@@ -48,10 +48,10 @@ function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
   return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s) },
     h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, h('span', { class: 'ellip' }, s.title)),
-    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared >= 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
+    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
-const groupKey = (s) => (s.guest || s.shared >= 0 ? 'Shared' : s.talk ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
+const groupKey = (s) => (s.guest || s.shared > 0 ? 'Shared' : s.talk ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
 /** The projects as tabs along the top, and the chats of the open project in the column beside the chat. Searching looks through every project. */
 function drawSide() {
   const side = SS.side;

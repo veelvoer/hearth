@@ -188,7 +188,7 @@ fun ShareDialog(m: Machine, sid: String, title: String, onClose: () -> Unit) {
         title = { Txt("Share “$title”", T.h2) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Txt("People you invite open this chat like any other. What they send is not run at once: you get a notification, can change it, and run it on your account, or deny it. Or give someone full permission.", T.small, muted = true)
+                Txt("Friends open this chat like any other. What they send waits for your OK, unless you give someone full permission.", T.small, muted = true)
                 err?.let { Txt(it, T.small, color = MaterialTheme.colorScheme.error) }
                 val i = info
                 if (i == null) { if (err == null) Txt("Loading…", T.small, muted = true); return@Column }
@@ -217,7 +217,7 @@ fun ShareDialog(m: Machine, sid: String, title: String, onClose: () -> Unit) {
                 TextAction("Close", onClose)
             }
         },
-        dismissButton = { if (info != null) TextAction("Stop sharing") { val i = info ?: return@TextAction; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.unshare(m, i.id) } }.onSuccess { onClose() }.onFailure { err = it.message } } } },
+        dismissButton = { if (info != null && info!!.members.isNotEmpty()) TextAction("Stop sharing") { val i = info ?: return@TextAction; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.unshare(m, i.id) } }.onSuccess { onClose() }.onFailure { err = it.message } } } },
     )
 }
 

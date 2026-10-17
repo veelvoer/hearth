@@ -171,19 +171,23 @@ function drawWeekPlan() {
   const cum = (list, k) => list.slice(0, k).reduce((a, d) => a + d.planned, 0);
 
   function paint(list, dragging) {
-    let at = 0;
+    let at = 0; const centres = [];
     list.forEach((d, k) => {
       const e = segs[k], w = Math.max(0, d.planned);
       e.style.left = at + '%'; e.style.width = w + '%';
       e.className = 'wpseg ' + d.state + (d.fixed ? ' fixed' : '');
       e.firstChild.style.width = (w > 0 ? Math.min(100, d.used / w * 100) : 0) + '%';
       e.title = `${WD_FULL[d.wd]}: ${d.used}% used, planned ${d.planned}%` + (d.fixed ? ' (pinned)' : ' (shared evenly)');
-      const L = labels[k]; L.disabled = d.state === 'past';
+      const L = labels[k]; L.disabled = d.state === 'past'; L.style.left = (at + w / 2) + '%'; centres[k] = at + w / 2;
       L.className = 'wplabel ' + d.state + (WP.sel === d.wd ? ' sel' : '');
       L.replaceChildren(h('span', { class: 'wpn' }, d.name, d.fixed ? h('b', {}, '•') : null), h('span', { class: 'wpv' }, (d.state === 'past' ? d.used : d.planned) + '%'));
       if (knobs[k]) { knobs[k].style.left = (at + w) + '%'; knobs[k].className = 'wpknob' + (d.fixed ? ' fixed' : '') + (dragging === k ? ' drag' : ''); }
       at += w;
     });
+    // every day keeps its label under its own piece of the bar; labels that would touch step down to the next line
+    const gap = 46 / Math.max(120, track.clientWidth) * 100, last = [-1e9, -1e9, -1e9]; let rows = 1;
+    centres.forEach((c, k) => { let r = 0; while (r < 2 && c - last[r] < gap) r++; last[r] = c; labels[k].style.top = r * 40 + 'px'; rows = Math.max(rows, r + 1); });
+    names.style.height = (44 + (rows - 1) * 40) + 'px';
     const g = live || p;
     note.textContent = [`${p.left}% left` + (g.autoDays ? ` · the ${g.autoDays} day${g.autoDays > 1 ? 's' : ''} without a pin share it evenly, ${g.autoEach}% each` : ''),
       g.over ? 'Your pins are more than what is left, so they are scaled down' : g.leftover > 0 ? `${g.leftover}% is not planned on any day` : '', p.unknown ? `${p.unknown}% was used before Hearth started watching this week` : ''].filter(Boolean).join('. ') + '.';

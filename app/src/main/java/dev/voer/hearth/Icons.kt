@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -40,6 +42,20 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
             "voice" -> { line(4f, 10f, 4f, 14f); line(8f, 6f, 8f, 18f); line(12f, 3f, 12f, 21f); line(16f, 7f, 16f, 17f); line(20f, 10f, 20f, 14f) }
             "clock" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); line(12f, 7f, 12f, 12f); line(12f, 12f, 15.5f, 14f) }
             "widget" -> { drawRoundRect(color, Offset(3 * u, 3 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(14 * u, 3 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(3 * u, 14 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(14 * u, 14 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st) }
+            "share" -> { drawCircle(color, 2.6f * u, Offset(18 * u, 5.5f * u), style = st); drawCircle(color, 2.6f * u, Offset(6 * u, 12 * u), style = st); drawCircle(color, 2.6f * u, Offset(18 * u, 18.5f * u), style = st); line(8.3f, 10.8f, 15.7f, 6.7f); line(8.3f, 13.2f, 15.7f, 17.3f) }
+            "sliders" -> { line(4f, 7f, 20f, 7f); line(4f, 17f, 20f, 17f); drawCircle(color, 2.4f * u, Offset(9 * u, 7 * u), style = st); drawCircle(color, 2.4f * u, Offset(15 * u, 17 * u), style = st) }
+            "trash" -> { line(4f, 7f, 20f, 7f); line(9f, 7f, 9f, 4f); line(9f, 4f, 15f, 4f); line(15f, 4f, 15f, 7f); line(6f, 7f, 7f, 20f); line(7f, 20f, 17f, 20f); line(17f, 20f, 18f, 7f) }
+            "plus" -> { line(12f, 5f, 12f, 19f); line(5f, 12f, 19f, 12f) }
+            "x" -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
+            "check" -> { val p = Path().apply { moveTo(5 * u, 12.5f * u); lineTo(10 * u, 17.5f * u); lineTo(19 * u, 7 * u) }; drawPath(p, color, style = st) }
+            "back" -> { val p = Path().apply { moveTo(15 * u, 5 * u); lineTo(8 * u, 12 * u); lineTo(15 * u, 19 * u) }; drawPath(p, color, style = st) }
+            "mail" -> { drawRoundRect(color, Offset(3 * u, 5 * u), Size(18 * u, 14 * u), CornerRadius(2.5f * u), style = st); val p = Path().apply { moveTo(3.5f * u, 7.5f * u); lineTo(12 * u, 13.5f * u); lineTo(20.5f * u, 7.5f * u) }; drawPath(p, color, style = st) }
+            "copy" -> { drawRoundRect(color, Offset(8.5f * u, 8.5f * u), Size(11.5f * u, 11.5f * u), CornerRadius(2f * u), style = st); val p = Path().apply { moveTo(4.5f * u, 15.5f * u); lineTo(4.5f * u, 5.5f * u); cubicTo(4.5f * u, 4.5f * u, 5 * u, 4 * u, 6 * u, 4 * u); lineTo(15.5f * u, 4 * u) }; drawPath(p, color, style = st) }
+            "clip" -> { val p = Path().apply { moveTo(8 * u, 14 * u); lineTo(14.5f * u, 7.5f * u); cubicTo(16 * u, 6 * u, 18.5f * u, 8.5f * u, 17 * u, 10 * u); lineTo(9.5f * u, 17.5f * u); cubicTo(7 * u, 20 * u, 3.5f * u, 16.5f * u, 6 * u, 14 * u); lineTo(12.5f * u, 7.5f * u) }; drawPath(p, color, style = st) }
+            "people" -> { drawCircle(color, 3.2f * u, Offset(9 * u, 8 * u), style = st); val p = Path().apply { moveTo(3 * u, 19 * u); cubicTo(3 * u, 13 * u, 15 * u, 13 * u, 15 * u, 19 * u) }; drawPath(p, color, style = st); drawCircle(color, 2.6f * u, Offset(17 * u, 8.5f * u), style = st); val q = Path().apply { moveTo(17 * u, 13.5f * u); cubicTo(20 * u, 13.5f * u, 21 * u, 16 * u, 21 * u, 18.5f * u) }; drawPath(q, color, style = st) }
+            "play" -> { val p = Path().apply { moveTo(8 * u, 5 * u); lineTo(19 * u, 12 * u); lineTo(8 * u, 19 * u); close() }; drawPath(p, color, style = st) }
+            "download" -> { line(12f, 4f, 12f, 15f); val p = Path().apply { moveTo(7 * u, 11 * u); lineTo(12 * u, 16 * u); lineTo(17 * u, 11 * u) }; drawPath(p, color, style = st); line(5f, 20f, 19f, 20f) }
+            "lock" -> { drawRoundRect(color, Offset(5 * u, 11 * u), Size(14 * u, 9 * u), CornerRadius(2f * u), style = st); val p = Path().apply { moveTo(8 * u, 11 * u); lineTo(8 * u, 8 * u); cubicTo(8 * u, 3 * u, 16 * u, 3 * u, 16 * u, 8 * u); lineTo(16 * u, 11 * u) }; drawPath(p, color, style = st) }
             else -> drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st)
         }
     }
@@ -62,3 +78,14 @@ fun Head(icon: String, title: String, tip: String? = null, modifier: Modifier = 
         if (tip != null) InfoDot(title, tip)
         trailing()
     }
+
+/** A button that is only an icon (header actions). Tap target is 40dp. */
+@Composable
+fun IconAction(glyph: String, desc: String, onClick: () -> Unit) =
+    Box(Modifier.size(40.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick).semantics { contentDescription = desc }, contentAlignment = Alignment.Center) { Glyph(glyph, 22.dp, MaterialTheme.colorScheme.primary) }
+
+/** The familiar icon that goes with a one-word button. */
+val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
+    "Check for updates" to "sync", "Check again" to "sync", "Test call" to "phone", "Cancel" to "x", "Close" to "x", "Not now" to "x", "Got it" to "check", "Back" to "back", "Tour" to "tour",
+    "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
+    "Make invite link" to "share", "Share link" to "share", "Stop sharing" to "trash", "Join" to "people", "Save" to "check", "Install" to "download", "Continue" to "play", "Setup" to "widget", "Background access" to "clock", "Full-screen calls" to "phone")

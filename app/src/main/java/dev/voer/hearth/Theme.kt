@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -202,15 +203,21 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     val ink by androidx.compose.animation.animateColorAsState(if (selected) cs.onPrimary else cs.onSurface, androidx.compose.animation.core.tween(220), label = "chipink")
     val solid by androidx.compose.animation.animateColorAsState(if (selected && group == null) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
     Box(
-        Modifier.pressable(onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c.boundsInRoot()) }
+        Modifier.pressable(onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c, c.size.width.toFloat(), c.size.height.toFloat()) }
             .clip(shape).background(solid).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) { Txt(text, T.small, color = ink) }
 }
 
 /** The selected chip's highlight is one shape that glides to the next chip; the chips themselves never move. */
-class ChipGroupState { var origin by mutableStateOf(Offset.Zero); var sel by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
-    fun select(r: androidx.compose.ui.geometry.Rect) { if (sel != r) sel = r } }
+class ChipGroupState { var coords: androidx.compose.ui.layout.LayoutCoordinates? = null; var sel by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+    /** Where the chip is inside the row's own content, so scrolling the row never moves the highlight on its own. */
+    fun select(chip: androidx.compose.ui.layout.LayoutCoordinates, w: Float, h: Float) {
+        val o = coords
+        val at = if (o != null && o.isAttached && chip.isAttached) o.localPositionOf(chip, Offset.Zero) else chip.positionInParent()
+        val r = androidx.compose.ui.geometry.Rect(at.x, at.y, at.x + w, at.y + h)
+        if (sel != r) sel = r
+    } }
 val LocalChipGroup = androidx.compose.runtime.compositionLocalOf<ChipGroupState?> { null }
 
 @Composable
@@ -218,16 +225,16 @@ fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Ho
     val st = remember { ChipGroupState() }
     val primary = MaterialTheme.colorScheme.primary
     androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides st) {
-        Box(modifier.onGloballyPositioned { st.origin = it.boundsInRoot().topLeft }) {
+        Box(modifier) { Box(Modifier.onGloballyPositioned { st.coords = it }) {
             val r = st.sel
             if (r != null) {
                 val spec = androidx.compose.animation.core.tween<Float>(380, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                val x by animateFloatAsState(r.left - st.origin.x, spec, label = "hlx"); val y by animateFloatAsState(r.top - st.origin.y, spec, label = "hly")
+                val x by animateFloatAsState(r.left, spec, label = "hlx"); val y by animateFloatAsState(r.top, spec, label = "hly")
                 val w by animateFloatAsState(r.width, spec, label = "hlw"); val hh by animateFloatAsState(r.height, spec, label = "hlh")
                 Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), y.roundToInt()) }.size(with(LocalDensity.current) { w.toDp() }, with(LocalDensity.current) { hh.toDp() }).clip(RoundedCornerShape(50)).background(primary))
             }
             Row(horizontalArrangement = horizontalArrangement, content = content)
-        }
+        } }
     }
 }
 
@@ -237,10 +244,14 @@ fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier.pressable(onClick).clip(RoundedCornerShape(14.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
-    ) { Txt(text, T.body.copy(fontWeight = FontWeight.Medium), color = cs.onPrimary) }
+    ) { val ic = ACTION_ICONS[text]; Row(verticalAlignment = Alignment.CenterVertically) { if (ic != null) { Glyph(ic, 18.dp, cs.onPrimary); Spacer(Modifier.width(8.dp)) }; Txt(text, T.body.copy(fontWeight = FontWeight.Medium), color = cs.onPrimary) } }
 }
 
 @Composable
-fun TextAction(text: String, onClick: () -> Unit) =
-    Txt(text, T.small.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 6.dp))
+fun TextAction(text: String, onClick: () -> Unit) {
+    val ic = ACTION_ICONS[text]; val col = MaterialTheme.colorScheme.primary
+    Row(Modifier.clickable(onClick = onClick).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (ic != null) { Glyph(ic, 16.dp, col); Spacer(Modifier.width(5.dp)) }
+        Txt(text, T.small.copy(fontWeight = FontWeight.Medium), color = col)
+    }
+}

@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -201,13 +202,25 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
     val days = res.days
     val dens = LocalDensity.current
     val baseDays by rememberUpdatedState(base.days)
+    var wPx by remember { mutableFloatStateOf(0f) }
+    // every day keeps its label under its own piece of the bar; labels that would touch step down to the next line
+    val rows = remember(days.map { it.planned }, wPx) {
+        val gap = with(dens) { 46.dp.toPx() }; val last = floatArrayOf(-1e9f, -1e9f, -1e9f); var at = 0.0
+        days.map { d -> val c = ((at + d.planned / 2) / 100.0 * wPx).toFloat(); at += d.planned; var r = 0; while (r < 2 && c - last[r] < gap) r++; last[r] = c; r }
+    }
+    val rowH = 34.dp
+    val rowsAt by rememberUpdatedState(rows)
     val txt = cs.onSurfaceVariant; val ink = cs.onSurface
     Column {
-        Canvas(Modifier.fillMaxWidth().height(110.dp)
+        Canvas(Modifier.fillMaxWidth().height(110.dp + rowH * ((rows.maxOrNull() ?: 0))).onSizeChanged { wPx = it.width.toFloat() }
             .pointerInput(p) {
                 detectTapGestures { pos ->
                     val w = size.width.toFloat(); val pct = pos.x / w * 100f
-                    if (pos.y > 70.dp.toPx()) { val d = baseDays.getOrNull((pos.x / w * baseDays.size).toInt().coerceIn(0, baseDays.size - 1)); if (d != null && d.state != "past") onTap(d); return@detectTapGestures }
+                    if (pos.y > 70.dp.toPx()) {
+                        val row = ((pos.y - 70.dp.toPx()) / rowH.toPx()).toInt().coerceIn(0, 2); var a2 = 0.0; var best: PlanDay? = null; var bd = Float.MAX_VALUE
+                        baseDays.forEachIndexed { i, d -> val cx = ((a2 + d.planned / 2) / 100.0 * w).toFloat(); a2 += d.planned; if (rowsAt.getOrNull(i) == row && kotlin.math.abs(pos.x - cx) < bd) { bd = kotlin.math.abs(pos.x - cx); best = d } }
+                        best?.let { if (it.state != "past") onTap(it) }; return@detectTapGestures
+                    }
                     var at = 0.0
                     baseDays.forEach { d -> if (pct >= at && pct < at + d.planned) { if (d.state != "past") onTap(d); return@detectTapGestures }; at += d.planned }
                 }
@@ -256,12 +269,12 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
             days.forEachIndexed { i, d ->
                 val x0 = (at / 100.0 * w).toFloat(); val sw = (d.planned / 100.0 * w).toFloat()
                 run {
-                    val cx = (i + .5f) * w / days.size
+                    val cx = x0 + sw / 2; val ly = rows.getOrElse(i) { 0 } * rowH.toPx()
                     paint.textSize = 11.sp.toPx(); paint.color = argb(if (d.state == "today") cs.primary else txt); paint.isFakeBoldText = d.state == "today"
-                    drawContext.canvas.nativeCanvas.drawText(d.name + if (d.fixed) "•" else "", cx, top + hh + 16.dp.toPx(), paint)
+                    drawContext.canvas.nativeCanvas.drawText(d.name + if (d.fixed) "•" else "", cx, top + hh + 16.dp.toPx() + ly, paint)
                     paint.color = argb(ink); paint.isFakeBoldText = true
                     val v = if (d.state == "past") d.used else d.planned
-                    drawContext.canvas.nativeCanvas.drawText((if (v >= 10 || v == 0.0) v.toInt().toString() else v.toString()) + "%", cx, top + hh + 31.dp.toPx(), paint)
+                    drawContext.canvas.nativeCanvas.drawText((if (v >= 10 || v == 0.0) v.toInt().toString() else v.toString()) + "%", cx, top + hh + 31.dp.toPx() + ly, paint)
                 }
                 at += d.planned
                 if (i < days.size - 1 && d.state != "past") {

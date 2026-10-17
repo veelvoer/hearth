@@ -224,9 +224,9 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             .groupBy { (mm, s) -> if (mm.guest) mm.share + ":" + s.id else s.id }.values.map { g ->
                 g.firstOrNull { (mm, _) -> mm === hub } ?: g.reduce { a, b -> if (a.second.running != b.second.running) (if (a.second.running) a else b) else if (b.second.mtime > a.second.mtime + 2500) b else a }
             }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
-            .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared >= 0) else onlyWorking || !(mm.guest || s.shared >= 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
+            .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt(if (onlyWorking) "Nothing is running right now." else if (onlyShared) "No shared chats yet." else "No chats yet. Tap + to start one.", T.small, muted = true)
-        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared >= 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
+        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
     }
     }
 }
@@ -645,10 +645,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Txt(listOf(if (guest) "Shared by ${m.label}" else if (sess.kind == "talk") "Talk" else folder(sess.cwd), if (guest) null else m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
                 }
             }
-            if (sess.id.isNotEmpty() && sharedChat) { TextAction("Options") { optionsOpen = true }; Spacer(Modifier.width(16.dp)) }
-            if (sess.id.isNotEmpty() && !guest) { TextAction("Share") { shareOpen = true }; Spacer(Modifier.width(16.dp)) }
-            if (sess.id.isNotEmpty() && !guest) { TextAction("Talk") { voice = true }; Spacer(Modifier.width(16.dp)) }
-            if (!guest) { TextAction(if (options) "Done" else "Options") { options = !options }; Spacer(Modifier.width(16.dp)) }
+            if (sess.id.isNotEmpty() && sharedChat) { IconAction("people", "Shared chat settings") { optionsOpen = true } }
+            if (sess.id.isNotEmpty() && !guest) { IconAction("share", "Share") { shareOpen = true } }
+            if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk") { voice = true } }
+            if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options") { options = !options } }
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Label("How much can Claude do on its own?")
