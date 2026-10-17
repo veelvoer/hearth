@@ -214,7 +214,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             return@Screen
         }
         Field(query, { query = it }, "Search chats")
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared) { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking) { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared) { onlyShared = true; onlyWorking = false }; Chip("Join a shared chat ›", false) { join() } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared) { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking) { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared) { onlyShared = true; onlyWorking = false }; Chip("Join chat ›", false) { join() } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't be reached right now. It will reconnect on its own.", T.small, muted = true)
@@ -225,7 +225,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
                 g.firstOrNull { (mm, _) -> mm === hub } ?: g.reduce { a, b -> if (a.second.running != b.second.running) (if (a.second.running) a else b) else if (b.second.mtime > a.second.mtime + 2500) b else a }
             }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared >= 0) else onlyWorking || !(mm.guest || s.shared >= 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
-        if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt("No sessions yet. Tap New session to start one.", T.small, muted = true)
+        if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt(if (onlyWorking) "Nothing is running right now." else if (onlyShared) "No shared chats yet." else "No chats yet. Tap + to start one.", T.small, muted = true)
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared >= 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
     }
     }
@@ -649,7 +649,6 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (sess.id.isNotEmpty() && !guest) { TextAction("Share") { shareOpen = true }; Spacer(Modifier.width(16.dp)) }
             if (sess.id.isNotEmpty() && !guest) { TextAction("Talk") { voice = true }; Spacer(Modifier.width(16.dp)) }
             if (!guest) { TextAction(if (options) "Done" else "Options") { options = !options }; Spacer(Modifier.width(16.dp)) }
-            TextAction("Close", back)
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Label("How much can Claude do on its own?")
@@ -702,7 +701,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err) else MarkdownText(p.text) }
             queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
             if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }
-            if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant") item {
+            if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip("Open a PR", false) { input = "Open a pull request with these changes."; send() }
                     Chip("Show diff", false) { input = "Show me the diff of what you changed."; send() }
@@ -740,7 +739,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!guest) TextAction("Attach") { pick.launch("*/*") }
-                Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty()) "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
+                Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty() && sess.kind != "talk") "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
                 Box(Modifier.size(38.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
                     Txt(if (stop) "■" else if (sending) "…" else "↑", T.body.copy(fontWeight = FontWeight.Bold), color = cs.onPrimary)
@@ -794,7 +793,8 @@ private fun AskCard(m: Machine, a: CallEvent, done: () -> Unit) {
         if (a.kind == "limit") {
             Label("Usage limit reached")
             Txt(a.text, T.small, muted = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) { Button("Continue when my usage is back") { decide("continue") }; TextAction("Not now") { decide("skip") } }
+            Button("Continue when it's back", Modifier.fillMaxWidth()) { decide("continue") }
+            TextAction("Not now") { decide("skip") }
         } else         if (a.kind == "permission") {
             Label("Claude needs your OK")
             Txt(a.text, T.small.copy(fontFamily = FontFamily.Monospace))

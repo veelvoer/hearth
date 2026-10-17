@@ -602,7 +602,7 @@ private fun pin(c: Context, s: Shape) {
 @Composable
 fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Txt(label, T.body); if (sub != null) Txt(sub, T.small, muted = true) }
+        Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt(label, T.body); if (sub != null) Txt(sub, T.small, muted = true) }
         trailing()
     }
 
@@ -674,12 +674,12 @@ private fun PermissionsCard() {
         val v = o
         if (v == null) { Txt(msg, T.small, muted = true); return@Card }
         if (v.outsideAvailable) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Work outside the projects folder", T.body); Txt("Browse the whole server and start a chat in any folder.", T.small, muted = true) }; Switch(v.outside, { save(org.json.JSONObject().put("outside", it)) }) }
+            Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt("Work outside the projects folder", T.body); Txt("Browse the whole server and start a chat in any folder.", T.small, muted = true) }; Switch(v.outside, { save(org.json.JSONObject().put("outside", it)) }) }
             Spacer(Modifier.height(10.dp))
         }
-        Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Allow Full auto", T.body); Txt(if (v.bypassFixed) "Always on for this server." else "Claude may run anything in a chat set to Full auto, without asking.", T.small, muted = true) }; if (!v.bypassFixed) Switch(v.bypass, { save(org.json.JSONObject().put("bypass", it)) }) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt("Allow Full auto", T.body); Txt(if (v.bypassFixed) "Always on for this server." else "Claude may run anything in a chat set to Full auto, without asking.", T.small, muted = true) }; if (!v.bypassFixed) Switch(v.bypass, { save(org.json.JSONObject().put("bypass", it)) }) }
         Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Txt("Allow chats with root rights", T.body); Txt("A chat can run as root through sudo, and Claude is told it is root.", T.small, muted = true) }; Switch(v.root, { save(org.json.JSONObject().put("root", it)) }) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt("Allow chats with root rights", T.body); Txt("A chat can run as root through sudo, and Claude is told it is root.", T.small, muted = true) }; Switch(v.root, { save(org.json.JSONObject().put("root", it)) }) }
         if (v.root && !v.rootOk) { Spacer(Modifier.height(6.dp)); Txt("Not possible yet: " + v.rootWhy, T.small, color = MaterialTheme.colorScheme.error) }
         if (v.root && v.rootOk) { Spacer(Modifier.height(6.dp)); Txt("Ready. Friends' prompts in shared chats never run as root.", T.small, muted = true) }
         if (v.root) TextAction("Check again") { save(org.json.JSONObject().put("recheck", true)) }
@@ -720,7 +720,7 @@ private fun MemoryCard() {
         if (i == null) { Txt(msg, T.small, muted = true); return@Card }
         val cur = picked ?: i.pct
         ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(25 to "25%", 50 to "50%", 75 to "75% (default)", 90 to "90%", 0 to "No limit").forEach { (v, l) -> Chip(l, cur == v) { picked = v } }
+            listOf(25 to "25%", 50 to "50%", 75 to "75%", 90 to "90%", 0 to "No limit").forEach { (v, l) -> Chip(l, cur == v) { picked = v } }
         }
         Spacer(Modifier.height(8.dp))
         val want = if (cur == 0) null else maxOf(256, minOf(i.availableMb * cur / 100, (i.totalMb * 0.9).toInt()))
@@ -769,7 +769,7 @@ fun SettingsScreen() {
             Head("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.")
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
-            Row2("Stay connected to Claude", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat.") {
+            Row2("Stay connected to Claude", "Messages when Claude finishes or needs you, even with the app closed.") {
                 Switch(callMe, {
                     callMe = it; Store.setCallMe(c, it); ask()
                     if (it) CallService.sync(c) else CallService.turnOff(c)
@@ -777,14 +777,16 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                TextAction("Allow background activity") {
+                TextAction("Background access") {
                     runCatching { c.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + c.packageName))) }
                 }
+                }
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 TextAction("Test call") {
                     Calls.ring(c, Store.machines(c).firstOrNull() ?: Machine("test", "", 47601, ""),
                         CallEvent(System.currentTimeMillis(), "permission", "", "Test session", "", "Bash: npm test", 0, "", "test"))
                 }
-                if (Build.VERSION.SDK_INT >= 34) TextAction("Allow full-screen calls") {
+                if (Build.VERSION.SDK_INT >= 34) TextAction("Full-screen calls") {
                     c.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + c.packageName)))
                 }
             }
@@ -859,6 +861,7 @@ fun SettingsScreen() {
                     }, { "${m.name} unreachable" })
                 }
             }
+            Txt("Speech engine", T.body)
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("auto" to "Auto", "phone" to "This phone").forEach { (v, l) -> Chip(l, engine == v) { engine = v; Store.setVoiceEngine(c, v) } }
             }
@@ -895,7 +898,7 @@ fun SettingsScreen() {
             Spacer(Modifier.height(10.dp))
             val warn = RoundedCornerShape(12.dp)
             Column(Modifier.fillMaxWidth().clip(warn).background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)).border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .35f), warn).padding(12.dp)) {
-                Txt("If support does not work from here, write an email yourself to hearth.support1@gmail.com. Say what you did and what you saw.", T.small)
+                Txt("No reply? Email hearth.support1@gmail.com and say what you did and saw.", T.small)
                 Spacer(Modifier.height(6.dp))
                 TextAction("Write an email") { runCatching { c.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:hearth.support1@gmail.com"))) } }
             }

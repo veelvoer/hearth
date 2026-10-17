@@ -169,8 +169,8 @@ object Relay {
     fun syncText(m: Machine): String {
         val o = JSONObject(getJson(m, "/sync/status"))
         val parts = ArrayList<String>()
-        if (o.has("chats")) parts += "${o.optInt("chats")} chats"
-        o.optJSONObject("files")?.let { f -> if (f.has("count")) parts += "${f.optInt("count")} project files" }
+        if (o.has("chats")) parts += o.optInt("chats").let { n -> "$n chat" + if (n == 1) "" else "s" }
+        o.optJSONObject("files")?.let { f -> if (f.has("count")) parts += f.optInt("count").let { n -> "$n project file" + if (n == 1) "" else "s" } }
         val pcs = o.optJSONArray("computers")
         if (pcs != null && pcs.length() > 0) parts += (0 until pcs.length()).joinToString(", ") { i -> pcs.getJSONObject(i).let { c -> c.optString("name") + if (c.optBoolean("online")) " online" else " offline" } }
         return if (parts.isEmpty()) "Nothing is synced here yet" else parts.joinToString(" · ")

@@ -566,15 +566,15 @@ function start(opts) {
   }
   function onLimit(job) {
     const sid = job.sid, base = baseFor(sid, job.cwd), at = limitResetAt(job);
-    const when = new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    const d0 = new Date(at), when = d0.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + (d0.toDateString() === new Date().toDateString() ? '' : ' ' + d0.toLocaleDateString([], { weekday: 'short' }));
     const body = { ...(job.resumeBody || {}) };
     if (readCfg().autoContinue === true) {
       resumeAfterLimit(sid, body, at, job.cwd);
-      publish({ ...base, kind: 'limit', auto: true, resetsAt: at, call: false, text: `Usage limit reached. Hearth continues by itself when usage is back (${when}).` });
+      publish({ ...base, kind: 'limit', auto: true, resetsAt: at, call: false, text: `Hearth continues by itself when your usage is back (${when}).` });
       return;
     }
     const req = crypto.randomBytes(4).toString('hex');
-    const ev = { ...base, kind: 'limit', req, resetsAt: at, call: false, text: `Usage limit reached. Continue when your usage is back (${when})?` };
+    const ev = { ...base, kind: 'limit', req, resetsAt: at, call: false, text: `Continue when your usage is back (${when})?` };
     pending.set(req, { event: ev, resolve: (b) => { pending.delete(req); if (b === 'continue') resumeAfterLimit(sid, body, at, job.cwd); } });
     publish(ev);
   }
