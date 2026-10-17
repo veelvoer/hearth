@@ -126,7 +126,7 @@ fun groupsOf(segs: List<PlanSeg>, targets: Map<Int, Double>, r: Double): Groups 
     val days = order.map { wd ->
         val idx = segs.indices.filter { segs[it].wd == wd }
         val t = tgt(wd)
-        val state = if (idx.any { segs[it].state == "today" }) "today" else if (idx.all { segs[it].state == "past" }) "past" else "future"
+        val state = if (idx.any { segs[it].state == "today" }) "today" else if (segs[idx[0]].state == "past") "past" else "future"
         val used = idx.sumOf { segs[it].used }
         val planned = idx.sumOf { segs[it].used + (if (segs[it].state == "past") 0.0 else alloc[it]) }
         PlanDay(wd, names[wd], state, r1(used), r1(planned), t != null, t)

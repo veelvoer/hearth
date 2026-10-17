@@ -79,7 +79,7 @@ function groups(segs, targets, R) {
   const NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const days = order.map((wd) => {
     const g = segs.filter((s) => s.wd === wd), t = tgt(wd);
-    const state = g.some((s) => s.state === 'today') ? 'today' : g.every((s) => s.state === 'past') ? 'past' : 'future';
+    const state = g.some((s) => s.state === 'today') ? 'today' : g[0].state === 'past' ? 'past' : 'future';
     const used = g.reduce((a, s) => a + s.used, 0);
     const planned = g.reduce((a, s) => a + s.used + (s.state === 'past' ? 0 : (alloc.get(s) || 0)), 0);
     return { wd, name: NAMES[wd], state, used: round(used), planned: round(planned), fixed: t != null, target: t };
