@@ -537,7 +537,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }
         var round = 0
         while (sess.id.isNotEmpty()) {
-            launch { runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission" || it.kind == "request") } } }
+            launch { runCatching { withContext(Dispatchers.IO) { Relay.pending(m) } }.onSuccess { l -> asks = l.filter { it.session == sess.id && (it.kind == "question" || it.kind == "permission" || it.kind == "request" || it.kind == "limit") } } }
             launch {
                 val w = withContext(Dispatchers.IO) { Relay.working(m, sess.id) }
                 if (w != null) serverBusy = w
@@ -791,7 +791,11 @@ private fun AskCard(m: Machine, a: CallEvent, done: () -> Unit) {
     fun send(answer: String) { scope.launch(Dispatchers.IO) { runCatching { Relay.answer(m, a.req, answer) } }; done() }
     fun decide(b: String) { scope.launch(Dispatchers.IO) { runCatching { CallApi.decide(m, a.req, b) } }; done() }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp)).background(cs.surfaceVariant).border(1.dp, cs.primary, RoundedCornerShape(14.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (a.kind == "permission") {
+        if (a.kind == "limit") {
+            Label("Usage limit reached")
+            Txt(a.text, T.small, muted = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) { Button("Continue when my usage is back") { decide("continue") }; TextAction("Not now") { decide("skip") } }
+        } else         if (a.kind == "permission") {
             Label("Claude needs your OK")
             Txt(a.text, T.small.copy(fontFamily = FontFamily.Monospace))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) { Button("Allow") { decide("allow") }; TextAction("Deny") { decide("deny") } }

@@ -207,8 +207,9 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
             .pointerInput(p) {
                 detectTapGestures { pos ->
                     val w = size.width.toFloat(); val pct = pos.x / w * 100f
+                    if (pos.y > 70.dp.toPx()) { val d = baseDays.getOrNull((pos.x / w * baseDays.size).toInt().coerceIn(0, baseDays.size - 1)); if (d != null && d.state != "past") onTap(d); return@detectTapGestures }
                     var at = 0.0
-                    baseDays.forEach { d -> if (pct >= at && pct < at + d.planned) { onTap(d); return@detectTapGestures }; at += d.planned }
+                    baseDays.forEach { d -> if (pct >= at && pct < at + d.planned) { if (d.state != "past") onTap(d); return@detectTapGestures }; at += d.planned }
                 }
             }
             .pointerInput(p) {
@@ -254,12 +255,13 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
             var at = 0.0
             days.forEachIndexed { i, d ->
                 val x0 = (at / 100.0 * w).toFloat(); val sw = (d.planned / 100.0 * w).toFloat()
-                if (d.planned >= 5.5) {
+                run {
+                    val cx = (i + .5f) * w / days.size
                     paint.textSize = 11.sp.toPx(); paint.color = argb(if (d.state == "today") cs.primary else txt); paint.isFakeBoldText = d.state == "today"
-                    drawContext.canvas.nativeCanvas.drawText(d.name + if (d.fixed) "•" else "", x0 + sw / 2, top + hh + 16.dp.toPx(), paint)
+                    drawContext.canvas.nativeCanvas.drawText(d.name + if (d.fixed) "•" else "", cx, top + hh + 16.dp.toPx(), paint)
                     paint.color = argb(ink); paint.isFakeBoldText = true
                     val v = if (d.state == "past") d.used else d.planned
-                    drawContext.canvas.nativeCanvas.drawText((if (v >= 10 || v == 0.0) v.toInt().toString() else v.toString()) + "%", x0 + sw / 2, top + hh + 31.dp.toPx(), paint)
+                    drawContext.canvas.nativeCanvas.drawText((if (v >= 10 || v == 0.0) v.toInt().toString() else v.toString()) + "%", cx, top + hh + 31.dp.toPx(), paint)
                 }
                 at += d.planned
                 if (i < days.size - 1 && d.state != "past") {
@@ -621,6 +623,34 @@ private fun SyncCard() {
     Card { Head("sync", "Sync", "Chats and project files that the server keeps the same on all your computers."); Spacer(Modifier.height(8.dp)); Txt(text, T.small, muted = true) }
 }
 
+/** When the plan limit stops a chat: carry on by itself once usage is back (on every connected computer), or ask each time. */
+@Composable
+private fun LimitCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf("") }
+    LaunchedEffect(Ui.machinesRev) {
+        val m = Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } ?: return@LaunchedEffect
+        runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/admin/options", org.json.JSONObject()) } }.onSuccess { on = it.optBoolean("autoContinue") }
+    }
+    Card {
+        Head("bell", "When your usage runs out", "A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.")
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { Txt("Continue by itself when I have usage again", T.body); Txt(if (on) "The chat carries on after the limit resets, and you get a heads-up." else "You get a notification and choose whether to continue.", T.small, muted = true) }
+            Switch(on, { v ->
+                scope.launch {
+                    var bad = 0
+                    for (m in Store.machines(c)) { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/admin/options", org.json.JSONObject().put("autoContinue", v)) } }.onFailure { bad++ } }
+                    if (bad < Store.machines(c).size) { on = v; msg = if (bad > 0) "Saved on some computers only. Update the others." else "" } else msg = "Couldn't save. Update the server first."
+                }
+            })
+        }
+        if (msg.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Txt(msg, T.small, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
 /** What the server may do for you: work in any folder, Full auto, chats with root rights, and the commands allowed for good. */
 @Composable
 private fun PermissionsCard() {
@@ -855,6 +885,7 @@ fun SettingsScreen() {
         }
         SyncCard()
         MemoryCard()
+        LimitCard()
         PermissionsCard()
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {

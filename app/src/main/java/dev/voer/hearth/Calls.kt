@@ -91,7 +91,7 @@ object Calls {
 
     fun message(c: Context, m: Machine, e: CallEvent) {
         channels(c)
-        val nid = 2000 + ((if (e.kind == "permission" || e.kind == "request") e.req.hashCode() else e.session.hashCode()) and 0xFFFF)
+        val nid = 2000 + ((if (e.kind == "permission" || e.kind == "request" || (e.kind == "limit" && e.req.isNotEmpty())) e.req.hashCode() else e.session.hashCode()) and 0xFFFF)
         val fl = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val open = PendingIntent.getActivity(c, nid, Intent(c, MainActivity::class.java).putExtra("open_host", m.host).putExtra("open_session", e.session)
             .putExtra("open_title", e.title).putExtra("open_cwd", e.cwd).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), fl)
@@ -99,6 +99,7 @@ object Calls {
             "request" -> "${e.text.substringBefore(':').ifBlank { "A friend" }} wants to use your Claude"
             "permission" -> "${project(e.cwd)}: needs your OK"
             "question" -> "${project(e.cwd)}: Claude has a question"
+            "limit" -> "${project(e.cwd)}: usage limit reached"
             "error" -> "${project(e.cwd)}: something went wrong"
             "queued" -> "${project(e.cwd)}: waiting for your laptop"
             "started" -> "${project(e.cwd)}: your laptop started"
@@ -112,6 +113,11 @@ object Calls {
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
                 Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
             b.addAction(act("allow", "Allow", 1)).addAction(act("deny", "Deny", 2))
+        }
+        if (e.kind == "limit" && e.req.isNotEmpty()) {   // the plan limit stopped a chat: carry on when usage is back, or not
+            fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
+                Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
+            b.addAction(act("continue", "Continue when back", 1)).addAction(act("skip", "Not now", 2))
         }
         if (e.kind == "request" && e.req.isNotEmpty() && e.forMember.isEmpty()) {   // a friend asks to use your Claude: run it as it is (plan only) or say no, right from the notification
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,

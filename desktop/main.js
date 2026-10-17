@@ -259,7 +259,7 @@ function notifyEvent(m, ev, force) {
     if (st.notifyFocused !== true && main && !main.isDestroyed() && main.isVisible() && main.isFocused()) return;   // you are looking at the app: it shows this itself
   }
   const proj = String(ev.cwd || '').replace(/\/$/, '').split('/').pop() || 'Claude';
-  const title = ev.kind === 'request' ? `${ev.from || 'A friend'} wants to use your Claude` : ev.kind === 'permission' ? `${proj}: needs your OK` : ev.kind === 'question' ? `${proj}: Claude has a question` : ev.kind === 'error' ? `${proj}: something went wrong` : `${proj}: Claude is done`;
+  const title = ev.kind === 'request' ? `${ev.from || 'A friend'} wants to use your Claude` : ev.kind === 'limit' ? `${proj}: usage limit reached` : ev.kind === 'permission' ? `${proj}: needs your OK` : ev.kind === 'question' ? `${proj}: Claude has a question` : ev.kind === 'error' ? `${proj}: something went wrong` : `${proj}: Claude is done`;
   notify(title, ev.text || ev.title || '', () => { showMain('sessions'); if (ev.session) main.webContents.send('open-session', { machine: m && m.id, session: ev.session, title: ev.title, cwd: ev.cwd, voice: false }); });
 }
 let callWins = new Map();

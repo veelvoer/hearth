@@ -93,6 +93,11 @@ function start(opts) {
     if (typeof process.getuid === 'function' && process.getuid() === 0) return { ok: true, uid0: true, how: 'This server program already runs as root.' };
     if (process.platform === 'win32' || process.env.FLATPAK_ID) return { ok: false, why: 'Root chats are only possible on a Linux server.' };
     if (fresh || Date.now() - sudoCache.at > 20000) { const p = sudoProbe(); sudoCache = { at: Date.now(), ok: p.ok, out: p.out, err: p.err }; }
+    if (sudoCache.noNewPrivs === undefined) { try { sudoCache.noNewPrivs = /^NoNewPrivs:\s*1/m.test(fs.readFileSync('/proc/self/status', 'utf8')); } catch { sudoCache.noNewPrivs = false; } }
+    if (!sudoCache.ok && (sudoCache.noNewPrivs || /no new privileges/i.test(sudoCache.err))) {
+      const fix = 'sudo sed -i \'/^NoNewPrivileges/d\' /etc/systemd/system/hearth*.service && sudo systemctl daemon-reload && sudo systemctl restart hearth';
+      return { ok: false, line: sudoLine(), fix, why: `The sudoers line alone is not enough: this server runs as a service that is not allowed to gain rights ("NoNewPrivileges"). Run this once on the server, then press Check again: ${fix}  (use your service's name instead of "hearth" if it differs, e.g. hearth-${os.userInfo().username}).` };
+    }
     return sudoCache.ok ? { ok: true, uid0: false, how: `Passwordless sudo works for "${os.userInfo().username}".` }
       : { ok: false, line: sudoLine(), why: `This server may not use sudo without a password for the user "${os.userInfo().username}". To allow it, run "sudo visudo" and add the line: ${sudoLine()}` + (sudoCache.err ? `  (sudo said: ${sudoCache.err})` : '') };
   };
@@ -396,6 +401,7 @@ function start(opts) {
 
   // ── running a turn ──
   function startJob(body, sidParam) {
+    { const w = limitWaits.get(sidParam); if (w) { clearTimeout(w.timer); limitWaits.delete(sidParam); } }   // you wrote again yourself: no need to wait for the reset
     const claude = findClaude();
     if (!claude) return { error: 500, message: 'Claude Code was not found on this computer. Install it first: https://claude.com/claude-code' };
     let mode = MODES.includes(body.mode) ? body.mode : (publicMode ? 'auto' : 'acceptEdits');
@@ -457,7 +463,7 @@ function start(opts) {
       : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
       : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
-    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, rootLaunch, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
+    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, rootLaunch, resumeBody: { mode: body.mode, model: body.model }, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
     jobs.set(key, job);
     if (agentSync) agentSync.kick('job-start');
     // "call me when it's done" typed into the chat sets the call preference for this chat
@@ -486,8 +492,11 @@ function start(opts) {
           if (Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') emit(job, { t: 'result', id: b.tool_use_id || '', text: core.resultText(b.content), error: !!b.is_error });
         } else if (t === 'rate_limit_event') {
           noteRateLimit(o.rate_limit_info);
+          const ri = o.rate_limit_info || {};
+          if (ri.status === 'rejected') { job.limitHit = true; if (ri.resetsAt) job.limitReset = Number(ri.resetsAt) * 1000; }
         } else if (t === 'result') {
           job.error = !!o.is_error; job.resultText = typeof o.result === 'string' ? o.result : '';
+          if (job.error && LIMIT_RE.test(job.resultText)) { job.limitHit = true; const m = job.resultText.match(/\|(\d{9,13})\b/); if (m && !job.limitReset) job.limitReset = Number(m[1]) < 1e12 ? Number(m[1]) * 1000 : Number(m[1]); }
           const us = o.usage || {};
           emit(job, { t: 'done', error: job.error, ms: o.duration_ms, cost: o.total_cost_usd, usage: { in: us.input_tokens || 0, out: us.output_tokens || 0, cr: us.cache_read_input_tokens || 0, cw: us.cache_creation_input_tokens || 0 } });
         }
@@ -531,9 +540,48 @@ function start(opts) {
   }
 
   /** The milestone message: always sent; the phone rings only if you asked for a call. */
+  /** The plan limit stopped a chat: ask whether to carry on once usage is back (or just carry on, when "Continue by itself" is on in settings). */
+  const LIMIT_RE = /(usage|rate)\s+limit\s+(reached|hit)|hit your (usage |session |weekly )?limit|reached your (usage |session |weekly )?limit|limit reached/i;
+  const limitWaits = new Map();   // chat id -> { timer, at }
+  const limitResetAt = (job) => {
+    const now = Date.now();
+    if (job.limitReset) return job.limitReset;
+    const full = ['session', 'week'].map((k) => usage[k]).filter((w) => w && w.pct >= 99 && w.resetsAt && w.resetsAt > now).map((w) => w.resetsAt);
+    return full.length ? Math.max(...full) : now + 10 * 60000;   // unknown: look again in a bit
+  };
+  function resumeAfterLimit(sid, body, at, cwd) {
+    const old = limitWaits.get(sid); if (old) clearTimeout(old.timer);
+    const buf = process.env.HEARTH_LIMIT_BUFFER_MS != null ? Number(process.env.HEARTH_LIMIT_BUFFER_MS) : 20000;
+    const wait = Math.max(buf > 1000 ? 5000 : 200, at - Date.now() + buf);
+    const timer = setTimeout(() => {
+      limitWaits.delete(sid);
+      const running = jobs.get(sid); if (running && !running.done) return;
+      const w = [usage.session, usage.week].filter((x) => x && x.pct >= 99 && x.resetsAt && x.resetsAt > Date.now());
+      if (w.length) { resumeAfterLimit(sid, body, Math.max(...w.map((x) => x.resetsAt)), cwd); return; }   // still full: wait for the next reset
+      const r = startJob({ ...body, text: 'Your usage limit has reset. Please continue where you left off.' }, sid);
+      if (r.error) onLog('resume after limit: ' + r.message);
+    }, Math.min(wait, 2147000000));
+    timer.unref();
+    limitWaits.set(sid, { timer, at });
+  }
+  function onLimit(job) {
+    const sid = job.sid, base = baseFor(sid, job.cwd), at = limitResetAt(job);
+    const when = new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    const body = { ...(job.resumeBody || {}) };
+    if (readCfg().autoContinue === true) {
+      resumeAfterLimit(sid, body, at, job.cwd);
+      publish({ ...base, kind: 'limit', auto: true, resetsAt: at, call: false, text: `Usage limit reached. Hearth continues by itself when usage is back (${when}).` });
+      return;
+    }
+    const req = crypto.randomBytes(4).toString('hex');
+    const ev = { ...base, kind: 'limit', req, resetsAt: at, call: false, text: `Usage limit reached. Continue when your usage is back (${when})?` };
+    pending.set(req, { event: ev, resolve: (b) => { pending.delete(req); if (b === 'continue') resumeAfterLimit(sid, body, at, job.cwd); } });
+    publish(ev);
+  }
   function announceDone(job) {
     const sid = job.sid;
     if (!sid) return;
+    if (job.limitHit) { onLimit(job); return; }
     const prefs = getPrefs(sid);
     const base = baseFor(sid, job.cwd);
     const seconds = Math.round((Date.now() - job.started) / 1000);
@@ -731,7 +779,7 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
-        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
           const want = String(u.searchParams.get('path') || '') || root || os.homedir();
           let p; try { p = fs.realpathSync(want); if (!fs.statSync(p).isDirectory()) throw new Error(); } catch { return json(res, 404, { error: 'no such folder' }); }
@@ -932,10 +980,11 @@ function start(opts) {
           if (b.outside !== undefined) writeCfg({ outside: !!b.outside });
           if (b.bypass !== undefined) writeCfg({ bypass: !!b.bypass });
           if (b.root !== undefined) writeCfg({ allowRoot: !!b.root });
+          if (b.autoContinue !== undefined) writeCfg({ autoContinue: !!b.autoContinue });
           if (b.recheck) rootReady(true);
           if (b.removeRule) writeCfg({ allowRules: allowRules().filter((r) => r.id !== String(b.removeRule)) });
           if (b.addPrefix !== undefined) { const r = perms.fromPrefix(b.addPrefix); if (!r) return json(res, 400, { error: 'That cannot be allowed for good: use a plain command like "npm test" (no ; & | > or dangerous commands).' }); addRule(r); }
-          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), rootReady: rootReady(!!b.recheck), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), autoContinue: readCfg().autoContinue === true, rootReady: rootReady(!!b.recheck), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         }
         if (parts[0] === 'fs' && parts[1] === 'mkdir') {   // make a folder on this server (a place to work)
           const parentDir = String(b.path || ''), name = String(b.name || '').trim();
@@ -977,6 +1026,7 @@ function start(opts) {
         if (parts[0] === 'weekplan') {   // pin a weekday to a share of the week (pct), or give it back to the even sharing (pct null)
           const wd = Number(b.day);
           if (!Number.isInteger(wd) || wd < 0 || wd > 6) return json(res, 400, { error: 'day must be 0 (Sunday) to 6 (Saturday)' });
+          if (b.pct != null) { const pl = weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(b.tz) || 0), dd = pl.days && pl.days.find((x) => x.wd === wd); if (dd && dd.state === 'past') return json(res, 400, { error: 'that day is already over' }); }
           if (b.pct == null) delete weekTargets[wd];
           else { const p = Number(b.pct); if (!Number.isFinite(p) || p < 0 || p > 100) return json(res, 400, { error: 'pct must be 0 to 100' }); weekTargets[wd] = Math.round(p * 10) / 10; }
           try { fs.writeFileSync(planFile, JSON.stringify(weekTargets), { mode: 0o600 }); } catch { /* best effort */ }

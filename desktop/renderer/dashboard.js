@@ -178,7 +178,7 @@ function drawWeekPlan() {
       e.className = 'wpseg ' + d.state + (d.fixed ? ' fixed' : '');
       e.firstChild.style.width = (w > 0 ? Math.min(100, d.used / w * 100) : 0) + '%';
       e.title = `${WD_FULL[d.wd]}: ${d.used}% used, planned ${d.planned}%` + (d.fixed ? ' (pinned)' : ' (shared evenly)');
-      const L = labels[k]; L.style.left = (at + w / 2) + '%'; L.style.display = w < 5.5 ? 'none' : '';
+      const L = labels[k]; L.disabled = d.state === 'past';
       L.className = 'wplabel ' + d.state + (WP.sel === d.wd ? ' sel' : '');
       L.replaceChildren(h('span', { class: 'wpn' }, d.name, d.fixed ? h('b', {}, '•') : null), h('span', { class: 'wpv' }, (d.state === 'past' ? d.used : d.planned) + '%'));
       if (knobs[k]) { knobs[k].style.left = (at + w) + '%'; knobs[k].className = 'wpknob' + (d.fixed ? ' fixed' : '') + (dragging === k ? ' drag' : ''); }
@@ -190,7 +190,7 @@ function drawWeekPlan() {
   }
   days.forEach((d, k) => { if (k < days.length - 1 && d.state !== 'past') { const kn = h('div', { class: 'wpknob', title: 'Drag to change the share of ' + WD_FULL[d.wd] }, h('i'), h('i')); knobs[k] = kn; track.append(kn); } });
   days.forEach((d, k) => names.append(labels[k]));
-  labels.forEach((L, k) => L.onclick = () => { WP.sel = WP.sel === days[k].wd ? null : days[k].wd; drawWeekPlan(); });
+  labels.forEach((L, k) => L.onclick = () => { if (days[k].state === 'past') return; WP.sel = WP.sel === days[k].wd ? null : days[k].wd; drawWeekPlan(); });
 
   knobs.forEach((kn, k) => {
     if (!kn) return;
@@ -214,7 +214,7 @@ function drawWeekPlan() {
   paint(days);
   box.append(h('div', { class: 'wpwrap' }, track, tip), names, note, legend);
   if (WP.sel != null) {
-    const d = p.days.find((x) => x.wd === WP.sel); if (!d) return;
+    const d = p.days.find((x) => x.wd === WP.sel); if (!d || d.state === 'past') return;
     const inp = h('input', { type: 'number', min: '0', max: '100', step: '0.5', value: d.fixed ? String(d.target) : String(Math.round(d.planned)), style: 'width:90px' });
     const save = () => { const v = Number(inp.value); if (Number.isFinite(v) && v >= 0 && v <= 100) setWeekDay(d.wd, v); };
     inp.onkeydown = (e) => { if (e.key === 'Enter') save(); };

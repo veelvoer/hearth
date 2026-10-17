@@ -602,6 +602,7 @@ function renderPerms() {
   for (const p of SS.perms.filter((x) => s && x.ev.session === s.id)) {
     if (p.ev.kind === 'question') { box.append(questionCard(p)); continue; }
     if (p.ev.kind === 'request') { box.append(requestCard(p)); continue; }
+    if (p.ev.kind === 'limit') { box.append(limitCard(p)); continue; }
     box.append(permCard(p));
   }
 }
@@ -651,6 +652,12 @@ function questionCard(p) {
   return h('div', { class: 'perm q' }, h('div', { class: 'grow stack', style: 'gap:8px' }, h('div', { class: 'label' }, 'Claude asks'), h('div', { class: 'qtext' }, ev.question || ev.text), opts,
     h('div', { class: 'row' }, h('div', { class: 'grow' }, input), ev.multi ? h('button', { class: 'ghost sm', onclick: () => answer([...picked, input.value.trim()].filter(Boolean).join(', ')) }, 'Send choices') : h('button', { class: 'primary sm', onclick: () => answer(input.value.trim()) }, 'Send'))));
 }
+/** The plan limit stopped this chat: continue when usage is back, or leave it. */
+function limitCard(p) {
+  return h('div', { class: 'perm pc', 'data-req': p.ev.req },
+    h('div', { class: 'label' }, 'Usage limit reached'), h('div', { class: 'small muted' }, p.ev.text || ''),
+    h('div', { class: 'popts' }, h('button', { class: 'popt', onclick: () => decide(p, 'continue') }, 'Continue when my usage is back'), h('button', { class: 'popt no', onclick: () => decide(p, 'skip') }, 'Not now')));
+}
 async function decide(p, behavior) {
   try { await cm.relay(p.machine, 'POST', '/decision', { req: p.ev.req, behavior }); } catch (e) { SS.chatErr = clean(e); }
   SS.perms = SS.perms.filter((x) => x !== p);
@@ -670,11 +677,13 @@ cm.on('event', ({ machine, ev }) => {
     return;
   }
   if (ev.kind === 'resolved') { SS.perms = SS.perms.filter((p) => p.ev.req !== ev.req); renderPerms(); return; }
-  if ((ev.kind === 'permission' || ev.kind === 'question' || ev.kind === 'request') && ev.req) {
+  if ((ev.kind === 'permission' || ev.kind === 'question' || ev.kind === 'request' || ev.kind === 'limit') && ev.req) {
     if (!SS.perms.some((p) => p.ev.req === ev.req)) SS.perms.push({ machine, ev });
     renderPerms();
     if (viewing) { const card = $(`.pc[data-req="${ev.req}"]`); if (card) { card.scrollIntoView({ block: 'nearest' }); const ta = $('#composer-text'); if (!ta || !ta.value) card.focus({ preventScroll: true }); } }
-    if (!viewing) toast(ev.kind === 'request' ? `${ev.from || 'A friend'} wants to use your Claude` : `${proj}: ${ev.kind === 'question' ? 'Claude has a question' : 'Claude needs your OK'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: true }));
+    if (!viewing) toast(ev.kind === 'limit' ? `${proj}: usage limit reached` : ev.kind === 'request' ? `${ev.from || 'A friend'} wants to use your Claude` : `${proj}: ${ev.kind === 'question' ? 'Claude has a question' : 'Claude needs your OK'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: true }));
+  } else if (ev.kind === 'limit' && !viewing) {
+    toast(`${proj}: usage limit reached`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: false }));
   } else if ((ev.kind === 'done' || ev.kind === 'error') && !viewing) {
     toast(`${proj}: ${ev.kind === 'error' ? 'something went wrong' : 'Claude is done'}`, () => openSession({ id: ev.session, title: ev.title, cwd: ev.cwd, mid: machine, live: false }));
   }

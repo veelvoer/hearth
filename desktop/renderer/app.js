@@ -313,6 +313,7 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(only ? h('div') : memoryCard());
+  p.append(only ? h('div') : limitCard());
   p.append(only ? h('div') : permsCard());
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
@@ -450,6 +451,22 @@ function memoryCard() {
     };
     try { info = await cm.relay(m.id, 'GET', '/admin/memory'); draw(); }
     catch (e) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'This server has no memory setting yet. Update it first.')); }
+  })();
+  return card;
+}
+/** When the plan limit stops a chat: carry on by itself once usage is back (on every connected computer), or ask each time. */
+function limitCard() {
+  const card = h('div', { class: 'card stack' }, ch('bell', 'When your usage runs out', 'A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.'));
+  const body = h('div', { class: 'small muted' }, 'Loading…'); card.append(body);
+  (async () => {
+    let ms = [], on = false;
+    try { ms = await cm.machines(); const first = ms.find((x) => x.secure) || ms[0]; if (first) on = !!(await cm.relay(first.id, 'GET', '/admin/options')).autoContinue; } catch { /* older server */ }
+    const draw = () => {
+      body.className = ''; body.innerHTML = '';
+      body.append(h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Continue by itself when I have usage again', h('div', { class: 'small muted' }, on ? 'The chat carries on after the limit resets, and you get a heads-up.' : 'You get a notification and choose whether to continue.')),
+        toggle(on, async () => { const next = !on; let bad = 0; for (const m of ms) { try { await cm.relay(m.id, 'POST', '/admin/options', { autoContinue: next }); } catch { bad++; } } if (bad < ms.length) on = next; if (bad) toast(bad === ms.length ? 'Could not save. Update the server first.' : 'Saved on some computers only. Update the others.'); draw(); })));
+    };
+    draw();
   })();
   return card;
 }
