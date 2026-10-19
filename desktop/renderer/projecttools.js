@@ -88,12 +88,25 @@ function searchList(body, placeholder, fetchRows, delay = 0) {
 const itemRow = (title, sub, ...actions) => h('div', { class: 'row crow' }, h('div', { class: 'grow', style: 'min-width:0' }, h('b', {}, title), sub ? h('div', { class: 'small muted clamp' }, sub) : null), ...actions);
 
 function viewSkills(body, s) {
-  searchList(body, 'Search skills and commands', async (q) => {
+  let again;
+  const add = h('div', { class: 'stack', style: 'margin-bottom:10px' });
+  const src = h('input', { class: 'grow', placeholder: 'GitHub link (owner/repo or a skill folder) or paste a SKILL.md' });
+  const go = h('button', { class: 'primary sm', onclick: async () => {
+    if (!src.value.trim()) return; go.disabled = true; go.textContent = 'Adding…';
+    try { const r = await tcall(s, 'POST', 'skills/install', { source: src.value }); toast('Added ' + r.added.join(', ')); src.value = ''; SS.cmds = null; } catch (e) { toast(clean(e)); }
+    go.disabled = false; go.textContent = 'Add'; again();
+  } }, 'Add');
+  src.onkeydown = (e) => { if (e.key === 'Enter') go.click(); };
+  add.append(h('div', { class: 'small muted' }, 'Add a skill'), h('div', { class: 'row' }, src, go));
+  again = searchList(body, 'Search skills and commands', async (q) => {
     SS.cmds = null;
     const all = await tcall(s, 'GET', 'commands?cwd=' + encodeURIComponent(s.cwd || ''));
     const hit = all.filter((x) => !q || (x.name + ' ' + (x.desc || '')).toLowerCase().includes(q.toLowerCase()));
-    return { rows: hit.map((x) => itemRow('/' + x.name, (x.desc || '') + (x.src ? '  ·  ' + x.src : ''), h('button', { class: 'ghost sm', onclick: () => useCommand(x.name) }, 'Use'))), note: 'Skills come from your own folders, the project, and installed plugins. Find more under Plugins.' };
+    return { rows: hit.map((x) => itemRow('/' + x.name, (x.desc || '') + (x.src ? '  ·  ' + x.src : ''),
+      x.own ? h('button', { class: 'ghost sm', onclick: async () => { if (!confirm('Remove ' + x.name + '?')) return; try { await tcall(s, 'POST', 'skills/remove', { name: x.name }); SS.cmds = null; } catch (e) { toast(clean(e)); } again(); } }, 'Remove') : null,
+      h('button', { class: 'ghost sm', onclick: () => useCommand(x.name) }, 'Use'))), note: 'Skills come from your own folders, your Claude account, the project and installed plugins.' };
   });
+  body.prepend(add);
 }
 function useCommand(name) {
   closeTools();

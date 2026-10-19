@@ -18,19 +18,89 @@ async function pluginData(claude, force) {
   plCache = { at: Date.now(), data: d }; return d;
 }
 const fm = (f) => { try { const t = fs.readFileSync(f, 'utf8'); const m = /^---\n([\s\S]*?)\n---/.exec(t); const d = m && /^description:\s*(.+)$/m.exec(m[1]); return d ? d[1].replace(/^["']|["']$/g, '').slice(0, 160) : ''; } catch { return ''; } };
+const fmName = (f) => { try { const m = /^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(f, 'utf8')); const n = m && /^name:\s*(.+)$/m.exec(m[1]); return n ? n[1].trim().replace(/^["']|["']$/g, '') : ''; } catch { return ''; } };
+/** Skills sit in folders with a SKILL.md. Some installers put them a level or two deeper (the ones synced from your Claude account do), so look down a few levels. */
+const findSkills = (dir, depth, found = []) => {
+  let list = []; try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return found; }
+  for (const e of list) {
+    if (e.name.startsWith('.') || e.name === 'node_modules') continue;
+    const p = path.join(dir, e.name);
+    let isDir = e.isDirectory(); if (!isDir && e.isSymbolicLink()) { try { isDir = fs.statSync(p).isDirectory(); } catch { /* broken link */ } }
+    if (!isDir) continue;
+    if (fs.existsSync(path.join(p, 'SKILL.md'))) found.push({ dir: p, file: path.join(p, 'SKILL.md'), folder: e.name });
+    else if (depth > 0) findSkills(p, depth - 1, found);
+  }
+  return found;
+};
 const scan = (base, prefix, out, src) => {
   try { for (const f of fs.readdirSync(path.join(base, 'commands'))) if (f.endsWith('.md')) out.set(prefix + f.slice(0, -3), { desc: fm(path.join(base, 'commands', f)), src }); } catch { /* none */ }
-  try { for (const d of fs.readdirSync(path.join(base, 'skills'))) { const p = path.join(base, 'skills', d, 'SKILL.md'); if (fs.existsSync(p)) out.set(prefix + d, { desc: fm(p), src }); } } catch { /* none */ }
+  for (const k of findSkills(path.join(base, 'skills'), 3)) out.set(prefix + (fmName(k.file) || k.folder).replace(/\s+/g, '-'), { desc: fm(k.file), src, folder: k.folder, own: path.dirname(k.dir) === path.join(base, 'skills') });
+};
+/** Plugins that are installed and on, read from Claude's own files when the plugin command is not available. */
+const pluginsFromDisk = () => {
+  try {
+    const inst = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), 'utf8')).plugins || {};
+    let on = {}; try { on = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')).enabledPlugins || {}; } catch { /* none */ }
+    return Object.entries(inst).map(([id, v]) => ({ id, enabled: on[id] !== false, installPath: (v[0] || {}).installPath })).filter((p) => p.installPath);
+  } catch { return []; }
 };
 /** Everything you can start with a slash: built-ins, your own commands and skills, the project's, and those of enabled plugins. */
 async function commands(cwd, claude) {
   const out = new Map();
   scan(path.join(os.homedir(), '.claude'), '', out, 'yours');
+  scan(path.join(os.homedir(), '.agents'), '', out, 'yours');
   if (cwd) scan(path.join(cwd, '.claude'), '', out, 'project');
-  if (claude) { const d = await pluginData(claude); for (const p of d.installed) if (p.enabled && p.installPath) scan(p.installPath, p.id.split('@')[0] + ':', out, 'plugin ' + p.id.split('@')[0]); }
+  let inst = []; if (claude) { try { inst = (await pluginData(claude)).installed || []; } catch { /* use the files */ } } if (!inst.length) inst = pluginsFromDisk();
+  for (const p of inst) if (p.enabled && p.installPath) scan(p.installPath, p.id.split('@')[0] + ':', out, 'plugin ' + p.id.split('@')[0]);
+  for (const d of (() => { try { return fs.readdirSync(path.join(os.homedir(), '.claude', 'plugins', 'synced')); } catch { return []; } })()) scan(path.join(os.homedir(), '.claude', 'plugins', 'synced', d), '', out, 'your Claude account');
   const list = [['compact', 'Shrink this chat so it stays fast and cheap'], ['init', 'Let Claude write notes about this project (CLAUDE.md)'], ['review', 'Review the latest changes'], ['security-review', 'Check the changes for security problems']].map(([name, desc]) => ({ name, desc, src: 'built in', builtin: true }));
-  for (const [name, v] of out) if (!list.some((x) => x.name === name)) list.push({ name, desc: v.desc, src: v.src });
+  for (const [name, v] of out) if (!list.some((x) => x.name === name)) list.push({ name, desc: v.desc, src: v.src, own: !!v.own && v.src === 'yours' });
   return list;
+}
+
+const SKILLS_DIR = () => path.join(os.homedir(), '.claude', 'skills');
+const safeName = (n) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(n);
+const dirSize = (d, cap) => { let t = 0; const walk = (x) => { for (const e of fs.readdirSync(x, { withFileTypes: true })) { if (t > cap) return; const p = path.join(x, e.name); if (e.isSymbolicLink()) continue; if (e.isDirectory()) walk(p); else t += fs.statSync(p).size; } }; walk(d); return t; };
+const putSkill = (srcDir, name) => {
+  if (!safeName(name)) throw new Error('That skill has a name I cannot use: ' + name);
+  if (dirSize(srcDir, 6e6) > 5e6) throw new Error('"' + name + '" is bigger than 5 MB.');
+  const dest = path.join(SKILLS_DIR(), name); fs.mkdirSync(SKILLS_DIR(), { recursive: true });
+  fs.rmSync(dest, { recursive: true, force: true });
+  fs.cpSync(srcDir, dest, { recursive: true, dereference: false, filter: (f) => path.basename(f) !== '.git' });
+  return name;
+};
+/** Adds skills from a GitHub link (owner/repo, owner/repo/folder, or a github.com address), from the link to one SKILL.md file, or from pasted SKILL.md text. */
+async function installSkills(source) {
+  const src = String(source || '').trim(); if (!src) throw new Error('Paste a GitHub link or the text of a skill.');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-skill-'));
+  try {
+    if (/^---\s*\n/.test(src)) {   // pasted text
+      const nm = (/^name:\s*(.+)$/m.exec(src.split(/\n---/)[0]) || [])[1];
+      const name = String(nm || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '-');
+      if (!name) throw new Error('The text needs a "name:" line at the top.');
+      fs.mkdirSync(path.join(tmp, name)); fs.writeFileSync(path.join(tmp, name, 'SKILL.md'), src); return [putSkill(path.join(tmp, name), name)];
+    }
+    let m = /^https?:\/\/(?:raw\.githubusercontent\.com|github\.com)\/[^\s]+\/(?:raw\/|blob\/)?[^\s]*SKILL\.md$/i.exec(src) || /^https:\/\/raw\.githubusercontent\.com\/[^\s]+\.md$/i.exec(src);
+    if (m) {
+      const url = src.replace('github.com/', 'raw.githubusercontent.com/').replace('/blob/', '/').replace('/raw/', '/');
+      const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error('Could not download it (' + r.status + ').');
+      const text = await r.text(); if (text.length > 1e6) throw new Error('That file is too big.');
+      const folder = url.split('/').slice(-2)[0], nm = (/^name:\s*(.+)$/m.exec(text.split(/\n---/)[0]) || [])[1];
+      const name = String(nm || folder).trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '-');
+      fs.mkdirSync(path.join(tmp, name)); fs.writeFileSync(path.join(tmp, name, 'SKILL.md'), text); return [putSkill(path.join(tmp, name), name)];
+    }
+    m = /^(?:https?:\/\/github\.com\/)?([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:\/(?:tree\/[^/]+\/)?(.*))?$/.exec(src.replace(/\/+$/, ''));
+    if (!m || /\s/.test(src)) throw new Error('Use a GitHub link like github.com/owner/repo, or owner/repo/skill-folder.');
+    const [, owner, repo, sub] = m, repoDir = path.join(tmp, 'repo');
+    const g = await run('git', ['clone', '--depth', '1', 'https://github.com/' + owner + '/' + repo + '.git', repoDir], tmp, 90000);
+    if (!g.ok) throw new Error('Could not download ' + owner + '/' + repo + '. Is the link right and the repository public?');
+    const base = sub ? path.resolve(repoDir, sub) : repoDir;
+    if (base !== repoDir && !base.startsWith(repoDir + path.sep)) throw new Error('That folder is not inside the repository.');
+    let found = fs.existsSync(path.join(base, 'SKILL.md')) ? [{ dir: base, folder: path.basename(base), file: path.join(base, 'SKILL.md') }] : findSkills(base, 4);
+    if (!found.length) throw new Error('No skill (a folder with a SKILL.md) found there.');
+    if (found.length > 25) throw new Error('That has ' + found.length + ' skills. Point to one folder instead.');
+    return found.map((k) => putSkill(k.dir, safeName(k.folder) ? k.folder : (fmName(k.file) || 'skill').replace(/[^A-Za-z0-9._-]+/g, '-')));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 const STATE = { M: 'changed', A: 'new', D: 'deleted', R: 'renamed', '?': 'new' };
 const fail = (code, error) => ({ code, data: { error } });
@@ -91,6 +161,14 @@ async function route(parts, u, body, ctx) {
     const r = await run(ctx.claude, ['plugin', b, id, '--scope', 'user'], os.homedir(), 120000);
     plCache.at = 0;
     return r.ok ? { data: { ok: true } } : fail(400, (r.err || r.out).trim().split('\n').slice(-2).join(' '));
+  }
+  if (a === 'skills' && b === 'install') {
+    try { const names = await installSkills(body.source); return { data: { added: names } }; } catch (e) { return fail(400, String(e.message || e)); }
+  }
+  if (a === 'skills' && b === 'remove') {
+    const name = String(body.name || ''); const p = path.join(SKILLS_DIR(), name);
+    if (!safeName(name) || !fs.existsSync(path.join(p, 'SKILL.md'))) return fail(404, 'That skill is not one you added here.');
+    fs.rmSync(p, { recursive: true, force: true }); return { data: { ok: true } };
   }
   if (a === 'notes') {   // CLAUDE.md: what Claude should always know about this project (or about you)
     const scope = q('scope') === 'global' ? 'global' : 'project';

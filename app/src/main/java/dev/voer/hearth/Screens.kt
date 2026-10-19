@@ -664,6 +664,52 @@ private fun LimitCard() {
     }
 }
 
+/** The skills on your computer or server, and a place to add more from a GitHub link or pasted text. */
+@Composable
+private fun SkillsCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var list by remember { mutableStateOf<List<Relay.Skill>?>(null) }
+    var src by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var all by remember { mutableStateOf(false) }
+    fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
+    fun load() { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.skills(m) } }.onSuccess { list = it }.onFailure { msg = "Couldn't load skills. Update the server first." } } }
+    LaunchedEffect(Ui.machinesRev) { load() }
+    Card {
+        Head("tour", "Skills", "Skills Claude can use. Add one from a GitHub link (owner/repo, or a link to one skill folder) or paste the text of a SKILL.md. They are saved on your server and work in every chat there.")
+        Spacer(Modifier.height(10.dp))
+        val l = list
+        if (l == null) Txt(if (msg.isEmpty()) "Loading…" else msg, T.small, muted = true)
+        else {
+            Txt("${l.size} skill${if (l.size == 1) "" else "s"} and commands", T.small, muted = true)
+            (if (all) l else l.filter { it.src == "yours" || it.src == "your Claude account" }.ifEmpty { l }.take(8)).forEach { k ->
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) { Txt("/" + k.name, T.body); Txt(k.src + if (k.desc.isNotEmpty()) " · " + k.desc else "", T.small, muted = true) }
+                    if (k.own) TextAction("Remove") { val m = machine() ?: return@TextAction; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/tools/skills/remove", org.json.JSONObject().put("name", k.name)) } }.onSuccess { load() }.onFailure { msg = it.message ?: "Couldn't remove" } } }
+                }
+            }
+            if (l.size > 8 && !all) { Spacer(Modifier.height(6.dp)); TextAction("Show all ${l.size}") { all = true } }
+        }
+        Spacer(Modifier.height(12.dp))
+        Field(src, { src = it }, "GitHub link or SKILL.md text", singleLine = false)
+        Spacer(Modifier.height(8.dp))
+        Button(if (busy) "Adding…" else "Add", Modifier.fillMaxWidth()) {
+            val m = machine() ?: return@Button
+            if (src.isBlank() || busy) return@Button
+            busy = true; msg = ""
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/tools/skills/install", org.json.JSONObject().put("source", src)) } }
+                    .onSuccess { r -> msg = "Added " + (r.optJSONArray("added")?.let { a -> (0 until a.length()).joinToString(", ") { a.getString(it) } } ?: ""); src = ""; load() }
+                    .onFailure { msg = it.message ?: "Couldn't add it" }
+                busy = false
+            }
+        }
+        if (msg.isNotEmpty() && list != null) { Spacer(Modifier.height(6.dp)); Txt(msg, T.small, muted = true) }
+    }
+}
+
 /** What the server may do for you: work in any folder, Full auto, chats with root rights, and the commands allowed for good. */
 @Composable
 private fun PermissionsCard() {
@@ -902,6 +948,7 @@ fun SettingsScreen() {
         SyncCard()
         MemoryCard()
         LimitCard()
+        SkillsCard()
         PermissionsCard()
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {

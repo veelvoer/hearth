@@ -225,6 +225,12 @@ object Relay {
         return Options(o.optBoolean("outside", true), o.optBoolean("outsideAvailable"), o.optBoolean("bypass"), o.optBoolean("bypassFixed"), o.optBoolean("root"), rr?.optBoolean("ok") ?: false, rr?.optString("why").orEmpty(),
             if (ra == null) emptyList() else List(ra.length()) { ra.getJSONObject(it).let { r -> Rule(r.getString("id"), r.optString("label").ifBlank { r.optString("prefix") }) } })
     }
+    data class Skill(val name: String, val desc: String, val src: String, val own: Boolean)
+    /** Every skill and slash command this computer knows: yours, from your Claude account, plugins. */
+    fun skills(m: Machine): List<Skill> {
+        val a = org.json.JSONArray(getJson(m, "/commands"))
+        return (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("src") != "built in" }.map { Skill(it.getString("name"), it.optString("desc"), it.optString("src"), it.optBoolean("own")) }
+    }
     fun options(m: Machine): Options = parseOptions(JSONObject(getJson(m, "/admin/options")))
     private fun postJson(m: Machine, path: String, body: JSONObject): JSONObject {
         val c = open(m, path, post = true)
