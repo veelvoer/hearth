@@ -807,7 +807,7 @@ function start(opts) {
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
           const quiet = new Set([...jobs.values()].filter((j) => j.done).map((j) => j.sid || j.key));
-          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => ({ ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true, shared: (() => { const sh = shares.bySession(x.id); return sh ? shares.live(sh).length : -1; })() }));
+          const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => { try { return { ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true, shared: (() => { const sh = shares.bySession(x.id); return sh ? shares.live(sh).length : -1; })() }; } catch (e) { onLog('chat ' + x.id + ': ' + e.message); return { ...x, running: false, kind: 'code', root: false, shared: -1 }; } });
           const have = new Set(own.map((x) => x.id));
           const away = hubSync ? hubSync.elsewhere().filter((e) => !have.has(e.id) && e.cwd).map((e) => ({ id: e.id, title: e.title, cwd: e.cwd, mtime: Math.floor(e.mtime), live: false, busy: false, running: far.has(e.id), kind: getPrefs(e.id).kind, elsewhere: e.machine })) : [];
           return json(res, 200, [...own, ...away].sort((x, y) => y.mtime - x.mtime));

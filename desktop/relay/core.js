@@ -101,7 +101,7 @@ function applyTitle(o, r) {
     }
   }
   if (o.type === 'ai-title') r.title = o.aiTitle || r.title;
-  r.cwd = r.cwd || o.cwd || '';
+  r.cwd = r.cwd || (typeof o.cwd === 'string' ? o.cwd : '');
   if (!r.title && o.type === 'user' && !o.isSidechain) {
     const t = textOf((o.message || {}).content).trim();
     if (t && !t.startsWith('<')) r.title = t.slice(0, 80);
@@ -148,8 +148,7 @@ function sessions(active, keep, limit = 300, quiet = new Set()) {   // [quiet]: 
   const now = Date.now(), open = openClaudes(), hasProc = process.platform === 'linux' && !process.env.FLATPAK_ID;
   const out = [];
   for (const f of files) {
-    const s = summarize(f);
-    if (keep && !keep(f, s)) continue;
+    let s; try { s = summarize(f); if (keep && !keep(f, s)) continue; } catch { continue; }   // one odd chat file must never hide all the others
     const age = (now - f.mtime) / 1000;
     let live = active.has(f.id);
     if (!live) {

@@ -170,6 +170,7 @@ fun SessionsScreen() {
 private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Machine>) -> Unit, newSession: () -> Unit, talk: (Machine) -> Unit, join: () -> Unit, open: (Machine, Sess) -> Unit) {
     val c = LocalContext.current
     val lists = remember { mutableStateMapOf<String, List<Sess>?>() }
+    val errs = remember { mutableStateMapOf<String, String>() }
     val now by tick()
     val current by rememberUpdatedState(machines)
     LaunchedEffect(Unit) {
@@ -183,7 +184,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     LaunchedEffect(machines, guests) {
         while (true) {
             // every computer is asked at the same time and shows up as soon as it answers; a computer that is off must not hold the others back
-            (machines + guests).map { mm -> launch { lists[mm.host + "|" + mm.token.take(8)] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.getOrNull() } }.forEach { it.join() }
+            (machines + guests).map { mm -> launch { val k = mm.host + "|" + mm.token.take(8); lists[k] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.onSuccess { errs.remove(k) }.onFailure { errs[k] = it.message ?: it.javaClass.simpleName }.getOrNull() } }.forEach { it.join() }
             delay(6_000)
         }
     }
@@ -217,7 +218,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared) { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking) { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared) { onlyShared = true; onlyWorking = false }; Chip("Join chat ›", false) { join() } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
-        if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't be reached right now. It will reconnect on its own.", T.small, muted = true)
+        if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't load chats right now" + (offline.mapNotNull { errs[key(it)] }.firstOrNull()?.let { " ($it)" } ?: "") + ". It tries again on its own.", T.small, muted = true)
         // the server holds every chat, so its list is the list (same as on the desktop app); other computers only fill in what it lacks
         val hub = machines.firstOrNull { it.secure && lists[key(it)] != null }
         val all = (machines + guests).flatMap { mm -> (lists[key(mm)] ?: emptyList()).map { mm to it } }

@@ -88,10 +88,14 @@ async function loadList() {
 }
 async function pollLive() {
   try { SS.guests = await cm.guests(); } catch { SS.guests = SS.guests || []; }
-  for (const m of [...SS.machines, ...(SS.guests || [])]) {
-    try { SS.live[m.id] = await cm.relay(m.id, 'GET', '/sessions'); if (m.id === SS.mid) { SS.list = SS.live[m.id]; SS.err = null; } }
-    catch (e) { SS.live[m.id] = null; if (m.id === SS.mid) SS.err = clean(e); }
-  }
+  // every computer is asked at once and none can hold up the others (one that hangs used to keep all chats from loading)
+  await Promise.all([...SS.machines, ...(SS.guests || [])].map(async (m) => {
+    try {
+      const list = await Promise.race([cm.relay(m.id, 'GET', '/sessions'), new Promise((_, no) => setTimeout(() => no(new Error('no answer from ' + (m.name || 'the computer'))), 15000))]);
+      SS.live[m.id] = list; if (m.id === SS.mid) { SS.list = list; SS.err = null; }
+    } catch (e) { SS.live[m.id] = null; if (m.id === SS.mid) SS.err = clean(e); }
+    if (tab === 'sessions') drawSide();
+  }));
   if (tab === 'sessions') drawSide();
 }
 /** Messages you sent that the computer's copy of the chat does not show yet (still travelling, or queued for a laptop that is off). They stay visible until they show up. */
