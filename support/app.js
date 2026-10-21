@@ -17,6 +17,7 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
   try { db = { ...db, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { /* first run */ }
   const save = () => { fs.writeFileSync(file + '.tmp', JSON.stringify(db), { mode: 0o600 }); fs.renameSync(file + '.tmp', file); };
   const ownerSet = new Set([from, ...owners].map((x) => String(x).toLowerCase()));
+  const ownerTo = [...new Set([from, ...owners].map((x) => String(x).toLowerCase()))].join(', ');   // the support mailbox and the owners (e.g. your own Gmail): an answer from any of them goes out from the support address
   const plus = (id) => from.replace('@', '+' + id + '@');
 
   // ── limits ──
@@ -68,14 +69,14 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
     const m = b.meta || {};
     const t = { id, email, category, title, status: 'open', createdAt: now(), updatedAt: now(), meta: { app: String(m.app || '').slice(0, 30), version: String(m.version || '').slice(0, 20), platform: String(m.platform || '').slice(0, 80) }, messages: [{ from: 'user', text, at: now() }] };
     db.tickets[id] = t; save();
-    const sent = await Promise.all([send(mail.confirmation(t, plus(id)), email), send(mail.notifyOwner(t, plus(id)), from)]);
+    const sent = await Promise.all([send(mail.confirmation(t, plus(id)), email), send(mail.notifyOwner(t, plus(id)), ownerTo)]);
     Promise.resolve(onOwnerMail({ kind: 'new', id, title, category, from: email, text })).catch(() => {});   // tells the owner's Hearth, which asks what to do with it
     return { code: 200, body: { id, mailed: sent.every(Boolean) } };
   }
   async function addUserMessage(t, text) {
     t.messages.push({ from: 'user', text, at: now() }); t.updatedAt = now(); t.status = 'open'; save();
     Promise.resolve(onOwnerMail({ kind: 'follow-up', id: t.id, title: t.title, category: t.category, from: t.email, text })).catch(() => {});
-    return send(mail.followUpOwner(t, text, plus(t.id)), from);
+    return send(mail.followUpOwner(t, text, plus(t.id)), ownerTo);
   }
   async function addSupportMessage(t, text) {
     t.messages.push({ from: 'support', text, at: now() }); t.updatedAt = now(); t.status = 'answered'; save();

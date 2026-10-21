@@ -23,7 +23,7 @@ const evs = (b) => b.split('\n\n').filter((x) => x.includes('data: ')).map((x) =
   ok('1 only the owner can hand in a support mail', (await req('POST', '/support/incoming', 'wrong', mail('HRT-1'))).code === 401);
   ok('2 a support mail is accepted', (await req('POST', '/support/incoming', tok, mail('HRT-10001'))).code === 200);
   await sleep(500); let s = evs(events).filter((e) => e.kind === 'support');
-  ok('3 it is published with a request id, ticket and short text', s.length === 1 && !!s[0].req && s[0].ticket === 'HRT-10001' && /friend@example.com/.test(s[0].text), JSON.stringify(s[0] || {}).slice(0, 140));
+  ok('3 it is published with a request id, ticket and short text', s.length === 1 && !!s[0].req && s[0].ticket === 'HRT-10001' && /new bug report from friend@example.com/i.test(s[0].text), JSON.stringify(s[0] || {}).slice(0, 140));
   await req('POST', '/decision', tok, { req: s[0].req, behavior: 'ignore' }); await sleep(500);
   ok('4 ignore does nothing: no chat, nothing on the list', !fs.existsSync(path.join(T, 'home', 'prompts.txt')) && (await req('GET', '/support/list', tok)).body === '[]');
   await req('POST', '/support/incoming', tok, mail('HRT-10002')); await sleep(400); s = evs(events).filter((e) => e.kind === 'support' && e.ticket === 'HRT-10002');

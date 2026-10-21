@@ -562,7 +562,7 @@ function start(opts) {
     if (supportPending() >= 50) return { code: 429, data: { error: 'too many support mails waiting' } };
     const req = crypto.randomBytes(4).toString('hex');
     const ev = { kind: 'support', req, session: '', title: clean.title, cwd: '', machine: opts.name || os.hostname(), ts: Date.now(), call: false, ticket: clean.id,
-      text: `${clean.kind === 'follow-up' ? 'Follow-up' : 'New'} support mail from ${clean.from}: ${clean.text.replace(/\s+/g, ' ').slice(0, 160)}` };
+      text: `${clean.kind === 'follow-up' ? 'Follow-up on a' : 'New'} ${{ bug: 'bug report', question: 'question', idea: 'idea' }[clean.category] || 'support mail'} from ${clean.from}: ${clean.text.replace(/\s+/g, ' ').slice(0, 160)}` };
     pending.set(req, { event: ev, resolve: async (b) => {
       pending.delete(req);
       if (b === 'claude') { const r = startJob({ text: `A support mail just arrived. Read it, look into the problem in this project, and tell me what you find and what you would answer. Do not email anyone.\n\n${supportText(clean)}`, cwd: root || undefined, mode: 'acceptEdits' }, 'new'); if (r.error) onLog('support to Claude: ' + r.message); }

@@ -7,7 +7,7 @@ const app = createApp({ dataDir: dir, transport, from: 'hearth.support1@gmail.co
 const srv = http.createServer((q, r) => app.handle(q, r));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
 const call = (method, p, tok, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: srv.address().port, path: p, method, headers: { ...(tok ? { Authorization: 'Bearer ' + tok } : {}), ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (x) => { b += x; }); rs.on('end', () => res({ code: rs.statusCode, j: JSON.parse(b || '{}') })); }); r.end(d || undefined); });
-const lastTo = (to) => [...sent].reverse().find((m) => m.to === to);
+const lastTo = (to) => [...sent].reverse().find((m) => String(m.to).split(', ').includes(to));
 srv.listen(0, '127.0.0.1', async () => {
   ok('1 bad address refused', (await call('POST', '/auth/start', null, { email: 'not an email' })).code === 400);
   ok('2 unknown domain refused', (await call('POST', '/auth/start', null, { email: 'a@nope.invalid' })).code === 400);
