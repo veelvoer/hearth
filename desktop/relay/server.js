@@ -540,6 +540,40 @@ function start(opts) {
   }
 
   /** The milestone message: always sent; the phone rings only if you asked for a call. */
+  // ── support mail: a notification asks what to do with it (give it to Claude, put it on your list, ignore it) ──
+  const listFile = path.join(dir, 'support-list.json');
+  const readList = () => { try { return JSON.parse(fs.readFileSync(listFile, 'utf8')); } catch { return []; } };
+  const supportText = (m) => `Support ${m.kind === 'follow-up' ? 'follow-up' : 'request'} ${m.id} (${m.category}) from ${m.from}\nTitle: ${m.title}\n\n${m.text}`;
+  /** Puts a task on Google Tasks (the default list), when the owner connected it. */
+  async function googleTask(title, notes) {
+    const g = readCfg().googleTasks;
+    if (!g || !g.refreshToken) return { ok: false, why: 'Google Tasks is not connected on this server' };
+    try {
+      const tr = await fetch(process.env.HEARTH_GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: g.clientId, client_secret: g.clientSecret, refresh_token: g.refreshToken, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) });
+      const tj = await tr.json(); if (!tj.access_token) return { ok: false, why: 'Google said no: ' + (tj.error_description || tj.error || tr.status) };
+      const r = await fetch(process.env.HEARTH_GOOGLE_TASKS_URL || 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks', { method: 'POST', headers: { Authorization: 'Bearer ' + tj.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: String(title).slice(0, 1000), notes: String(notes).slice(0, 8000) }), signal: AbortSignal.timeout(15000) });
+      if (!r.ok) return { ok: false, why: 'Google Tasks answered ' + r.status };
+      return { ok: true };
+    } catch (e) { return { ok: false, why: String(e.message || e) }; }
+  }
+  const supportPending = () => [...pending.values()].filter((p) => p.event.kind === 'support').length;
+  function supportIncoming(m) {
+    const clean = { kind: m.kind === 'follow-up' ? 'follow-up' : 'new', id: String(m.id || '').slice(0, 20), title: String(m.title || '').slice(0, 120), category: String(m.category || 'other').slice(0, 20), from: String(m.from || '').slice(0, 120), text: String(m.text || '').slice(0, 5000) };
+    if (supportPending() >= 50) return { code: 429, data: { error: 'too many support mails waiting' } };
+    const req = crypto.randomBytes(4).toString('hex');
+    const ev = { kind: 'support', req, session: '', title: clean.title, cwd: '', machine: opts.name || os.hostname(), ts: Date.now(), call: false, ticket: clean.id,
+      text: `${clean.kind === 'follow-up' ? 'Follow-up' : 'New'} support mail from ${clean.from}: ${clean.text.replace(/\s+/g, ' ').slice(0, 160)}` };
+    pending.set(req, { event: ev, resolve: async (b) => {
+      pending.delete(req);
+      if (b === 'claude') { const r = startJob({ text: `A support mail just arrived. Read it, look into the problem in this project, and tell me what you find and what you would answer. Do not email anyone.\n\n${supportText(clean)}`, cwd: root || undefined, mode: 'acceptEdits' }, 'new'); if (r.error) onLog('support to Claude: ' + r.message); }
+      else if (b === 'list') {
+        const item = { id: clean.id, title: clean.title, from: clean.from, text: clean.text, at: Date.now() }; const g = await googleTask(`Support ${clean.id}: ${clean.title}`, supportText(clean)); item.google = g.ok;
+        try { fs.writeFileSync(listFile, JSON.stringify([item, ...readList()].slice(0, 300)), { mode: 0o600 }); } catch { /* best effort */ }
+        publish({ kind: 'support', session: '', cwd: '', title: clean.title, machine: ev.machine, ts: Date.now(), call: false, text: g.ok ? 'Added to your Google Tasks.' : 'Saved in your Hearth list. Google Tasks: ' + g.why });
+      }
+    } });
+    publish(ev); return { code: 200, data: { ok: true } };
+  }
   /** The plan limit stopped a chat: ask whether to carry on once usage is back (or just carry on, when "Continue by itself" is on in settings). */
   const LIMIT_RE = /(usage|rate)\s+limit\s+(reached|hit)|hit your (usage |session |weekly )?limit|reached your (usage |session |weekly )?limit|limit reached/i;
   const limitWaits = new Map();   // chat id -> { timer, at }
@@ -779,7 +813,7 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
-        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
           const want = String(u.searchParams.get('path') || '') || root || os.homedir();
           let p; try { p = fs.realpathSync(want); if (!fs.statSync(p).isDirectory()) throw new Error(); } catch { return json(res, 404, { error: 'no such folder' }); }
@@ -803,6 +837,7 @@ function start(opts) {
         if (parts[0] === 'pair' && parts[1] === 'requests') return json(res, 200, pairPending());
         if (parts[0] === 'computers') return json(res, 200, computersList());
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
+        if (parts[0] === 'support' && parts[1] === 'list') return json(res, 200, readList());
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
@@ -980,11 +1015,12 @@ function start(opts) {
           if (b.outside !== undefined) writeCfg({ outside: !!b.outside });
           if (b.bypass !== undefined) writeCfg({ bypass: !!b.bypass });
           if (b.root !== undefined) writeCfg({ allowRoot: !!b.root });
+          if (b.googleTasks !== undefined) writeCfg({ googleTasks: b.googleTasks && b.googleTasks.refreshToken ? { clientId: String(b.googleTasks.clientId || ''), clientSecret: String(b.googleTasks.clientSecret || ''), refreshToken: String(b.googleTasks.refreshToken) } : null });
           if (b.autoContinue !== undefined) writeCfg({ autoContinue: !!b.autoContinue });
           if (b.recheck) rootReady(true);
           if (b.removeRule) writeCfg({ allowRules: allowRules().filter((r) => r.id !== String(b.removeRule)) });
           if (b.addPrefix !== undefined) { const r = perms.fromPrefix(b.addPrefix); if (!r) return json(res, 400, { error: 'That cannot be allowed for good: use a plain command like "npm test" (no ; & | > or dangerous commands).' }); addRule(r); }
-          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), autoContinue: readCfg().autoContinue === true, rootReady: rootReady(!!b.recheck), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+          return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(!!b.recheck), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         }
         if (parts[0] === 'fs' && parts[1] === 'mkdir') {   // make a folder on this server (a place to work)
           const parentDir = String(b.path || ''), name = String(b.name || '').trim();
@@ -1059,6 +1095,7 @@ function start(opts) {
         }
         if (parts[0] === 'answer') { const p = pending.get(b.req); if (p) { p.resolve(String(b.answer || '').slice(0, 2000)); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'decision' && shares.hasRequest(String(b.req))) { const r = shares.decide(String(b.req), { decision: b.behavior === 'deny' ? 'deny' : 'approve', text: b.text, mode: b.mode, always: !!b.always, note: b.note }); return json(res, r.code, r.data); }
+        if (parts[0] === 'support' && parts[1] === 'incoming' && req.method === 'POST') { const r = supportIncoming(b); return json(res, r.code, r.data); }
         if (parts[0] === 'decision') { const p = pending.get(b.req); if (p) { p.resolve(b.behavior); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'stop') {
           const sid = String(b.session || '');

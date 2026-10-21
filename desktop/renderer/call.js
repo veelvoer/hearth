@@ -2,7 +2,7 @@
 const q = new URLSearchParams(location.search);
 const key = q.get('key'), kind = q.get('kind'), permission = !!q.get('permission');
 document.getElementById('spark').innerHTML = sparkSVG(72);
-document.getElementById('kind').textContent = kind === 'request' ? 'Shared chat' : kind === 'permission' ? 'Needs permission' : kind === 'question' ? 'Has a question' : 'Finished';
+document.getElementById('kind').textContent = kind === 'support' ? 'Support mail' : kind === 'request' ? 'Shared chat' : kind === 'permission' ? 'Needs permission' : kind === 'question' ? 'Has a question' : 'Finished';
 document.getElementById('title').textContent = q.get('title');
 document.getElementById('text').textContent = q.get('text');
 
@@ -12,14 +12,15 @@ const btn = (label, a, cls = 'ghost') => {
   b.className = cls; b.textContent = label; b.onclick = () => act(a);
   document.getElementById('actions').append(b);
 };
-if (kind === 'request' && q.get('own')) { btn('Open chat to run it', 'chat', 'primary'); btn('Deny', 'deny'); }
+if (kind === 'support') { btn('Give to Claude', 'claude', 'primary'); btn('Add to my list', 'list'); btn('Ignore', 'ignore'); }
+else if (kind === 'request' && q.get('own')) { btn('Open chat to run it', 'chat', 'primary'); btn('Deny', 'deny'); }
 else if (kind === 'request') { btn('Run it (plan only)', 'allow', 'primary'); btn('Change it first', 'chat'); btn('Deny', 'deny'); }
 else if (permission) { btn('Allow', 'allow', 'primary'); btn('Deny', 'deny'); btn('Open chat', 'chat'); }
 else { btn('Talk', 'talk', 'primary'); btn('Open chat', 'chat'); btn('Dismiss', 'dismiss'); }
 
 // ring tone: two short tones, repeated (not for a friend's request: that one is just a quiet window)
 try {
-  if (kind === 'request') throw new Error('quiet');
+  if (kind === 'request' || kind === 'support') throw new Error('quiet');
   const ctx = new AudioContext();
   const beep = (t, f) => {
     const o = ctx.createOscillator(), g = ctx.createGain();

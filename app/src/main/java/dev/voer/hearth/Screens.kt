@@ -834,6 +834,8 @@ fun SettingsScreen() {
                     if (it) CallService.sync(c) else CallService.turnOff(c)
                 })
             }
+            var sIcon by remember { mutableStateOf(Store.statusIcon(c)) }
+            Row2("Icon in the status bar", "Off: Hearth's messages and alerts only show when you pull the notification bar down.") { Switch(sIcon, { sIcon = it; Store.setStatusIcon(c, it) }) }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 TextAction("Background access") {

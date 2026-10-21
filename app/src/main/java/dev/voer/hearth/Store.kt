@@ -89,6 +89,9 @@ object Store {
     fun setInterval(c: Context, m: Int) = sp(c).edit().putInt("interval", m).apply()
     fun notifyReset(c: Context) = sp(c).getBoolean("nreset", true)
     fun setNotifyReset(c: Context, v: Boolean) = sp(c).edit().putBoolean("nreset", v).apply()
+    /** Whether Hearth's notifications may put their icon in the status bar (top bar). Off by default: they only show in the notification shade. */
+    fun statusIcon(c: Context) = sp(c).getBoolean("statusicon", false)
+    fun setStatusIcon(c: Context, v: Boolean) = sp(c).edit().putBoolean("statusicon", v).apply()
     fun callMe(c: Context) = sp(c).getBoolean("callme", false)
     fun setCallMe(c: Context, v: Boolean) = sp(c).edit().putBoolean("callme", v).apply()
     fun supportToken(c: Context): String? = sp(c).getString("support_t", null)?.let { runCatching { Crypto.dec(it) }.getOrNull() }

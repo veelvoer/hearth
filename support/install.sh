@@ -44,7 +44,7 @@ cp "$HERE"/app.js "$HERE"/mail.js "$HERE"/server.js "$HERE"/package.json /opt/he
 (cd /opt/hearth-support && npm install --omit=dev --no-audit --no-fund >/dev/null)
 chown -R "$RUN_USER" /var/lib/hearth-support
 if [ -z "$KEEP" ]; then
-  (umask 077; printf 'SUPPORT_USER=%s\nSUPPORT_PASS=%s\nSUPPORT_OWNERS=%s\nSUPPORT_DATA=/var/lib/hearth-support\nSUPPORT_PORT=47610\n' "$MAILBOX" "$SUPPORT_PASS" "$OWNERS" > /etc/hearth-support.env)
+  (umask 077; printf 'SUPPORT_USER=%s\nSUPPORT_PASS=%s\nSUPPORT_OWNERS=%s\nSUPPORT_DATA=/var/lib/hearth-support\nSUPPORT_PORT=47610\nSUPPORT_RELAY_URL=%s\nSUPPORT_RELAY_TOKEN=%s\n' "$MAILBOX" "$SUPPORT_PASS" "$OWNERS" "${SUPPORT_RELAY_URL:-http://127.0.0.1:47601}" "${SUPPORT_RELAY_TOKEN:-}" > /etc/hearth-support.env)   # SUPPORT_RELAY_TOKEN: the key of your Hearth server (relay.json), so new support mails reach your phone
   chmod 600 /etc/hearth-support.env
 fi
 umask 022

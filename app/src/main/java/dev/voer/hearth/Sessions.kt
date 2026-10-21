@@ -112,7 +112,7 @@ fun MarkdownText(text: String) {
 }
 
 @Composable
-private fun ToolCard(name: String, detail: String, result: String?, err: Boolean) {
+private fun ToolCard(name: String, detail: String, result: String?, err: Boolean, at: Long = 0) {
     var open by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceVariant).border(1.dp, cs.outline, RoundedCornerShape(12.dp))
@@ -122,6 +122,7 @@ private fun ToolCard(name: String, detail: String, result: String?, err: Boolean
             Spacer(Modifier.width(10.dp))
             Text(detail, style = T.small.copy(fontFamily = FontFamily.Monospace), color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
+            if (at > 0) { Txt(clock(at), T.small.copy(fontSize = 11.sp), muted = true); Spacer(Modifier.width(8.dp)) }
             Txt(if (result == null) "…" else if (err) "✗" else "✓", T.small, color = if (err) cs.error else cs.onSurfaceVariant)
         }
         if (open) {
@@ -458,7 +459,18 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
 
 // ───────────────────────── chat ─────────────────────────
 
-private class Part(val tool: Boolean, val text: String = "", val name: String = "", val detail: String = "", val id: String = "", val result: String? = null, val err: Boolean = false)
+private class Part(val tool: Boolean, val text: String = "", val name: String = "", val detail: String = "", val id: String = "", val result: String? = null, val err: Boolean = false, val at: Long = System.currentTimeMillis())
+
+/** When something happened: just the time today, with the weekday this week, else the date. */
+private fun clock(ms: Long): String {
+    if (ms <= 0) return ""
+    val t = java.util.Calendar.getInstance().apply { timeInMillis = ms }; val n = java.util.Calendar.getInstance()
+    val hm = String.format("%02d:%02d", t.get(java.util.Calendar.HOUR_OF_DAY), t.get(java.util.Calendar.MINUTE))
+    val days = (n.timeInMillis - ms) / 86_400_000L
+    return if (t.get(java.util.Calendar.DAY_OF_YEAR) == n.get(java.util.Calendar.DAY_OF_YEAR) && t.get(java.util.Calendar.YEAR) == n.get(java.util.Calendar.YEAR)) hm
+    else if (days < 6) t.getDisplayName(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.SHORT, java.util.Locale.getDefault()) + " " + hm
+    else java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT).format(java.util.Date(ms)) + " " + hm
+}
 
 private fun sess0Shared(s: Sess) = s.shared >= 0
 
@@ -566,10 +578,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                             "session" -> if (isNew && tx.isNotEmpty()) sess = sess.copy(id = tx, title = text.take(60))
                             "prefs" -> call = tx
                             "queued" -> err = if (tx.startsWith("approval:")) "Sent to ${tx.substringAfter(":")}. They have to approve it first, and may change it." else if (tx.startsWith("auto:")) "It runs at once: ${tx.substringAfter(":")} gave you full permission." else if (tx == "now") "Sent to your laptop. It runs there now. Progress appears here in a few seconds." else "Queued. It runs on your laptop as soon as it is online."
-                            "delta" -> { val l = parts.lastOrNull(); if (l != null && !l.tool) parts[parts.size - 1] = Part(false, l.text + tx) else parts.add(Part(false, tx)) }
+                            "delta" -> { val l = parts.lastOrNull(); if (l != null && !l.tool) parts[parts.size - 1] = Part(false, l.text + tx, at = l.at) else parts.add(Part(false, tx)) }
                             "tool" -> { val f = tx.split('\u0000'); parts.add(Part(true, name = f.getOrElse(0) { "" }, detail = f.getOrElse(1) { "" }, id = f.getOrElse(2) { "" })) }
                             "result" -> { val f = tx.split('\u0000', limit = 2); val i = parts.indexOfFirst { it.tool && it.id == f[0] }
-                                if (i >= 0) parts[i] = Part(true, name = parts[i].name, detail = parts[i].detail, id = parts[i].id, result = f.getOrElse(1) { "" }, err = e) }
+                                if (i >= 0) parts[i] = Part(true, name = parts[i].name, detail = parts[i].detail, id = parts[i].id, result = f.getOrElse(1) { "" }, err = e, at = parts[i].at) }
                             "done" -> if (e) err = "Claude reported an error."
                         }
                     }
@@ -690,16 +702,19 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             itemsIndexed(msgs) { idx, msg ->
               Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
                 when (msg.role) {
-                    "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) } } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 11.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        Column(horizontalAlignment = Alignment.End) {
                         Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }
+                        if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 11.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
+                        }
                     }
-                    "tool" -> ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err)
+                    "tool" -> ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
                     "meta" -> Txt(msg.text, T.small, muted = true)
-                    else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else MarkdownText(msg.text)
+                    else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column { MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 11.sp), muted = true) }
                 }
               }
             }
-            itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err) else MarkdownText(p.text) }
+            itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err, p.at) else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 11.sp), muted = true) } }
             queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
             if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {

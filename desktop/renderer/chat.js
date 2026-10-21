@@ -7,6 +7,9 @@ cm.on('stream', (ev) => { const f = chatHandlers[ev.sid] || voiceHandlers[ev.sid
 
 const short = (p) => (p || '').replace(/\/$/, '').split('/').slice(-2).join('/');
 const folderName = (p) => (p || '').replace(/\/$/, '').split('/').pop() || p || 'Unknown';
+/** When something happened: the time today, weekday + time this week, else the date. */
+const clockTime = (ms) => { if (!ms) return ''; const t = new Date(ms), n = new Date(), hm = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); if (t.toDateString() === n.toDateString()) return hm; return Date.now() - ms < 6 * 864e5 ? t.toLocaleDateString([], { weekday: 'short' }) + ' ' + hm : t.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + hm; };
+const tsEl = (ms) => ms ? h('span', { class: 'ts', title: new Date(ms).toLocaleString() }, clockTime(ms)) : null;
 const relTime = (ms) => { const d = Date.now() - ms; return d < 90e3 ? 'now' : CMW.dur(d); };
 const rand = () => Math.random().toString(36).slice(2);
 
@@ -499,7 +502,7 @@ function toolCard(t, key) {
   d.open = SS.open.has(key);
   d.ontoggle = () => { if (d.open) SS.open.add(key); else SS.open.delete(key); };
   const status = t.result === undefined ? h('span', { class: 'spin', title: 'Running' }) : h('span', { class: t.error ? 'bad' : 'okc' }, t.error ? 'failed' : /^(Edit|MultiEdit|Write|NotebookEdit)$/.test(t.name || '') ? 'applied' : 'done');
-  d.append(h('summary', {}, h('span', { class: 'tname' }, t.name || 'Tool'), h('span', { class: 'tsum ellip' }, toolSummary(t)), status), toolBody(t));
+  d.append(h('summary', {}, h('span', { class: 'tname' }, t.name || 'Tool'), h('span', { class: 'tsum ellip' }, toolSummary(t)), tsEl(t.ts), status), toolBody(t));
   return d;
 }
 const assistantEl = (text) => { const d = h('div', { class: 'md' }); d.append(md(text)); return d; };
@@ -517,8 +520,8 @@ function renderMsgs() {
     if (m.role === 'tool') { if (!tools) { tools = h('div', { class: 'tools' + fresh }); col.append(tools); } tools.append(toolCard(m, 'm' + i)); return; }
     tools = null;
     if (m.role === 'meta') { col.append(h('div', { class: 'meta' }, m.text)); return; }
-    if (m.role === 'user') col.append(m.own ? h('div', { class: 'rmmsg' }, h('div', { class: 'small muted' }, m.name), h('div', { class: 'msg user' + fresh, style: 'align-self:auto;max-width:100%' }, m.text)) : h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, m.text));
-    else { const el = assistantEl(m.text); if (fresh) el.classList.add('fresh'); if (m.own) { const w = h('div', { class: 'rmmsg claude' }, h('div', { class: 'small muted' }, m.name + ' · own account'), el); col.append(w); } else col.append(el); }
+    if (m.role === 'user') col.append(m.own ? h('div', { class: 'rmmsg' }, h('div', { class: 'small muted' }, m.name), h('div', { class: 'msg user' + fresh, style: 'align-self:auto;max-width:100%' }, m.text, tsEl(m.ts))) : h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, m.text, tsEl(m.ts)));
+    else { const el = assistantEl(m.text); if (m.ts) el.append(tsEl(m.ts)); if (fresh) el.classList.add('fresh'); if (m.own) { const w = h('div', { class: 'rmmsg claude' }, h('div', { class: 'small muted' }, m.name + ' · own account'), el); col.append(w); } else col.append(el); }
   });
   SS.shown = { key, n: SS.msgs.length };
   col.append(h('div', { id: 'live' }));

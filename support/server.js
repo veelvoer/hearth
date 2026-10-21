@@ -10,8 +10,16 @@ const { createApp } = require('./app');
 const user = process.env.SUPPORT_USER, pass = process.env.SUPPORT_PASS;
 if (!user || !pass) { console.error('SUPPORT_USER and SUPPORT_PASS are not set. Run install.sh first.'); process.exit(1); }
 const transport = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user, pass } });
-const app = createApp({ dataDir: process.env.SUPPORT_DATA || path.join(__dirname, 'data'), transport, from: user, owners: (process.env.SUPPORT_OWNERS || '').split(',').map((s) => s.trim()).filter(Boolean) });
+// a new support mail is handed to the owner's Hearth server (same machine): it shows a notification with "give to Claude / add to my list / ignore"
+const relayUrl = process.env.SUPPORT_RELAY_URL || 'http://127.0.0.1:47601', relayToken = process.env.SUPPORT_RELAY_TOKEN || '';
+async function onOwnerMail(m) {
+  if (!relayToken) return;
+  const r = await fetch(relayUrl.replace(/\/$/, '') + '/support/incoming', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + relayToken }, body: JSON.stringify(m), signal: AbortSignal.timeout(10000) }).catch((e) => ({ ok: false, status: e.message }));
+  if (!r.ok) console.log(new Date().toISOString().slice(11, 19), 'could not tell Hearth about', m.id, r.status);
+}
+const app = createApp({ onOwnerMail, dataDir: process.env.SUPPORT_DATA || path.join(__dirname, 'data'), transport, from: user, owners: (process.env.SUPPORT_OWNERS || '').split(',').map((s) => s.trim()).filter(Boolean) });
 const port = Number(process.env.SUPPORT_PORT || 47610);
+
 http.createServer((req, res) => app.handle(req, res)).listen(port, '127.0.0.1', () => console.log('Support desk on 127.0.0.1:' + port));
 
 // answers come back as emails: look at the mailbox now and then.

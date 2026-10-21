@@ -62,12 +62,14 @@ object Calls {
     private const val CALL = "call"
     private const val LISTEN = "listen"
     private const val MSG = "messages"
+    private const val MSG_Q = "messages_quiet"
     private const val REQ = "requests"
 
     fun channels(c: Context) {
         val nm = c.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(LISTEN, "Listening for calls", NotificationManager.IMPORTANCE_MIN))
         nm.createNotificationChannel(NotificationChannel(MSG, "Messages from Claude", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(MSG_Q, "Messages from Claude (no status bar icon)", NotificationManager.IMPORTANCE_MIN))
         nm.createNotificationChannel(NotificationChannel(REQ, "Friends who want to use your Claude", NotificationManager.IMPORTANCE_HIGH))   // pops up on screen
         nm.createNotificationChannel(NotificationChannel(CALL, "Claude calls", NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
@@ -91,7 +93,7 @@ object Calls {
 
     fun message(c: Context, m: Machine, e: CallEvent) {
         channels(c)
-        val nid = 2000 + ((if (e.kind == "permission" || e.kind == "request" || (e.kind == "limit" && e.req.isNotEmpty())) e.req.hashCode() else e.session.hashCode()) and 0xFFFF)
+        val nid = 2000 + ((if (e.kind == "permission" || e.kind == "request" || ((e.kind == "limit" || e.kind == "support") && e.req.isNotEmpty())) e.req.hashCode() else e.session.hashCode()) and 0xFFFF)
         val fl = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val open = PendingIntent.getActivity(c, nid, Intent(c, MainActivity::class.java).putExtra("open_host", m.host).putExtra("open_session", e.session)
             .putExtra("open_title", e.title).putExtra("open_cwd", e.cwd).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), fl)
@@ -100,19 +102,25 @@ object Calls {
             "permission" -> "${project(e.cwd)}: needs your OK"
             "question" -> "${project(e.cwd)}: Claude has a question"
             "limit" -> "${project(e.cwd)}: usage limit reached"
+            "support" -> "Support mail: ${e.title.ifBlank { "new message" }}"
             "error" -> "${project(e.cwd)}: something went wrong"
             "queued" -> "${project(e.cwd)}: waiting for your laptop"
             "started" -> "${project(e.cwd)}: your laptop started"
             else -> "${project(e.cwd)}: Claude is done"
         }
         val isReq = e.kind == "request"
-        val b = NotificationCompat.Builder(c, if (isReq) REQ else MSG).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
+        val b = NotificationCompat.Builder(c, if (isReq) REQ else if (Store.statusIcon(c)) MSG else MSG_Q).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
             .setContentText(e.text.ifEmpty { e.title }).setStyle(NotificationCompat.BigTextStyle().bigText(e.text.ifEmpty { e.title }))
             .setContentIntent(open).setAutoCancel(true).setPriority(if (isReq) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
         if (e.kind == "permission" && e.req.isNotEmpty()) {
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
                 Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
             b.addAction(act("allow", "Allow", 1)).addAction(act("deny", "Deny", 2))
+        }
+        if (e.kind == "support" && e.req.isNotEmpty()) {   // a support mail: give it to Claude, put it on your list (Google Tasks), or ignore it
+            fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
+                Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()
+            b.addAction(act("claude", "Give to Claude", 1)).addAction(act("list", "Add to list", 2)).addAction(act("ignore", "Ignore", 3))
         }
         if (e.kind == "limit" && e.req.isNotEmpty()) {   // the plan limit stopped a chat: carry on when usage is back, or not
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,

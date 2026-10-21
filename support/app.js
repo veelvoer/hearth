@@ -10,7 +10,7 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const EMAIL = /^[^\s@<>()[\],;:"]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const SESSION_MS = 90 * 86400e3, CODE_MS = 10 * 60e3;
 
-function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d) => { try { const r = await dns.resolveMx(d); if (r.length) return true; } catch { /* try A below */ } try { return (await dns.resolve4(d)).length > 0; } catch { return false; } }, now = () => Date.now() }) {
+function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d) => { try { const r = await dns.resolveMx(d); if (r.length) return true; } catch { /* try A below */ } try { return (await dns.resolve4(d)).length > 0; } catch { return false; } }, now = () => Date.now(), onOwnerMail = async () => {} }) {
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const file = path.join(dataDir, 'support.json');
   let db = { sessions: {}, codes: {}, tickets: {}, outbox: [] };
@@ -69,10 +69,12 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
     const t = { id, email, category, title, status: 'open', createdAt: now(), updatedAt: now(), meta: { app: String(m.app || '').slice(0, 30), version: String(m.version || '').slice(0, 20), platform: String(m.platform || '').slice(0, 80) }, messages: [{ from: 'user', text, at: now() }] };
     db.tickets[id] = t; save();
     const sent = await Promise.all([send(mail.confirmation(t, plus(id)), email), send(mail.notifyOwner(t, plus(id)), from)]);
+    Promise.resolve(onOwnerMail({ kind: 'new', id, title, category, from: email, text })).catch(() => {});   // tells the owner's Hearth, which asks what to do with it
     return { code: 200, body: { id, mailed: sent.every(Boolean) } };
   }
   async function addUserMessage(t, text) {
     t.messages.push({ from: 'user', text, at: now() }); t.updatedAt = now(); t.status = 'open'; save();
+    Promise.resolve(onOwnerMail({ kind: 'follow-up', id: t.id, title: t.title, category: t.category, from: t.email, text })).catch(() => {});
     return send(mail.followUpOwner(t, text, plus(t.id)), from);
   }
   async function addSupportMessage(t, text) {

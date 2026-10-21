@@ -57,11 +57,15 @@ object Repo {
 object Notifier {
     private const val ALERTS = "alerts"
     private const val LIVE = "live"
+    private const val ALERTS_Q = "alerts_quiet"
+    private const val LIVE_Q = "live_quiet"
 
     private fun channels(c: Context) {
         val nm = c.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(ALERTS, "Limit alerts", NotificationManager.IMPORTANCE_DEFAULT))
         nm.createNotificationChannel(NotificationChannel(LIVE, "Live usage", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(ALERTS_Q, "Limit alerts (no status bar icon)", NotificationManager.IMPORTANCE_MIN))
+        nm.createNotificationChannel(NotificationChannel(LIVE_Q, "Live usage (no status bar icon)", NotificationManager.IMPORTANCE_MIN))
     }
 
     private fun open(c: Context) = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java),
@@ -84,13 +88,13 @@ object Notifier {
             Store.setLastNotified(c, k, "$win:$hit")
             val left = l.resetsAt?.let { " Resets in ${dur(it - now.at)}." }.orEmpty()
             val title = if (hit >= 100) "$name limit reached" else "$name at ${l.pct.toInt()}%"
-            post(c, 10 + i, NotificationCompat.Builder(c, ALERTS).setSmallIcon(R.drawable.ic_stat)
+            post(c, 10 + i, NotificationCompat.Builder(c, if (Store.statusIcon(c)) ALERTS else ALERTS_Q).setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title).setContentText(left.trim().ifEmpty { "Crossed $hit%." })
                 .setContentIntent(open(c)).setAutoCancel(true).build())
         }
         val ps = prev?.session; val ns = now.session
         if (Store.notifyReset(c) && ps != null && ns != null && ps.pct >= 75 && ns.pct < ps.pct - 30)
-            post(c, 20, NotificationCompat.Builder(c, ALERTS).setSmallIcon(R.drawable.ic_stat)
+            post(c, 20, NotificationCompat.Builder(c, if (Store.statusIcon(c)) ALERTS else ALERTS_Q).setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle("Session reset").setContentText("A fresh 5-hour window is ready.")
                 .setContentIntent(open(c)).setAutoCancel(true).build())
         live(c, now)
@@ -103,7 +107,7 @@ object Notifier {
         val s = u.session; val w = u.week
         val sp = s?.at(u.at) ?: 0.0
         val title = "Session ${sp.toInt()}%" + (s?.resetsAt?.takeIf { it > u.at }?.let { " · resets in ${dur(it - u.at)}" } ?: "")
-        post(c, 30, NotificationCompat.Builder(c, LIVE).setSmallIcon(R.drawable.ic_stat)
+        post(c, 30, NotificationCompat.Builder(c, if (Store.statusIcon(c)) LIVE else LIVE_Q).setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(title).setContentText("Week ${(w?.at(u.at) ?: 0.0).toInt()}%")
             .setProgress(100, sp.toInt(), false).setOngoing(true).setOnlyAlertOnce(true).setSilent(true)
             .setContentIntent(open(c)).build())

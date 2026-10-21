@@ -21,6 +21,8 @@ jobs:
         run: node desktop/test/perms-flow.test.js
       - name: Odd chat files test
         run: node desktop/test/odd-chats.test.js
+      - name: Support mail test
+        run: node desktop/test/support-mail.test.js
       - name: Usage limit continue
         run: node desktop/test/limit.test.js
       - name: Command rules test
