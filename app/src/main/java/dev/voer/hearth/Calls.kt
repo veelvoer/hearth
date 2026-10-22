@@ -70,7 +70,7 @@ object Calls {
         nm.createNotificationChannel(NotificationChannel(LISTEN, "Listening for calls", NotificationManager.IMPORTANCE_MIN))
         nm.createNotificationChannel(NotificationChannel(MSG, "Messages from Claude", NotificationManager.IMPORTANCE_DEFAULT))
         nm.createNotificationChannel(NotificationChannel(MSG_Q, "Messages from Claude (no status bar icon)", NotificationManager.IMPORTANCE_MIN))
-        nm.createNotificationChannel(NotificationChannel(REQ, "Friends who want to use your Claude", NotificationManager.IMPORTANCE_HIGH))   // pops up on screen
+        nm.createNotificationChannel(NotificationChannel(REQ, "Needs your decision (friends, support mail, usage limit)", NotificationManager.IMPORTANCE_HIGH))   // pops up on screen
         nm.createNotificationChannel(NotificationChannel(CALL, "Claude calls", NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
                 AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
@@ -108,7 +108,7 @@ object Calls {
             "started" -> "${project(e.cwd)}: your laptop started"
             else -> "${project(e.cwd)}: Claude is done"
         }
-        val isReq = e.kind == "request"
+        val isReq = e.kind == "request" || ((e.kind == "support" || e.kind == "limit") && e.req.isNotEmpty())   // things that wait for your decision pop up, whatever the status bar setting is
         val b = NotificationCompat.Builder(c, if (isReq) REQ else if (Store.statusIcon(c)) MSG else MSG_Q).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
             .setContentText(e.text.ifEmpty { e.title }).setStyle(NotificationCompat.BigTextStyle().bigText(e.text.ifEmpty { e.title }))
             .setContentIntent(open).setAutoCancel(true).setPriority(if (isReq) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)

@@ -26,6 +26,7 @@ const BUILD = require('./buildsig').sigOfDir(__dirname);   // what code this rel
 
 const DISCOVER_PORT = 47600;
 const MODES = ['acceptEdits', 'auto', 'plan', 'manual', 'dontAsk', 'bypassPermissions'];
+const BUGS_PROMPT = "The user keeps a list of bugs and requests that came in as support mail. When they ask you to fix the bugs (or look at the list), call mcp__meter__bug_list, work through the open items one by one in the right project, and call mcp__meter__bug_fixed with the item's id after you fixed it. Never email anyone about them.";
 const ASK_PROMPT = 'When you need the user to choose between options or make a decision, call the mcp__meter__ask_user tool (2-4 short options) instead of writing the options in your reply, then continue with their answer.';
 const HUB_PROMPT = "You are running on the user's always-on server. The user also has their own laptop, which syncs the same projects folder and your chats. When something has to happen on that laptop (install dependencies or tools there, run or test the app, anything needing their hardware or screen), use mcp__meter__run_on_laptop: it runs there automatically, continuing this conversation, as soon as the laptop is online. Use mcp__meter__laptop_status to see if it is online.";
 const ROOT_PROMPT = 'You are running as root (full administrator rights) on this server, started by the user on purpose. Files you create or change inside the project folder must stay owned by the normal user (run chown for them), so the user can still edit them. You can read and change any file, install software and manage services. Say what you are about to do before anything destructive or hard to undo (deleting data, changing users, firewall, disks, ssh), and prefer the smallest change that does the job.';
@@ -435,13 +436,14 @@ function start(opts) {
       args.push('--resume', sidParam);
       key = sidParam;
     }
+    const bugsOn = !body.noRoot && kind !== 'talk';   // the owner's own chats can read and tick off the bug list; a friend's prompt cannot
     const mcpFile = path.join(dir, `ask-${key}.json`);
     const asarFix = (p) => p;
     fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { meter: process.versions.electron
-      ? { command: process.execPath, args: [asarFix(path.join(__dirname, 'ask-mcp.js'))], env: { ELECTRON_RUN_AS_NODE: '1', CM_RELAY_PORT: String(port), CM_JOB: key, CM_HUB: publicMode ? '1' : '' } }
-      : { command: process.execPath, args: [path.join(__dirname, 'ask-mcp.js')], env: { CM_RELAY_PORT: String(port), CM_JOB: key, CM_HUB: publicMode ? '1' : '' } } } }));
-    args.push('--mcp-config', mcpFile, '--allowedTools', publicMode ? 'mcp__meter__ask_user mcp__meter__laptop_status mcp__meter__run_on_laptop' : 'mcp__meter__ask_user',
-      '--append-system-prompt', ASK_PROMPT + (publicMode && kind !== 'talk' ? ' ' + HUB_PROMPT : '') + (kind === 'talk' ? ' ' + TALK_PROMPT : '') + (body.brief ? ' ' + BRIEF : ''));
+      ? { command: process.execPath, args: [asarFix(path.join(__dirname, 'ask-mcp.js'))], env: { ELECTRON_RUN_AS_NODE: '1', CM_RELAY_PORT: String(port), CM_JOB: key, CM_HUB: publicMode ? '1' : '', CM_BUGS: bugsOn ? '1' : '' } }
+      : { command: process.execPath, args: [path.join(__dirname, 'ask-mcp.js')], env: { CM_RELAY_PORT: String(port), CM_JOB: key, CM_HUB: publicMode ? '1' : '', CM_BUGS: bugsOn ? '1' : '' } } } }));
+    args.push('--mcp-config', mcpFile, '--allowedTools', (publicMode ? 'mcp__meter__ask_user mcp__meter__laptop_status mcp__meter__run_on_laptop' : 'mcp__meter__ask_user') + (bugsOn ? ' mcp__meter__bug_list mcp__meter__bug_fixed' : ''),
+      '--append-system-prompt', ASK_PROMPT + (publicMode && kind !== 'talk' ? ' ' + HUB_PROMPT : '') + (bugsOn ? ' ' + BUGS_PROMPT : '') + (kind === 'talk' ? ' ' + TALK_PROMPT : '') + (body.brief ? ' ' + BRIEF : ''));
     // a chat with root rights: only when the owner switched it on, and only through passwordless sudo (or when this program already is root)
     const wasRoot = sidParam !== 'new' && getPrefs(sidParam).root === true;
     let asRoot = !body.noRoot && kind !== 'talk' && (body.root === true || wasRoot);   // a friend's approved prompt (noRoot) never runs as root
@@ -463,7 +465,7 @@ function start(opts) {
       : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
       : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
-    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, rootLaunch, resumeBody: { mode: body.mode, model: body.model }, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
+    const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, rootLaunch, bugs: bugsOn, resumeBody: { mode: body.mode, model: body.model }, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
     jobs.set(key, job);
     if (agentSync) agentSync.kick('job-start');
     // "call me when it's done" typed into the chat sets the call preference for this chat
@@ -574,6 +576,71 @@ function start(opts) {
     } });
     publish(ev); return { code: 200, data: { ok: true } };
   }
+  // ── workflows: a chat that keeps working through steps ("bug test for 2 hours", then "fix everything"), because one run stops after a while ──
+  const wfFile = path.join(dir, 'workflows.json');
+  let workflows = (() => { try { return JSON.parse(fs.readFileSync(wfFile, 'utf8')) || {}; } catch { return {}; } })();
+  const saveWf = () => { try { fs.writeFileSync(wfFile, JSON.stringify(workflows), { mode: 0o600 }); } catch { /* best effort */ } };
+  const WF_MAX_STEPS = 10, WF_MIN = Number(process.env.HEARTH_WF_MINUTE_MS) || 60000, WF_TICK = Number(process.env.HEARTH_WF_TICK_MS) || 15000;
+  const cleanSteps = (steps) => (Array.isArray(steps) ? steps : []).slice(0, WF_MAX_STEPS).map((x, i) => ({
+    name: String((x && x.name) || 'Step ' + (i + 1)).trim().slice(0, 60) || 'Step ' + (i + 1),
+    prompt: String((x && x.prompt) || '').trim().slice(0, 4000),
+    minutes: Math.max(0, Math.min(1440, Math.round(Number(x && x.minutes) || 0))),   // 0: one run, until Claude is done
+  })).filter((x) => x.prompt);
+  const wfView = (sid) => {
+    const w = workflows[sid]; if (!w) return { state: 'none', steps: [] };
+    const step = w.steps[w.idx] || null, left = step && step.minutes ? Math.max(0, Math.round((w.stepStart + step.minutes * WF_MIN - Date.now()) / WF_MIN)) : null;
+    return { state: w.state, steps: w.steps, idx: w.idx, auto: !!w.auto, step: step && step.name, minutesLeft: w.state === 'running' ? left : null, stepStart: w.stepStart, note: w.note || '', waitUntil: w.waitUntil || 0 };
+  };
+  const wfEvent = (sid, text) => publish({ ...baseFor(sid, ''), kind: 'done', call: false, text, seconds: 0 });
+  const wfPrompt = (w, first) => {
+    const step = w.steps[w.idx], n = w.idx + 1, total = w.steps.length, left = step.minutes ? Math.max(1, Math.round((w.stepStart + step.minutes * WF_MIN - Date.now()) / WF_MIN)) : 0;
+    const head = `Workflow, step ${n} of ${total}: "${step.name}".` + (first && n > 1 ? ` The step before it ("${w.steps[n - 2].name}") is done; build on what you found.` : '');
+    const time = step.minutes ? (first ? ` You have ${step.minutes} minutes for this step.` : ` About ${left} minutes of this step are left.`) + ' Keep working the whole time: do not stop early, do not ask me questions unless you are really stuck, and when you run out of obvious things, look deeper.' : ' Work until it is done.';
+    return `${head}${time}\n\n${first ? '' : 'Carry on where you left off. '}${step.prompt}`;
+  };
+  function wfAdvance(sid, w) {
+    w.idx++; w.stepStart = Date.now(); w.ranOnce = false; w.fails = 0;
+    if (w.idx >= w.steps.length) { w.state = 'done'; w.idx = w.steps.length - 1; wfEvent(sid, 'Workflow finished: all ' + w.steps.length + ' step(s) done.'); }
+    else wfEvent(sid, `Workflow: next step ${w.idx + 1} of ${w.steps.length}, "${w.steps[w.idx].name}".`);
+    saveWf();
+  }
+  function wfTick(sid) {
+    const w = workflows[sid]; if (!w || w.state !== 'running') return;
+    const running = jobs.get(sid); if (running && !running.done) return;
+    if (limitWaits.has(sid) || Date.now() < (w.waitUntil || 0)) return;
+    const step = w.steps[w.idx];
+    const over = step.minutes ? Date.now() - w.stepStart >= step.minutes * WF_MIN : w.ranOnce;
+    if (over) { wfAdvance(sid, w); if (w.state !== 'running') return; }
+    const cur = w.steps[w.idx], first = !w.ranOnce;
+    const auto = w.auto && bypassOk() ? 'bypassPermissions' : 'acceptEdits';
+    const r = startJob({ text: wfPrompt(w, first), mode: auto }, sid);
+    if (r.error) { w.fails = (w.fails || 0) + 1; w.note = r.message; if (w.fails >= 3) { w.state = 'paused'; wfEvent(sid, 'Workflow paused: ' + r.message); } saveWf(); return; }
+    w.ranOnce = true; w.note = ''; saveWf();
+    r.job.onDone.push((j) => {
+      if (j.error && !j.limitHit) { w.fails = (w.fails || 0) + 1; w.note = (j.resultText || 'The run stopped with an error.').slice(0, 200); if (w.fails >= 3) { w.state = 'paused'; wfEvent(sid, 'Workflow paused after 3 failed runs: ' + w.note); } } else if (!j.error) w.fails = 0;
+      saveWf(); setTimeout(() => wfTick(sid), 3000);
+    });
+  }
+  setInterval(() => { for (const sid of Object.keys(workflows)) wfTick(sid); }, WF_TICK).unref();
+  setTimeout(() => { for (const sid of Object.keys(workflows)) wfTick(sid); }, 4000).unref();
+  function wfSet(sid, b) {
+    if (b.action) {
+      const w = workflows[sid]; if (!w) return { code: 404, data: { error: 'No workflow in this chat.' } };
+      if (b.action === 'pause' && w.state === 'running') { w.state = 'paused'; wfEvent(sid, 'Workflow paused.'); }
+      else if (b.action === 'resume' && w.state === 'paused') { w.state = 'running'; w.fails = 0; w.waitUntil = 0; setTimeout(() => wfTick(sid), 200); }
+      else if (b.action === 'stop') { delete workflows[sid]; const j = jobs.get(sid); if (j && !j.done) stopJob(sid); }
+      else if (b.action === 'skip' && w.state !== 'done') { wfAdvance(sid, w); if (w.state === 'running') setTimeout(() => wfTick(sid), 200); }
+      else return { code: 409, data: { error: 'That does not fit the workflow state (' + w.state + ').' } };
+      saveWf(); return { code: 200, data: wfView(sid) };
+    }
+    const steps = cleanSteps(b.steps); if (!steps.length) return { code: 400, data: { error: 'Add at least one step with something to do.' } };
+    if (!core.findSession(sid)) return { code: 404, data: { error: 'Send a first message in the chat before starting a workflow.' } };
+    const j = jobs.get(sid); if (j && !j.done) return { code: 409, data: { error: 'Claude is working on this chat right now. Start the workflow when it has finished, or stop it first.' } };
+    workflows[sid] = { steps, idx: 0, state: 'running', stepStart: Date.now(), ranOnce: false, auto: b.auto === true && bypassOk(), fails: 0, note: '' };
+    saveWf(); wfEvent(sid, `Workflow started: ${steps.length} step(s).`); setTimeout(() => wfTick(sid), 200);
+    return { code: 200, data: { ...wfView(sid), autoBlocked: b.auto === true && !bypassOk() } };
+  }
+
   /** The plan limit stopped a chat: ask whether to carry on once usage is back (or just carry on, when "Continue by itself" is on in settings). */
   const LIMIT_RE = /(usage|rate)\s+limit\s+(reached|hit)|hit your (usage |session |weekly )?limit|reached your (usage |session |weekly )?limit|limit reached/i;
   const limitWaits = new Map();   // chat id -> { timer, at }
@@ -602,6 +669,7 @@ function start(opts) {
     const sid = job.sid, base = baseFor(sid, job.cwd), at = limitResetAt(job);
     const d0 = new Date(at), when = d0.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + (d0.toDateString() === new Date().toDateString() ? '' : ' ' + d0.toLocaleDateString([], { weekday: 'short' }));
     const body = { ...(job.resumeBody || {}) };
+    { const w = workflows[sid]; if (w && w.state === 'running') { w.waitUntil = at + 20000; saveWf(); wfEvent(sid, `Usage limit reached. The workflow carries on by itself when usage is back (${when}).`); return; } }
     if (readCfg().autoContinue === true) {
       resumeAfterLimit(sid, body, at, job.cwd);
       publish({ ...base, kind: 'limit', auto: true, resetsAt: at, call: false, text: `Hearth continues by itself when your usage is back (${when}).` });
@@ -838,6 +906,7 @@ function start(opts) {
         if (parts[0] === 'computers') return json(res, 200, computersList());
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
         if (parts[0] === 'support' && parts[1] === 'list') return json(res, 200, readList());
+        if (parts[0] === 'sessions' && parts[2] === 'workflow' && parts.length === 3) return json(res, 200, wfView(parts[1]));
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
@@ -913,6 +982,14 @@ function start(opts) {
         if (parts[0] === 'mcp' && parts[1] === 'hub') {  // run_on_laptop / laptop_status from a chat on this server
           if (!isLocalDirect(req)) return json(res, 403, { error: 'local only' });
           const q = await bodyJson(req), job = jobs.get(String(q.job || ''));
+          if (q.tool === 'bug_list' || q.tool === 'bug_fixed') {
+            if (!job || !job.bugs) return json(res, 200, { text: 'The bug list is not available in this chat.' });
+            const all = readList();
+            if (q.tool === 'bug_list') { const open = all.filter((x) => !x.done); return json(res, 200, { text: open.length ? open.length + ' open item(s):\n\n' + open.map((x) => `[${x.id}] ${x.title} (from ${x.from})\n${x.text}`).join('\n\n---\n') : 'The list is empty: nothing to fix.' }); }
+            const it = all.find((x) => x.id === String(q.id || '')); if (!it) return json(res, 200, { text: 'No item with id ' + q.id + '. Use bug_list to see the ids.' });
+            it.done = true; it.doneAt = Date.now(); it.note = String(q.note || '').slice(0, 500); try { fs.writeFileSync(listFile, JSON.stringify(all), { mode: 0o600 }); } catch { /* best effort */ }
+            return json(res, 200, { text: 'Marked ' + it.id + ' as fixed.' });
+          }
           const on = laptopOnline();
           if (q.tool === 'list_computers') { const l = computersList().filter((c) => c.kind === 'computer'); return json(res, 200, { text: l.length ? 'The user\'s computers:\n' + l.map((c) => `- ${c.name}: ${c.online ? 'online' : 'offline'}`).join('\n') : 'No computer of the user is linked to this server.' }); }
           let chosen = on;
@@ -1032,6 +1109,7 @@ function start(opts) {
           try { fs.mkdirSync(target); } catch (e) { return json(res, 403, { error: 'cannot create it here: ' + e.code }); }
           return json(res, 200, { path: target });
         }
+        if (parts[0] === 'sessions' && parts[2] === 'workflow' && parts.length === 3) { const r = wfSet(parts[1], b); return json(res, r.code, r.data); }
         if (parts[0] === 'sessions' && parts[2] === 'root') {   // give an existing chat root rights, or take them away again
           const sid = parts[1], on = !!b.on;
           if (!core.findSession(sid)) return json(res, 404, { error: 'no such session' });

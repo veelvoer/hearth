@@ -225,6 +225,8 @@ object Relay {
         return Options(o.optBoolean("outside", true), o.optBoolean("outsideAvailable"), o.optBoolean("bypass"), o.optBoolean("bypassFixed"), o.optBoolean("root"), rr?.optBoolean("ok") ?: false, rr?.optString("why").orEmpty(),
             if (ra == null) emptyList() else List(ra.length()) { ra.getJSONObject(it).let { r -> Rule(r.getString("id"), r.optString("label").ifBlank { r.optString("prefix") }) } })
     }
+    /** The workflow of a chat: state, steps, which step, minutes left. */
+    fun workflow(m: Machine, sid: String): JSONObject = JSONObject(getJson(m, "/sessions/$sid/workflow"))
     data class Skill(val name: String, val desc: String, val src: String, val own: Boolean)
     /** Every skill and slash command this computer knows: yours, from your Claude account, plugins. */
     fun skills(m: Machine): List<Skill> {

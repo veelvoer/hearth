@@ -20,6 +20,11 @@ const HUB_TOOLS = [
   { name: 'list_computers', description: "List the user's own computers that are linked to this server (for example a laptop and a desktop PC) and whether each is online.", inputSchema: { type: 'object', properties: {} } },
   { name: 'run_on_computer', description: "Hand a task to one of the user's own computers by name (see list_computers). It runs there in this same project, continuing this conversation, once this reply is finished (when that computer is online; otherwise as soon as the user opens it). Use it when the user asks you to set something up or run something on another PC.", inputSchema: { type: 'object', properties: { computer: { type: 'string', description: 'The name of the computer, exactly as list_computers shows it.' }, task: { type: 'string', description: 'What to do there, in full sentences.' } }, required: ['computer', 'task'] } },
 ];
+const BUGS = process.env.CM_BUGS === '1';   // the owner's own chats can read the bug list and tick items off
+const BUG_TOOLS = [
+  { name: 'bug_list', description: "List the open items on the user's list of bugs and requests (they came in as support mail). Each has an id, a title, who sent it and the text.", inputSchema: { type: 'object', properties: {} } },
+  { name: 'bug_fixed', description: 'Mark an item of the bug list as fixed, after you really fixed it.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id from bug_list, like HRT-12345.' }, note: { type: 'string', description: 'One short line about what you changed.' } }, required: ['id'] } },
+];
 function hub(tool, args) {
   return new Promise((resolve) => {
     const body = Buffer.from(JSON.stringify({ job: JOB, tool, ...args }));
@@ -51,11 +56,11 @@ process.stdin.on('data', (d) => {
     if (!line) continue;
     let m; try { m = JSON.parse(line); } catch { continue; }
     if (m.method === 'initialize') send({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: (m.params && m.params.protocolVersion) || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meter', version: '1.0.0' } } });
-    else if (m.method === 'tools/list') send({ jsonrpc: '2.0', id: m.id, result: { tools: HUB ? [TOOL, ...HUB_TOOLS] : [TOOL] } });
+    else if (m.method === 'tools/list') send({ jsonrpc: '2.0', id: m.id, result: { tools: [TOOL, ...(HUB ? HUB_TOOLS : []), ...(BUGS ? BUG_TOOLS : [])] } });
     else if (m.method === 'tools/call') {
       const name = m.params && m.params.name, args = (m.params && m.params.arguments) || {};
       const reply = (text) => send({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text }] } });
-      if (HUB && ['laptop_status', 'run_on_laptop', 'list_computers', 'run_on_computer'].includes(name)) hub(name, args).then(reply);
+      if ((HUB && ['laptop_status', 'run_on_laptop', 'list_computers', 'run_on_computer'].includes(name)) || (BUGS && ['bug_list', 'bug_fixed'].includes(name))) hub(name, args).then(reply);
       else ask(args).then((answer) => reply('The user answered: ' + answer));
     }
     else if (m.id !== undefined && m.method) send({ jsonrpc: '2.0', id: m.id, result: {} });

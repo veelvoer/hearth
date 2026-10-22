@@ -262,7 +262,7 @@ function drawPane() {
       SS.shared && SS.shared.grant && SS.shared.grant.auto ? h('div', { class: 'small', style: 'color:var(--clay)' }, 'You have full permission: what you send runs at once.') : null,
       h('div', {}, h('button', { class: 'ghost sm', onclick: () => { if (!confirm('Leave this shared chat?')) return; rsSet('g:' + mach.share, null); SS.sel = null; shApply().then(() => { pollLive(); drawSide(); drawPane(); }); } }, 'Leave'))))); else
     pane.append(h('div', { class: 'rightcol' },
-      rc('Phone call', callRow), rc('Run on', runRow),
+      rc('Phone call', callRow), rc('Run on', runRow), s.id ? rc('Workflow', workflowBox(s)) : null,
       rc('Folder', mach.local && s.cwd ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'mono small ellip', title: s.cwd }, s.cwd), h('div', {}, h('button', { class: 'ghost sm', onclick: () => cm.openPath(s.cwd) }, 'Open folder'))) : (s.cwd ? h('div', { class: 'mono small', style: 'overflow-wrap:anywhere' }, s.cwd) : null)),
       rc('Move to server', moveBox(s, mach)), rc('Continue here', continueBox(s, mach)),
       s.id && !guest && (me.root || s.root || (SS.sopts && SS.sopts[s.mid] && SS.sopts[s.mid].root)) ? rc('Root rights', h('div', { class: 'small' }, me.root ? 'This chat runs as root. Claude knows it has full administrator rights.' : 'This chat runs without root rights.'),
@@ -776,4 +776,41 @@ async function moveProject(s, mach, server, st, inside, name) {
     else toast('Moved. The chat will appear on ' + server.name + ' shortly.');
     loadList(); pollLive();
   } catch (e) { box.remove(); off(); SS.chatErr = clean(e); renderMsgs(); }
+}
+
+// ───────── workflow: Claude works through steps by itself, each for a set time ─────────
+const WF_PRESETS = {
+  'Bug test': { name: 'Bug test', minutes: 120, prompt: 'Test this project like a careful user. Run it, go through every screen and feature, try odd input, and look for bugs, crashes and confusing things. Write every bug you find in a file BUGS.md in the project (what you did, what happened, what should have happened). Do not fix anything yet.' },
+  'Bug fix': { name: 'Bug fix', minutes: 180, prompt: 'Read BUGS.md and fix every bug on it, one by one. After every fix, build the project and test the build. If a debug phone is connected (check with adb devices), install the build on it and test the fix there. Tick off each bug in BUGS.md when it is fixed and tested.' },
+  'Fix my bug list': { name: 'Fix my bug list', minutes: 180, prompt: "Call mcp__meter__bug_list and fix the open items one by one in the right project. After each fix, build and test it (on the debug phone if one is connected), then call mcp__meter__bug_fixed with the item's id." },
+};
+function workflowBox(s) {
+  const box = h('div', { class: 'stack', style: 'gap:8px' }), url = `/sessions/${s.id}/workflow`;
+  let steps = [{ ...WF_PRESETS['Bug test'] }, { ...WF_PRESETS['Bug fix'] }], auto = false, editing = false, st = null;
+  const call = async (body) => { try { st = await cm.relay(s.mid, 'POST', url, body); if (st.autoBlocked) toast('Started. Full auto is off on this server, so Claude may wait for your OK.'); editing = false; } catch (e) { toast(clean(e)); } draw(); };
+  const draw = () => {
+    box.innerHTML = '';
+    if (st && (st.state === 'running' || st.state === 'paused')) {
+      const left = st.minutesLeft != null && st.minutesLeft >= 0 ? ' · ' + (st.minutesLeft >= 60 ? Math.floor(st.minutesLeft / 60) + 'h ' + (st.minutesLeft % 60) + 'm' : st.minutesLeft + 'm') + ' left' : '';
+      box.append(h('div', { class: 'small' }, `Step ${st.idx + 1} of ${st.steps.length}: ${st.step}${st.state === 'paused' ? ' · paused' : left}`));
+      if (st.note) box.append(h('div', { class: 'small err' }, st.note));
+      box.append(h('div', { class: 'row wrap' }, st.state === 'running' ? h('button', { class: 'ghost sm', onclick: () => call({ action: 'pause' }) }, 'Pause') : h('button', { class: 'ghost sm', onclick: () => call({ action: 'resume' }) }, 'Resume'),
+        h('button', { class: 'ghost sm', onclick: () => call({ action: 'skip' }) }, 'Skip step'), h('button', { class: 'ghost sm', onclick: () => confirm('Stop the workflow?') && call({ action: 'stop' }) }, 'Stop')));
+      return;
+    }
+    if (!editing) { box.append(h('div', { class: 'small muted' }, st && st.state === 'done' ? 'The last workflow finished.' : 'Let Claude work through steps by itself, each for as long as you choose.'), h('div', {}, h('button', { class: 'ghost sm', onclick: () => { editing = true; draw(); } }, 'Set up a workflow'))); return; }
+    steps.forEach((x, i) => {
+      const name = h('input', { value: x.name, placeholder: 'Name', oninput: () => { x.name = name.value; } }), min = h('input', { type: 'number', min: '0', max: '1440', value: String(x.minutes), style: 'width:70px', oninput: () => { x.minutes = Number(min.value) || 0; } });
+      const prompt = h('textarea', { rows: '3', placeholder: 'What should Claude do?', style: 'width:100%', oninput: () => { x.prompt = prompt.value; } }); prompt.value = x.prompt;
+      box.append(h('div', { class: 'stack', style: 'gap:4px' }, h('div', { class: 'row' }, h('b', { class: 'small' }, 'Step ' + (i + 1)), name, min, h('span', { class: 'small muted' }, 'min'), steps.length > 1 ? h('button', { class: 'ghost sm', onclick: () => { steps.splice(i, 1); draw(); } }, '×') : null), prompt));
+    });
+    box.append(h('div', { class: 'row wrap' }, h('span', { class: 'small muted' }, 'Add:'), ...Object.keys(WF_PRESETS).map((k) => h('button', { class: 'ghost sm', onclick: () => { if (steps.length < 10) steps.push({ ...WF_PRESETS[k] }); draw(); } }, k)), h('button', { class: 'ghost sm', onclick: () => { if (steps.length < 10) steps.push({ name: 'Step ' + (steps.length + 1), minutes: 60, prompt: '' }); draw(); } }, 'Custom')));
+    const cb = h('input', { type: 'checkbox' }); cb.checked = auto; cb.onchange = () => { auto = cb.checked; };
+    box.append(h('label', { class: 'row small' }, cb, "Don't ask for permission (needs Full auto allowed on the server)"));
+    box.append(h('div', { class: 'row' }, h('button', { class: 'primary sm', onclick: () => call({ steps: steps.filter((x) => x.prompt.trim()), auto }) }, 'Start'), h('button', { class: 'ghost sm', onclick: () => { editing = false; draw(); } }, 'Cancel')));
+  };
+  draw();
+  const load = async () => { try { st = await cm.relay(s.mid, 'GET', url); if (!editing && box.isConnected) draw(); } catch { /* older server */ } };
+  load(); const t = setInterval(() => { if (!box.isConnected) clearInterval(t); else load(); }, 15000);
+  return box;
 }

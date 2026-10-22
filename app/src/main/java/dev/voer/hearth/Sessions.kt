@@ -689,6 +689,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 }
                 Txt("More effort means deeper thinking and more tokens. Talk sessions always use Haiku.", T.small, muted = true)
             }
+            if (sess.kind != "talk" && !guest) WorkflowPanel(m, sess.id)
             Label("Phone call")
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("When it's done", call == "done") { setCall("done") }
