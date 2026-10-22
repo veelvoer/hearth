@@ -45,6 +45,16 @@ srv.listen(0, '127.0.0.1', async () => {
   let last; for (let i = 0; i < 6; i++) last = await call('POST', '/tickets', tok, { category: 'idea', title: 'Idea ' + i, text: 'A long enough idea text.' });
   ok('20 too many requests in a day are refused', last.code === 429);
   ok('21 a failed email is queued, not lost', await (async () => { const a = createApp({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'hs3-')), transport: { sendMail: async () => { throw new Error('smtp down'); } }, from: 'a@b.co', resolveMx: async () => true }); const res = await new Promise((rs) => { const s2 = http.createServer((q2, r2) => a.handle(q2, r2)).listen(0, async () => { const port = s2.address().port; const rq = (b) => new Promise((x) => { const d = Buffer.from(JSON.stringify(b)); const h = http.request({ host: '127.0.0.1', port, path: '/auth/start', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': d.length } }, (rr) => { rr.resume(); x(rr.statusCode); }); h.end(d); }); const code = await rq({ email: 'x@y.com' }); s2.close(); rs(code); }); }); return res === 502 && a.db().outbox.length === 1; })());
+  // an owner who signs in sees every request, read only
+  await call('POST', '/auth/start', null, { email: 'me@example.com' });
+  const oc = (/(\d{3}) (\d{3})/.exec(lastTo('me@example.com').subject) || []).slice(1).join('');
+  const ot = (await call('POST', '/auth/verify', null, { email: 'me@example.com', code: oc })).j.token;
+  const ol = await call('GET', '/tickets', ot);
+  ok('22 an owner sees the requests of other people, with their address', ol.code === 200 && ol.j.length >= 1 && ol.j.every((x) => x.theirs && x.email === 'kid@example.com'));
+  const od = await call('GET', '/tickets/' + ol.j[0].id, ot);
+  ok('23 and opens one completely', od.code === 200 && od.j.messages.length >= 1 && od.j.theirs === true && od.j.email === 'kid@example.com');
+  ok('24 but cannot write into it (answer by email)', (await call('POST', '/tickets/' + ol.j[0].id + '/messages', ot, { text: 'hello there' })).code === 403);
+  ok('25 a normal user still sees only their own', (await call('GET', '/tickets', tok)).j.every((x) => !x.email));
   srv.close(); fs.rmSync(dir, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 });

@@ -45,7 +45,7 @@ private val CATS = listOf(
     Triple("idea", "Idea", "What would you like Hearth to do, and why would it help you?"),
     Triple("other", "Other", "Tell us what is on your mind."),
 )
-private data class Ticket(val id: String, val title: String, val status: String, val last: String, val from: String, val updatedAt: Long)
+private data class Ticket(val id: String, val title: String, val status: String, val last: String, val from: String, val updatedAt: Long, val email: String = "", val theirs: Boolean = false)
 private data class TMsg(val from: String, val text: String, val at: Long)
 private fun ago(t: Long): String { val s = (System.currentTimeMillis() - t) / 1000; return when { s < 60 -> "just now"; s < 3600 -> "${s / 60} min ago"; s < 86400 -> "${s / 3600} h ago"; else -> "${s / 86400} d ago" } }
 
@@ -131,7 +131,7 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
     LaunchedEffect(Unit) {
         while (true) {
             runCatching { withContext(Dispatchers.IO) { JSONArray(SupportApi.call(c, "GET", "/tickets")) } }
-                .onSuccess { a -> tickets = (0 until a.length()).map { a.getJSONObject(it) }.map { Ticket(it.getString("id"), it.getString("title"), it.getString("status"), it.optString("last"), it.optString("from"), it.optLong("updatedAt")) }; err = "" }
+                .onSuccess { a -> tickets = (0 until a.length()).map { a.getJSONObject(it) }.map { Ticket(it.getString("id"), it.getString("title"), it.getString("status"), it.optString("last"), it.optString("from"), it.optLong("updatedAt"), it.optString("email"), it.optBoolean("theirs")) }; err = "" }
                 .onFailure { err = it.message ?: "" }
             delay(20_000)
         }
@@ -150,7 +150,7 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
                         Txt(if (t.status == "answered") "Answered" else "Open", T.small, color = MaterialTheme.colorScheme.primary)
                     }
                     Spacer(Modifier.height(4.dp))
-                    Txt((if (t.from == "support") "Hearth Support: " else "You: ") + t.last, T.small, muted = true)
+                    Txt((if (t.theirs) t.email + " · " else "") + (if (t.from == "support") "Hearth Support: " else if (t.theirs) "They: " else "You: ") + t.last, T.small, muted = true)
                     Txt("${t.id} · ${ago(t.updatedAt)}", T.small, muted = true)
                 }
             }
@@ -213,9 +213,10 @@ private fun SupportThread(id: String, back: () -> Unit) {
     var msgs by remember { mutableStateOf<List<TMsg>>(emptyList()) }
     var reply by remember { mutableStateOf("") }
     var err by remember { mutableStateOf("") }
+    var theirs by remember { mutableStateOf("") }   // the sender, when this is somebody else's request that you see as owner
     suspend fun load() {
         runCatching { withContext(Dispatchers.IO) { JSONObject(SupportApi.call(c, "GET", "/tickets/$id")) } }
-            .onSuccess { o -> title = o.getString("title"); val a = o.getJSONArray("messages"); msgs = (0 until a.length()).map { a.getJSONObject(it) }.map { TMsg(it.getString("from"), it.getString("text"), it.optLong("at")) }; err = "" }
+            .onSuccess { o -> title = o.getString("title"); theirs = if (o.optBoolean("theirs")) o.optString("email") else ""; val a = o.getJSONArray("messages"); msgs = (0 until a.length()).map { a.getJSONObject(it) }.map { TMsg(it.getString("from"), it.getString("text"), it.optLong("at")) }; err = "" }
             .onFailure { err = it.message ?: "" }
     }
     LaunchedEffect(id) { while (true) { load(); delay(15_000) } }
@@ -223,15 +224,16 @@ private fun SupportThread(id: String, back: () -> Unit) {
         TextAction("‹ All requests", back)
         Txt(title, T.h2)
         Txt(id, T.small, muted = true)
+        if (theirs.isNotEmpty()) Txt("From $theirs. You see everything here and cannot change it. Answer by replying to the email.", T.small, muted = true)
         msgs.forEach { m ->
             Card {
-                Txt((if (m.from == "support") "Hearth Support" else "You") + " · " + ago(m.at), T.small, muted = true)
+                Txt((if (m.from == "support") "Hearth Support" else if (theirs.isNotEmpty()) theirs else "You") + " · " + ago(m.at), T.small, muted = true)
                 Spacer(Modifier.height(4.dp))
                 Txt(m.text, T.body, color = if (m.from == "support") MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
             }
         }
-        Field(reply, { reply = it.take(5000) }, "Write a reply…", singleLine = false, modifier = Modifier.heightIn(min = 90.dp))
-        Button("Send", Modifier.fillMaxWidth()) {
+        if (theirs.isEmpty()) Field(reply, { reply = it.take(5000) }, "Write a reply…", singleLine = false, modifier = Modifier.heightIn(min = 90.dp))
+        if (theirs.isEmpty()) Button("Send", Modifier.fillMaxWidth()) {
             if (reply.isBlank()) return@Button
             scope.launch { runCatching { withContext(Dispatchers.IO) { SupportApi.call(c, "POST", "/tickets/$id/messages", JSONObject().put("text", reply)) } }.onSuccess { reply = ""; load() }.onFailure { err = it.message ?: "" } }
         }

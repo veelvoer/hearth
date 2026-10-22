@@ -52,7 +52,7 @@ async function viewHome(body) {
     SP.tickets = list; const box = $('#sp-list'); if (!box) return; box.innerHTML = '';
     if (!list.length) box.append(h('div', { class: 'obnote' }, h('b', {}, 'No requests yet'), h('div', { class: 'small muted' }, 'Press “New request” and tell us what is going on. We will answer by email, and you can read the answer here too.')));
     list.forEach((t) => box.append(h('button', { class: 'spitem', onclick: () => { SP.open = t.id; SP.view = 'thread'; drawSupport(); } }, h('div', { class: 'row' }, h('b', { class: 'grow ellip' }, t.title), h('span', { class: 'pill ' + (t.status === 'answered' ? 'ok' : 'warn'), style: 'padding:2px 9px' }, h('i'), t.status === 'answered' ? 'Answered' : 'Open')),
-      h('div', { class: 'small muted ellip' }, (t.from === 'support' ? 'Hearth Support: ' : 'You: ') + t.last), h('div', { class: 'small muted' }, t.id + ' · ' + spAgo(t.updatedAt)))));
+      h('div', { class: 'small muted ellip' }, (t.theirs ? t.email + ' · ' : '') + (t.from === 'support' ? 'Hearth Support: ' : t.theirs ? 'They: ' : 'You: ') + t.last), h('div', { class: 'small muted' }, t.id + ' · ' + spAgo(t.updatedAt)))));
   };
   load(); SP.timer = setInterval(load, 20000);
 }
@@ -85,12 +85,14 @@ async function viewThread(body) {
   body.append(h('button', { class: 'link', onclick: () => { SP.view = 'home'; drawSupport(); } }, '‹ All requests'), h('div', { id: 'sp-thread', class: 'spthread' }, h('p', { class: 'muted small' }, 'Loading…')));
   const reply = h('textarea', { rows: 3, placeholder: 'Write a reply…' }), msg = h('div', { class: 'small' });
   const send = h('button', { class: 'primary sm', onclick: async () => { msg.textContent = ''; send.disabled = true; try { await cm.support('POST', '/tickets/' + SP.open + '/messages', { text: reply.value }); reply.value = ''; await load(); } catch (e) { msg.className = 'small err'; msg.textContent = clean(e); } send.disabled = false; } }, 'Send');
-  body.append(reply, h('div', { class: 'row' }, h('div', { class: 'grow' }), send), msg);
+  const replyBox = h('div', { class: 'stack' }, reply, h('div', { class: 'row' }, h('div', { class: 'grow' }), send), msg); body.append(replyBox);
   const load = async () => {
     let t; try { t = await cm.support('GET', '/tickets/' + SP.open); } catch (e) { const b = $('#sp-thread'); if (b) { b.innerHTML = ''; b.append(h('p', { class: 'err small' }, clean(e))); } return; }
     const box = $('#sp-thread'); if (!box) return; box.innerHTML = '';
+    const theirs = !!t.theirs; replyBox.style.display = theirs ? 'none' : '';
     box.append(h('div', { class: 'row' }, h('h4', { class: 'grow', style: 'margin:0' }, t.title), h('span', { class: 'small muted' }, t.id)));
-    t.messages.forEach((m) => box.append(h('div', { class: 'spmsg ' + m.from }, h('div', { class: 'small muted' }, (m.from === 'support' ? 'Hearth Support' : 'You') + ' · ' + spAgo(m.at)), h('div', {}, m.text))));
+    if (theirs) box.append(h('div', { class: 'small muted' }, 'From ' + t.email + '. You see everything here and cannot change it. Answer by replying to the email.'));
+    t.messages.forEach((m) => box.append(h('div', { class: 'spmsg ' + m.from }, h('div', { class: 'small muted' }, (m.from === 'support' ? 'Hearth Support' : theirs ? t.email : 'You') + ' · ' + spAgo(m.at)), h('div', {}, m.text))));
   };
   load(); SP.timer = setInterval(load, 15000);
 }
