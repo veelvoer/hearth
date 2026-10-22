@@ -51,8 +51,8 @@ async function viewHome(body) {
     let list; try { list = await cm.support('GET', '/tickets'); } catch (e) { if (!SP.signedIn || !SP.el) return; const l = $('#sp-list'); if (l) { l.innerHTML = ''; l.append(h('p', { class: 'err small' }, clean(e))); } return; }
     SP.tickets = list; const box = $('#sp-list'); if (!box) return; box.innerHTML = '';
     if (!list.length) box.append(h('div', { class: 'obnote' }, h('b', {}, 'No requests yet'), h('div', { class: 'small muted' }, 'Press “New request” and tell us what is going on. We will answer by email, and you can read the answer here too.')));
-    list.forEach((t) => box.append(h('button', { class: 'spitem', onclick: () => { SP.open = t.id; SP.view = 'thread'; drawSupport(); } }, h('div', { class: 'row' }, h('b', { class: 'grow ellip' }, t.title), h('span', { class: 'pill ' + (t.status === 'answered' ? 'ok' : 'warn'), style: 'padding:2px 9px' }, h('i'), t.status === 'answered' ? 'Answered' : 'Open')),
-      h('div', { class: 'small muted ellip' }, (t.theirs ? t.email + ' · ' : '') + (t.from === 'support' ? 'Hearth Support: ' : t.theirs ? 'They: ' : 'You: ') + t.last), h('div', { class: 'small muted' }, t.id + ' · ' + spAgo(t.updatedAt)))));
+    list.forEach((t) => box.append(h('div', { class: 'spwrap' }, h('button', { class: 'spitem', onclick: () => { SP.open = t.id; SP.view = 'thread'; drawSupport(); } }, h('div', { class: 'row' }, h('b', { class: 'grow ellip' }, t.title), h('span', { class: 'pill ' + (t.status === 'answered' ? 'ok' : 'warn'), style: 'padding:2px 9px' }, h('i'), t.status === 'answered' ? 'Answered' : 'Open')),
+      h('div', { class: 'small muted ellip' }, (t.theirs ? t.email + ' · ' : '') + (t.from === 'support' ? 'Hearth Support: ' : t.theirs ? 'They: ' : 'You: ') + t.last), h('div', { class: 'small muted' }, t.id + ' · ' + spAgo(t.updatedAt))), t.theirs ? spActions(t, t.thread || t.last) : null)));
   };
   load(); SP.timer = setInterval(load, 20000);
 }
@@ -91,8 +91,26 @@ async function viewThread(body) {
     const box = $('#sp-thread'); if (!box) return; box.innerHTML = '';
     const theirs = !!t.theirs; replyBox.style.display = theirs ? 'none' : '';
     box.append(h('div', { class: 'row' }, h('h4', { class: 'grow', style: 'margin:0' }, t.title), h('span', { class: 'small muted' }, t.id)));
+    if (theirs) box.append(spActions(t, t.messages.map((m) => (m.from === 'support' ? 'Support' : t.email) + ': ' + m.text).join('\n\n')));
     if (theirs) box.append(h('div', { class: 'small muted' }, 'From ' + t.email + '. You see everything here and cannot change it. Answer by replying to the email.'));
     t.messages.forEach((m) => box.append(h('div', { class: 'spmsg ' + m.from }, h('div', { class: 'small muted' }, (m.from === 'support' ? 'Hearth Support' : theirs ? t.email : 'You') + ' · ' + spAgo(m.at)), h('div', {}, m.text))));
   };
   load(); SP.timer = setInterval(load, 15000);
+}
+
+/** For an owner: what to do with somebody's request. The same three choices as the notification. */
+function spActions(t, text) {
+  const msg = h('span', { class: 'small muted' });
+  const go = async (action, label) => {
+    msg.textContent = label + '…';
+    try {
+      const ms = await cm.machines(), m = ms.find((x) => x.secure) || ms[0]; if (!m) throw new Error('Connect your server first.');
+      const r = await cm.relay(m.id, 'POST', '/support/act', { id: t.id, title: t.title, category: t.category, from: t.email, text: String(text || '').slice(0, 5000), action });
+      msg.textContent = r.text || 'Done.';
+    } catch (e) { msg.textContent = clean(e).includes('unknown') ? 'Update your server first.' : clean(e); }
+  };
+  return h('div', { class: 'row wrap', style: 'gap:8px;margin:6px 0' },
+    h('button', { class: 'ghost sm', onclick: () => go('list', 'Adding') }, 'Add to tasks'),
+    h('button', { class: 'ghost sm', onclick: () => go('claude', 'Starting Claude') }, 'Fix with Claude'),
+    msg);
 }

@@ -559,21 +559,27 @@ function start(opts) {
     } catch (e) { return { ok: false, why: String(e.message || e) }; }
   }
   const supportPending = () => [...pending.values()].filter((p) => p.event.kind === 'support').length;
+  /** What to do with a support mail: "claude" starts a chat with it, "list" saves it (and puts it on Google Tasks), anything else does nothing. */
+  async function supportAct(clean, b, machine) {
+    if (b === 'claude') { const r = startJob({ text: `A support mail just arrived. Read it, look into the problem in this project, and tell me what you find and what you would answer. Do not email anyone.\n\n${supportText(clean)}`, cwd: root || undefined, mode: 'acceptEdits' }, 'new'); if (r.error) onLog('support to Claude: ' + r.message); return { ok: !r.error, text: r.error ? r.message : 'Started a chat with Claude.' }; }
+    if (b === 'list') {
+      const have = readList().find((x) => x.id === clean.id && !x.done);
+      if (have) return { ok: true, text: 'Already on your list.' };
+      const item = { id: clean.id, title: clean.title, from: clean.from, text: clean.text, at: Date.now() }; const g = await googleTask(`Support ${clean.id}: ${clean.title}`, supportText(clean)); item.google = g.ok;
+      try { fs.writeFileSync(listFile, JSON.stringify([item, ...readList()].slice(0, 300)), { mode: 0o600 }); } catch { /* best effort */ }
+      const text = g.ok ? 'Added to your Google Tasks.' : 'Saved in your Hearth list. Google Tasks: ' + g.why;
+      publish({ kind: 'support', session: '', cwd: '', title: clean.title, machine: machine || opts.name || os.hostname(), ts: Date.now(), call: false, text });
+      return { ok: true, text };
+    }
+    return { ok: true, text: 'Ignored.' };
+  }
   function supportIncoming(m) {
     const clean = { kind: m.kind === 'follow-up' ? 'follow-up' : 'new', id: String(m.id || '').slice(0, 20), title: String(m.title || '').slice(0, 120), category: String(m.category || 'other').slice(0, 20), from: String(m.from || '').slice(0, 120), text: String(m.text || '').slice(0, 5000) };
     if (supportPending() >= 50) return { code: 429, data: { error: 'too many support mails waiting' } };
     const req = crypto.randomBytes(4).toString('hex');
     const ev = { kind: 'support', req, session: '', title: clean.title, cwd: '', machine: opts.name || os.hostname(), ts: Date.now(), call: false, ticket: clean.id,
       text: `${clean.kind === 'follow-up' ? 'Follow-up on a' : 'New'} ${{ bug: 'bug report', question: 'question', idea: 'idea' }[clean.category] || 'support mail'} from ${clean.from}: ${clean.text.replace(/\s+/g, ' ').slice(0, 160)}` };
-    pending.set(req, { event: ev, resolve: async (b) => {
-      pending.delete(req);
-      if (b === 'claude') { const r = startJob({ text: `A support mail just arrived. Read it, look into the problem in this project, and tell me what you find and what you would answer. Do not email anyone.\n\n${supportText(clean)}`, cwd: root || undefined, mode: 'acceptEdits' }, 'new'); if (r.error) onLog('support to Claude: ' + r.message); }
-      else if (b === 'list') {
-        const item = { id: clean.id, title: clean.title, from: clean.from, text: clean.text, at: Date.now() }; const g = await googleTask(`Support ${clean.id}: ${clean.title}`, supportText(clean)); item.google = g.ok;
-        try { fs.writeFileSync(listFile, JSON.stringify([item, ...readList()].slice(0, 300)), { mode: 0o600 }); } catch { /* best effort */ }
-        publish({ kind: 'support', session: '', cwd: '', title: clean.title, machine: ev.machine, ts: Date.now(), call: false, text: g.ok ? 'Added to your Google Tasks.' : 'Saved in your Hearth list. Google Tasks: ' + g.why });
-      }
-    } });
+    pending.set(req, { event: ev, resolve: async (b) => { pending.delete(req); await supportAct(clean, b, ev.machine); } });
     publish(ev); return { code: 200, data: { ok: true } };
   }
   // ── workflows: a chat that keeps working through steps ("bug test for 2 hours", then "fix everything"), because one run stops after a while ──
@@ -1173,6 +1179,11 @@ function start(opts) {
         }
         if (parts[0] === 'answer') { const p = pending.get(b.req); if (p) { p.resolve(String(b.answer || '').slice(0, 2000)); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'decision' && shares.hasRequest(String(b.req))) { const r = shares.decide(String(b.req), { decision: b.behavior === 'deny' ? 'deny' : 'approve', text: b.text, mode: b.mode, always: !!b.always, note: b.note }); return json(res, r.code, r.data); }
+        if (parts[0] === 'support' && parts[1] === 'act' && req.method === 'POST') {   // from the support desk screen of the app: the same three choices as the notification
+          const t = { kind: 'new', id: String(b.id || '').slice(0, 20), title: String(b.title || '').slice(0, 120), category: String(b.category || 'other').slice(0, 20), from: String(b.from || '').slice(0, 120), text: String(b.text || '').slice(0, 5000) };
+          if (!t.id || !['claude', 'list', 'ignore'].includes(b.action)) return json(res, 400, { error: 'id and action (claude, list or ignore) are needed' });
+          return json(res, 200, await supportAct(t, b.action));
+        }
         if (parts[0] === 'support' && parts[1] === 'incoming' && req.method === 'POST') { const r = supportIncoming(b); return json(res, r.code, r.data); }
         if (parts[0] === 'decision') { const p = pending.get(b.req); if (p) { p.resolve(b.behavior); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'stop') {

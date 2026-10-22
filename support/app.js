@@ -117,7 +117,7 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
       if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'logout') { delete db.sessions[sha(token)]; save(); return send(200, { ok: true }); }
       if (parts[0] === 'tickets') {
         const owner = ownerSet.has(String(email).toLowerCase());   // signed in as an owner: every request of everybody, read only (answers go by email)
-        if (req.method === 'GET' && !parts[1]) return send(200, Object.values(db.tickets).filter((t) => owner || t.email === email).sort((a, b) => b.updatedAt - a.updatedAt).map((t) => (owner ? { ...brief(t), email: t.email, owner: true, theirs: t.email !== email } : brief(t))));
+        if (req.method === 'GET' && !parts[1]) return send(200, Object.values(db.tickets).filter((t) => owner || t.email === email).sort((a, b) => b.updatedAt - a.updatedAt).map((t) => (owner ? { ...brief(t), email: t.email, owner: true, theirs: t.email !== email, thread: t.messages.map((m) => (m.from === 'support' ? 'Support' : t.email) + ': ' + m.text).join('\n\n').slice(0, 5000), category: t.category } : brief(t))));
         if (req.method === 'POST' && !parts[1]) return out(await create(email, await readJson(req)));
         const t = db.tickets[parts[1]]; if (!t || (t.email !== email && !owner)) return send(404, { error: 'No such request.' });
         if (req.method === 'GET' && !parts[2]) return send(200, { ...brief(t), messages: t.messages, ...(owner ? { email: t.email, owner: true, theirs: t.email !== email } : {}) });

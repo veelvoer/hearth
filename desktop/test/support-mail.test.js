@@ -15,6 +15,7 @@ const relay = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
 const req = (method, url, tok, body, onData) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47799, path: url, method, headers: { Authorization: 'Bearer ' + tok, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (c) => { b += c; if (onData) onData(b); }); rs.on('end', () => res({ code: rs.statusCode, body: b })); }); r.on('error', () => res({ code: 0, body: '' })); if (d) r.write(d); r.end(); });
+const J = (r) => { try { return JSON.parse(r.body); } catch { return {}; } };
 const evs = (b) => b.split('\n\n').filter((x) => x.includes('data: ')).map((x) => x.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean).map((l) => { try { return JSON.parse(l.slice(6)); } catch { return {}; } });
 (async () => {
   await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
@@ -43,6 +44,16 @@ const evs = (b) => b.split('\n\n').filter((x) => x.includes('data: ')).map((x) =
   ok('10 a handled mail is no longer pending', !ev1.body.includes('HRT-10004'));
   await req('POST', '/support/incoming', tok, mail('HRT-10005')); await sleep(300);
   ok('11 an unhandled one is replayed to apps that connect later', (await req('GET', '/pending', tok)).body.includes('HRT-10005'));
+  ok('12 from the support screen: bad input refused', (await req('POST', '/support/act', tok, { id: 'HRT-1', action: 'delete' })).code === 400);
+  const before2 = JSON.parse((await req('GET', '/support/list', tok)).body).length;
+  const act1 = J(await req('POST', '/support/act', tok, { id: 'HRT-20001', title: 'Crash', category: 'bug', from: 'a@b.c', text: 'It crashes.', action: 'list' }));
+  const after2 = JSON.parse((await req('GET', '/support/list', tok)).body);
+  ok('13 "add to tasks" from the screen saves it and reports', act1.ok === true && after2.length === before2 + 1 && /Google Tasks/.test(act1.text), act1.text);
+  ok('14 doing it twice does not add it twice', J(await req('POST', '/support/act', tok, { id: 'HRT-20001', title: 'Crash', from: 'a@b.c', text: 'It crashes.', action: 'list' })).text === 'Already on your list.');
+  const n0 = fs.readFileSync(path.join(T, 'home', 'prompts.txt'), 'utf8').split('----').length;
+  await req('POST', '/support/act', tok, { id: 'HRT-20002', title: 'Slow', category: 'bug', from: 'a@b.c', text: 'It is slow on start.', action: 'claude' }); await sleep(1500);
+  ok('15 "fix with Claude" from the screen starts a chat', fs.readFileSync(path.join(T, 'home', 'prompts.txt'), 'utf8').includes('It is slow on start.'));
+  ok('16 a guest key cannot use it', (await req('POST', '/support/act', 'share.abcd.abcdefghijklmnop', { id: 'x', action: 'list' })).code === 401);
   relay.kill(); google.close(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

@@ -734,3 +734,5 @@ body { background:
 .shin { padding: 0 24px; display: flex; flex-direction: column; gap: 8px; } .shin:empty { display: none; }
 
 .ts { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; font-weight: 400; } summary .ts { display: inline; margin: 0 8px 0 auto; white-space: nowrap; } .msg.user .ts { text-align: right; opacity: .8; }
+
+.spwrap { display: flex; flex-direction: column; } .spwrap .spitem { width: 100%; }
