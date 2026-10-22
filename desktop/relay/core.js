@@ -6,9 +6,14 @@ const os = require('os');
 
 const projectsDir = () => path.join(os.homedir(), '.claude', 'projects');
 
+const JSONL_TAIL = 48 * 1024 * 1024;   // a chat file bigger than this is read from its end only: the start is old, and reading hundreds of MB at once would stall (and fill the memory of) the whole server
 function readJsonl(file) {
   try {
-    return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const size = fs.statSync(file).size;
+    let text;
+    if (size > JSONL_TAIL) { const b = readChunk(file, size - JSONL_TAIL, size), nl = b.indexOf(10); text = b.subarray(nl < 0 ? 0 : nl + 1).toString('utf8'); }   // the first line is cut: skip it
+    else text = fs.readFileSync(file, 'utf8');
+    return text.split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
   } catch { return []; }
 }
 const textOf = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
@@ -71,6 +76,9 @@ function sameStart(file, head) { try { return readChunk(file, 0, head.length).to
 const entryCache = new Map();   // file -> { size, mtime, head, pos, list, tail }
 /** Every entry of a chat file, like readJsonl, but a growing chat is only read from where it was read last time. */
 function entriesOf(file) {
+  try { return entriesOf0(file); } catch { return []; }   // a file that cannot be read (wrong owner, gone) is an empty chat, not an error for the whole request
+}
+function entriesOf0(file) {
   let st; try { st = fs.statSync(file); } catch { return []; }
   if (st.size > READ_CAP) return readJsonl(file);
   let c = entryCache.get(file);
@@ -107,19 +115,25 @@ function applyTitle(o, r) {
     if (t && !t.startsWith('<')) r.title = t.slice(0, 80);
   }
 }
-function summarize(f) {
+const SUM_STEP = 16 * 1024 * 1024;   // at most this much of one chat is read per look, so a huge chat never stalls the server; the rest follows on the next looks
+/** [budget] ({ left }): how many bytes all chats together may read in this look. The newest chats go first; the totals of a huge chat fill in over a few looks. */
+function summarize(f, budget) {
   const hit = sumCache.get(f.file);
-  if (hit && hit.mtime === f.mtime && hit.size === f.size) return hit;
+  if (hit && hit.mtime === f.mtime && hit.size === f.size && hit.complete !== false) return hit;
   // a chat that only grew is read from where it was read last time; anything else is read from the start
   const grew = !!hit && f.size >= hit.read && sameStart(f.file, hit.head);
   const from = grew ? hit.pos : 0;
   const r = grew ? { ...hit.base } : { title: '', cwd: '', tok: 0, cost: 0, model: '', lastId: '', lastW: 0, lastC: 0 };   // what the finished lines said so far
-  let chunk; try { chunk = readChunk(f.file, from, f.size); } catch { chunk = Buffer.alloc(0); }
-  const { done, tail, used } = splitChunk(chunk);
+  const room = budget ? Math.max(1024 * 1024, budget.left) : Infinity, step = Math.min(f.size - from, SUM_STEP, room);
+  let chunk; try { chunk = readChunk(f.file, from, from + step); } catch { chunk = Buffer.alloc(0); }
+  if (budget) budget.left -= chunk.length;
+  const complete = from + chunk.length >= f.size;
+  let { done, tail, used } = splitChunk(chunk);
+  if (!complete && used === 0 && chunk.length > 0) { used = chunk.length; done = []; tail = null; }   // one single line bigger than a step: skip it, or the chat would never get past it
   for (const o of done) applyTitle(o, r);
   const base = { ...r };
   if (tail) applyTitle(tail, r);   // a last line that is already whole counts now (and is read again next time)
-  const out = { mtime: f.mtime, size: f.size, title: r.title || 'Untitled', cwd: r.cwd, tokens: r.tok, cost: r.cost, model: r.model, base, pos: from + used, read: from + chunk.length,
+  const out = { complete, mtime: f.mtime, size: f.size, title: r.title || 'Untitled', cwd: r.cwd, tokens: r.tok, cost: r.cost, model: r.model, base, pos: from + used, read: from + chunk.length,
     head: grew ? hit.head : readChunk(f.file, 0, Math.min(256, from + chunk.length)).toString('latin1') };
   sumCache.set(f.file, out);
   return out;
@@ -145,10 +159,11 @@ function openClaudes() {
 /** The chats, newest first. [keep] drops chats before the list is cut to [limit], so junk can never push real chats out. */
 function sessions(active, keep, limit = 300, quiet = new Set()) {   // [quiet]: chats whose run just ended here; fresh file writes there are the end of that run, not new work
   const files = listFiles().sort((a, b) => b.mtime - a.mtime);
+  const budget = { left: 64 * 1024 * 1024 };   // all chats together read at most this much per look
   const now = Date.now(), open = openClaudes(), hasProc = process.platform === 'linux' && !process.env.FLATPAK_ID;
   const out = [];
   for (const f of files) {
-    let s; try { s = summarize(f); if (keep && !keep(f, s)) continue; } catch { continue; }   // one odd chat file must never hide all the others
+    let s; try { s = summarize(f, budget); if (keep && !keep(f, s)) continue; } catch { continue; }   // one odd chat file must never hide all the others
     const age = (now - f.mtime) / 1000;
     let live = active.has(f.id);
     if (!live) {
