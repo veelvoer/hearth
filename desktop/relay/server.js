@@ -560,6 +560,11 @@ function start(opts) {
   }
   const supportPending = () => [...pending.values()].filter((p) => p.event.kind === 'support').length;
   /** What to do with a support mail: "claude" starts a chat with it, "list" saves it (and puts it on Google Tasks), anything else does nothing. */
+  /** Tells the person who wrote a support request that it is on the list / done, by mail from the support desk (when this server has one). Never throws. */
+  async function supportNotify(id, event, note) {
+    const c = readCfg(); if (c.autoAnswer === false || !/^HRT-\d{4,6}$/.test(String(id || '')) || !c.token) return;
+    try { await fetch((process.env.HEARTH_SUPPORT_URL || c.supportUrl || 'http://127.0.0.1:47610').replace(/\/$/, '') + '/owner/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token }, body: JSON.stringify({ id, event, note }), signal: AbortSignal.timeout(10000) }); } catch { /* no support desk here */ }
+  }
   async function supportAct(clean, b, machine) {
     if (b === 'claude') { const r = startJob({ text: `A support mail just arrived. Read it, look into the problem in this project, and tell me what you find and what you would answer. Do not email anyone.\n\n${supportText(clean)}`, cwd: root || undefined, mode: 'acceptEdits' }, 'new'); if (r.error) onLog('support to Claude: ' + r.message); return { ok: !r.error, text: r.error ? r.message : 'Started a chat with Claude.' }; }
     if (b === 'list') {
@@ -567,6 +572,7 @@ function start(opts) {
       if (have) return { ok: true, text: 'Already on your list.' };
       const item = { id: clean.id, title: clean.title, from: clean.from, text: clean.text, at: Date.now() }; const g = await googleTask(`Support ${clean.id}: ${clean.title}`, supportText(clean)); item.google = g.ok;
       try { fs.writeFileSync(listFile, JSON.stringify([item, ...readList()].slice(0, 300)), { mode: 0o600 }); } catch { /* best effort */ }
+      supportNotify(clean.id, 'listed');
       const text = g.ok ? 'Added to your Google Tasks.' : 'Saved in your Hearth list. Google Tasks: ' + g.why;
       publish({ kind: 'support', session: '', cwd: '', title: clean.title, machine: machine || opts.name || os.hostname(), ts: Date.now(), call: false, text });
       return { ok: true, text };
@@ -994,6 +1000,7 @@ function start(opts) {
             if (q.tool === 'bug_list') { const open = all.filter((x) => !x.done); return json(res, 200, { text: open.length ? open.length + ' open item(s):\n\n' + open.map((x) => `[${x.id}] ${x.title} (from ${x.from})\n${x.text}`).join('\n\n---\n') : 'The list is empty: nothing to fix.' }); }
             const it = all.find((x) => x.id === String(q.id || '')); if (!it) return json(res, 200, { text: 'No item with id ' + q.id + '. Use bug_list to see the ids.' });
             it.done = true; it.doneAt = Date.now(); it.note = String(q.note || '').slice(0, 500); try { fs.writeFileSync(listFile, JSON.stringify(all), { mode: 0o600 }); } catch { /* best effort */ }
+            supportNotify(it.id, 'fixed', it.note);
             return json(res, 200, { text: 'Marked ' + it.id + ' as fixed.' });
           }
           const on = laptopOnline();

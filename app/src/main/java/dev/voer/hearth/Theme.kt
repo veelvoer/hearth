@@ -161,6 +161,21 @@ fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> U
     )
 }
 
+/** A card that is closed until you tap its title, so a long page of settings reads as a short list. The (i) keeps the explanation. */
+@Composable
+fun Fold(icon: String, title: String, tip: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(20.dp)
+    Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
+            if (tip != null) InfoDot(title, tip)
+            Txt(if (open) "⌃" else "⌄", T.body, muted = true)
+        }
+        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp), content = content) }
+    }
+}
+
 @Composable
 fun Meter(pct: Float, marker: Float? = null, height: Dp = 8.dp, modifier: Modifier = Modifier) {
     val track = MaterialTheme.colorScheme.outline

@@ -252,11 +252,13 @@ function drawPane() {
   main.append(composer());
   pane.append(main);
   if (s.id && !SS.rightOff) {
-    const rc = (title, ...kids) => { const k = kids.filter(Boolean); return k.length ? h('div', { class: 'rcard' }, h('div', { class: 'label' }, title), ...k) : null; };
+    const OPEN_RC = new Set(['This chat', 'Shared chat']);   // the rest of the side panel is closed until you open it, so it stays short
+    SS.rcOpen = SS.rcOpen || new Set();
+    const rc = (title, ...kids) => { const k = kids.filter(Boolean); if (!k.length) return null; const d = h('details', { class: 'rcard fold' }, h('summary', { class: 'label' }, title), ...k); d.open = OPEN_RC.has(title) || SS.rcOpen.has(title); d.ontoggle = () => { if (d.open) SS.rcOpen.add(title); else SS.rcOpen.delete(title); }; return d; };
     const runRow = SS.call !== null && (SS.machines.find((m) => m.id === s.mid) || {}).secure ? h('div', { class: 'row wrap' }, ...runChips((SS.run || 'auto'), setRun),
-      h('span', { class: 'small muted' }, 'Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. You can also just ask Claude to do something on another PC.')) : null;
+      h('span', { class: 'small muted' }, 'Auto: the computer that is online, else the server.')) : null;
     const callRow = SS.call !== null ? h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'row wrap' }, chip("When it's done", SS.call === 'done', () => setCall('done')), chip('If it needs me', SS.call === 'attention', () => setCall('attention'))),
-      h('span', { class: 'small muted' }, 'You always get a message. A call only happens if you pick one here.')) : null;
+      h('span', { class: 'small muted' }, 'You always get a message. Calls only if you pick one.')) : null;
     const tools = SS.msgs.filter((m) => m.role === 'tool').length;
     if (guest) pane.append(h('div', { class: 'rightcol' }, rc('Shared chat', h('div', { class: 'small' }, `This chat belongs to ${mach.hostName || 'a friend'}. You can read everything.`), h('div', { class: 'small muted' }, `What you send is not run at once: ${mach.hostName || 'they'} gets a notification, can change it and runs it on their account, or says no.`),
       SS.shared && SS.shared.grant && SS.shared.grant.auto ? h('div', { class: 'small', style: 'color:var(--clay)' }, 'You have full permission: what you send runs at once.') : null,

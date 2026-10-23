@@ -55,6 +55,19 @@ srv.listen(0, '127.0.0.1', async () => {
   ok('23 and opens one completely', od.code === 200 && od.j.messages.length >= 1 && od.j.theirs === true && od.j.email === 'kid@example.com');
   ok('24 but cannot write into it (answer by email)', (await call('POST', '/tickets/' + ol.j[0].id + '/messages', ot, { text: 'hello there' })).code === 403);
   ok('25 a normal user still sees only their own', (await call('GET', '/tickets', tok)).j.every((x) => !x.email));
+  // the owner's Hearth server asks for a mail to the person
+  const rel = createApp({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'hs4-')), transport, from: 'hearth.support1@gmail.com', owners: [], relayToken: 'secret-token-123', resolveMx: async () => true });
+  const srv2 = http.createServer((q, r) => rel.handle(q, r)).listen(0, '127.0.0.1'); await new Promise((r) => srv2.once('listening', r));
+  const c2 = (p, tok2, body) => new Promise((res) => { const d = Buffer.from(JSON.stringify(body)); const r = http.request({ host: '127.0.0.1', port: srv2.address().port, path: p, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': d.length, ...(tok2 ? { Authorization: 'Bearer ' + tok2 } : {}) } }, (rs) => { let b = ''; rs.on('data', (x) => { b += x; }); rs.on('end', () => res({ code: rs.statusCode, j: JSON.parse(b || '{}') })); }); r.write(d); r.end(); });
+  const tk = Object.keys(rel.db().tickets).length ? null : null;
+  rel.db().tickets['HRT-90001'] = { id: 'HRT-90001', email: 'asker@example.com', category: 'bug', title: 'It crashes', status: 'open', createdAt: Date.now(), updatedAt: Date.now(), meta: {}, messages: [{ from: 'user', text: 'It crashes on start.', at: Date.now() }] };
+  sent.length = 0;
+  ok('26 without the right key nobody can make it send mail', (await c2('/owner/notify', 'wrong', { id: 'HRT-90001', event: 'listed' })).code === 401 && (await c2('/owner/notify', '', { id: 'HRT-90001', event: 'listed' })).code === 401 && sent.length === 0);
+  ok('27 an unknown request or event is refused', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-1', event: 'listed' })).code === 404 && (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'spam' })).code === 400);
+  ok('28 "listed" mails the person from the support address', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'listed' })).code === 200 && /added it to our list/.test((lastTo('asker@example.com') || {}).text || ''));
+  const n1 = sent.length; ok('29 it is sent only once', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'listed' })).j.already === true && sent.length === n1);
+  ok('30 "fixed" mails again, with what was done', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'fixed', note: 'Chats load fast now.' })).code === 200 && /is done/.test((lastTo('asker@example.com') || {}).text || '') && /Chats load fast now/.test((lastTo('asker@example.com') || {}).text || ''));
+  srv2.close();
   srv.close(); fs.rmSync(dir, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 });

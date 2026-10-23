@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 'use strict';
-/* One command to set the version everywhere:  node scripts/set-version.js 1.2.3
+/* One command to set the version everywhere:  node scripts/set-version.js feature   (or fix, or 1.2.3)
    (desktop app, server relay, phone app). The release workflow checks that they all agree with the tag. */
 const fs = require('fs');
 const path = require('path');
-const v = process.argv[2];
-if (!/^\d+\.\d+\.\d+$/.test(v || '')) { console.error('Usage: node scripts/set-version.js 1.2.3'); process.exit(1); }
+const root0 = path.join(__dirname, '..');
+const current = require(path.join(root0, 'desktop/relay/version.js'));
+/* The number tells what changed:  feature  = something new (second number up, last number back to 0)
+                                   fix      = only bugs fixed (last number up)
+                                   major    = something that breaks the old way (first number up)
+   or give the number yourself: 1.2.3 */
+const arg = process.argv[2], [cM, cm, cp] = current.split('.').map(Number);
+const v = arg === 'feature' ? `${cM}.${cm + 1}.0` : arg === 'fix' ? `${cM}.${cm}.${cp + 1}` : arg === 'major' ? `${cM + 1}.0.0` : arg;
+if (!/^\d+\.\d+\.\d+$/.test(v || '')) { console.error('Usage: node scripts/set-version.js feature | fix | major | 1.2.3   (now ' + current + ')'); process.exit(1); }
 const root = path.join(__dirname, '..');
 const [maj, min, pat] = v.split('.').map(Number);
 const edit = (rel, fn) => { const f = path.join(root, rel); fs.writeFileSync(f, fn(fs.readFileSync(f, 'utf8'))); };

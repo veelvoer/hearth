@@ -17,7 +17,7 @@ async function onOwnerMail(m) {
   const r = await fetch(relayUrl.replace(/\/$/, '') + '/support/incoming', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + relayToken }, body: JSON.stringify(m), signal: AbortSignal.timeout(10000) }).catch((e) => ({ ok: false, status: e.message }));
   if (!r.ok) console.log(new Date().toISOString().slice(11, 19), 'could not tell Hearth about', m.id, r.status);
 }
-const app = createApp({ onOwnerMail, dataDir: process.env.SUPPORT_DATA || path.join(__dirname, 'data'), transport, from: user, owners: (process.env.SUPPORT_OWNERS || '').split(',').map((s) => s.trim()).filter(Boolean) });
+const app = createApp({ onOwnerMail, relayToken, dataDir: process.env.SUPPORT_DATA || path.join(__dirname, 'data'), transport, from: user, owners: (process.env.SUPPORT_OWNERS || '').split(',').map((s) => s.trim()).filter(Boolean) });
 const port = Number(process.env.SUPPORT_PORT || 47610);
 
 http.createServer((req, res) => app.handle(req, res)).listen(port, '127.0.0.1', () => console.log('Support desk on 127.0.0.1:' + port));

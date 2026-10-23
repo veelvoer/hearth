@@ -9,8 +9,10 @@ let t = ''; process.stdin.on('data', (d) => { t += d; }); process.stdin.on('end'
   console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sup-' + process.pid })); console.log(JSON.stringify({ type: 'result', is_error: false, result: 'ok' })); });
 `, { mode: 0o755 });
 const calls = [];
+const supportCalls = [];
+const fakeSupport = http.createServer((q, r) => { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { supportCalls.push({ url: q.url, auth: q.headers.authorization, body: b }); r.end('{}'); }); }).listen(47796, '127.0.0.1');
 const google = http.createServer((req, res) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => { calls.push(req.url + ' ' + b.slice(0, 200)); res.setHeader('Content-Type', 'application/json'); res.end(req.url.startsWith('/token') ? '{"access_token":"tok"}' : '{"id":"1"}'); }); }).listen(47797, '127.0.0.1');
-const env = { ...process.env, HOME: path.join(T, 'home'), PATH: path.join(T, 'bin') + path.delimiter + process.env.PATH, HEARTH_GOOGLE_TOKEN_URL: 'http://127.0.0.1:47797/token', HEARTH_GOOGLE_TASKS_URL: 'http://127.0.0.1:47797/tasks' };
+const env = { ...process.env, HOME: path.join(T, 'home'), PATH: path.join(T, 'bin') + path.delimiter + process.env.PATH, HEARTH_SUPPORT_URL: 'http://127.0.0.1:47796', HEARTH_GOOGLE_TOKEN_URL: 'http://127.0.0.1:47797/token', HEARTH_GOOGLE_TASKS_URL: 'http://127.0.0.1:47797/tasks' };
 const relay = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--dir', path.join(T, 'd'), '--port', '47799', '--host', '127.0.0.1', '--projects', path.join(T, 'proj')], { env, stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
@@ -54,6 +56,11 @@ const evs = (b) => b.split('\n\n').filter((x) => x.includes('data: ')).map((x) =
   await req('POST', '/support/act', tok, { id: 'HRT-20002', title: 'Slow', category: 'bug', from: 'a@b.c', text: 'It is slow on start.', action: 'claude' }); await sleep(1500);
   ok('15 "fix with Claude" from the screen starts a chat', fs.readFileSync(path.join(T, 'home', 'prompts.txt'), 'utf8').includes('It is slow on start.'));
   ok('16 a guest key cannot use it', (await req('POST', '/support/act', 'share.abcd.abcdefghijklmnop', { id: 'x', action: 'list' })).code === 401);
-  relay.kill(); google.close(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
+  // the person who wrote is told by mail: when it is put on the list, and when it is fixed
+  const listedCalls = supportCalls.filter((c) => /"event":"listed"/.test(c.body));
+  ok('17 putting a request on the list tells the support desk to mail the person', listedCalls.length >= 1 && listedCalls[0].url === '/owner/notify' && listedCalls[0].auth === 'Bearer ' + tok && /HRT-20001|HRT-10003|HRT-10002/.test(listedCalls[0].body), JSON.stringify(listedCalls[0] || {}).slice(0, 120));
+  ok('18 ignore and "fix with Claude" do not mail anyone', !supportCalls.some((c) => /HRT-10001|HRT-20002/.test(c.body)));
+  const lst = JSON.parse((await req('GET', '/support/list', tok)).body).find((x) => /^HRT-1000/.test(x.id));
+  relay.kill(); google.close(); fakeSupport.close(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

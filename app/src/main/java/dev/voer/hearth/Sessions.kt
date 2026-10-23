@@ -664,11 +664,11 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options") { options = !options } }
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Label("How much can Claude do on its own?")
+            Label("Permissions")
             ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
             }
-            if (mode == "bypassPermissions") Txt("Full auto lets Claude run any command on ${m.name} without asking.", T.small, color = cs.primary)
+            if (mode == "bypassPermissions") Txt("Full auto: no questions asked.", T.small, color = cs.primary)
             if (m.secure) {
                 Label("Run on")
                 var pcs by remember { mutableStateOf<List<Computer>>(emptyList()) }
@@ -676,7 +676,6 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, run == v) { run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } } }
                 }
-                Txt("Pick the computer that works on this chat. Auto: whichever of your computers is online, otherwise the server. A computer that is off starts when you turn it on. You can also just ask Claude to do something on another PC.", T.small, muted = true)
             }
             if (sess.kind != "talk") {
                 Label("Model")
@@ -687,15 +686,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max").forEach { (l, v) -> Chip(l, effort == v) { effort = v; Store.setChatEffort(appCtx, v) } }
                 }
-                Txt("More effort means deeper thinking and more tokens. Talk sessions always use Haiku.", T.small, muted = true)
             }
             if (sess.kind != "talk" && !guest) WorkflowPanel(m, sess.id)
-            Label("Phone call")
+            Label("Call me")
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("When it's done", call == "done") { setCall("done") }
                 Chip("Also if it needs me", call == "attention") { setCall("attention") }
             }
-            Txt("You always get a message when Claude finishes or needs you. A call only happens if you pick one here.", T.small, muted = true)
         } }
         androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {   // press and hold on any text to select and copy it
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {

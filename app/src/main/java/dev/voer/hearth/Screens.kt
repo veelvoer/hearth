@@ -647,8 +647,7 @@ private fun LimitCard() {
         val m = Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } ?: return@LaunchedEffect
         runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/admin/options", org.json.JSONObject()) } }.onSuccess { on = it.optBoolean("autoContinue") }
     }
-    Card {
-        Head("bell", "When your usage runs out", "A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.")
+    Fold("bell", "When your usage runs out", "A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.") {
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Txt("Continue by itself when I have usage again", T.body); Txt(if (on) "The chat carries on after the limit resets, and you get a heads-up." else "You get a notification and choose whether to continue.", T.small, muted = true) }
@@ -677,8 +676,7 @@ private fun SkillsCard() {
     fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
     fun load() { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.skills(m) } }.onSuccess { list = it }.onFailure { msg = "Couldn't load skills. Update the server first." } } }
     LaunchedEffect(Ui.machinesRev) { load() }
-    Card {
-        Head("tour", "Skills", "Skills Claude can use. Add one from a GitHub link (owner/repo, or a link to one skill folder) or paste the text of a SKILL.md. They are saved on your server and work in every chat there.")
+    Fold("tour", "Skills", "Skills Claude can use. Add one from a GitHub link (owner/repo, or a link to one skill folder) or paste the text of a SKILL.md. They are saved on your server and work in every chat there.") {
         Spacer(Modifier.height(10.dp))
         val l = list
         if (l == null) Txt(if (msg.isEmpty()) "Loading…" else msg, T.small, muted = true)
@@ -727,11 +725,10 @@ private fun PermissionsCard() {
         val m = machine() ?: return
         scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.setOptions(m, body) } }.onSuccess { o = it; msg = "" }.onFailure { msg = it.message ?: "Couldn't save" } }
     }
-    Card {
-        Head("server", "Server permissions", "Choose how much Claude may do on your server. Nothing here applies to your own computers.")
+    Fold("server", "Server permissions", "Choose how much Claude may do on your server. Nothing here applies to your own computers.") {
         Spacer(Modifier.height(10.dp))
         val v = o
-        if (v == null) { Txt(msg, T.small, muted = true); return@Card }
+        if (v == null) { Txt(msg, T.small, muted = true); return@Fold }
         if (v.outsideAvailable) {
             Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt("Work outside the projects folder", T.body); Txt("Browse the whole server and start a chat in any folder.", T.small, muted = true) }; Switch(v.outside, { save(org.json.JSONObject().put("outside", it)) }) }
             Spacer(Modifier.height(10.dp))
@@ -772,11 +769,10 @@ private fun MemoryCard() {
         val m = machine()
         if (m == null) msg = "Connect a computer or server first." else runCatching { withContext(Dispatchers.IO) { Relay.memory(m) } }.onSuccess { info = it; msg = "" }.onFailure { msg = "This server has no memory setting yet. Update it first." }
     }
-    Card {
-        Head("server", "Server memory", "The most memory the server program may use, as a share of the memory that is free when it starts. 75% is the default. It takes effect when the server starts again.")
+    Fold("server", "Server memory", "The most memory the server program may use, as a share of the memory that is free when it starts. 75% is the default. It takes effect when the server starts again.") {
         Spacer(Modifier.height(10.dp))
         val i = info
-        if (i == null) { Txt(msg, T.small, muted = true); return@Card }
+        if (i == null) { Txt(msg, T.small, muted = true); return@Fold }
         val cur = picked ?: i.pct
         ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(25 to "25%", 50 to "50%", 75 to "75%", 90 to "90%", 0 to "No limit").forEach { (v, l) -> Chip(l, cur == v) { picked = v } }
@@ -824,8 +820,7 @@ fun SettingsScreen() {
         ComputersCard()
         UpdatesCard()
         Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; Spacer(Modifier.width(14.dp)); TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
-        Card {
-            Head("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.")
+        Fold("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.") {
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
             Row2("Stay connected to Claude", "Messages when Claude finishes or needs you, even with the app closed.") {
@@ -853,8 +848,7 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(6.dp))
         }
-        Card {
-            Head("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.")
+        Fold("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -879,8 +873,7 @@ fun SettingsScreen() {
                 Txt("›", T.title, muted = true)
             }
         }
-        Card {
-            Head("bell", "Alerts")
+        Fold("bell", "Alerts") {
             Spacer(Modifier.height(10.dp))
             Txt("Notify when usage crosses", T.body)
             Spacer(Modifier.height(8.dp))
@@ -900,8 +893,7 @@ fun SettingsScreen() {
                 Switch(live, { live = it; Store.setLive(c, it); ask(); Notifier.live(c, Ui.usage) })
             }
         }
-        Card {
-            Head("voice", "Voice", "Replies are spoken in the language they are written in; you can switch during a call too. Same as typing sends exactly what you say and reads Claude's full reply aloud (code is skipped). Brief asks Claude for short spoken answers. Auto uses your computer's local voices when available (better, slower) and falls back to Android's built-in speech.")
+        Fold("voice", "Voice", "Replies are spoken in the language they are written in; you can switch during a call too. Same as typing sends exactly what you say and reads Claude's full reply aloud (code is skipped). Brief asks Claude for short spoken answers. Auto uses your computer's local voices when available (better, slower) and falls back to Android's built-in speech.") {
             Spacer(Modifier.height(10.dp))
             var vlang by remember { mutableStateOf(Store.voiceLang(c)) }
             Txt("Language of calls", T.body)
@@ -937,8 +929,7 @@ fun SettingsScreen() {
             Spacer(Modifier.height(8.dp))
             Spacer(Modifier.height(10.dp))
         }
-        Card {
-            Head("clock", "Background refresh", "Android may delay background work to save battery. Opening the app always refreshes.")
+        Fold("clock", "Background refresh", "Android may delay background work to save battery. Opening the app always refreshes.") {
             Spacer(Modifier.height(10.dp))
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(15, 30, 60).forEach { m ->

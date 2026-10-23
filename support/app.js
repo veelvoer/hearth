@@ -10,7 +10,7 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const EMAIL = /^[^\s@<>()[\],;:"]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const SESSION_MS = 90 * 86400e3, CODE_MS = 10 * 60e3;
 
-function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d) => { try { const r = await dns.resolveMx(d); if (r.length) return true; } catch { /* try A below */ } try { return (await dns.resolve4(d)).length > 0; } catch { return false; } }, now = () => Date.now(), onOwnerMail = async () => {} }) {
+function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d) => { try { const r = await dns.resolveMx(d); if (r.length) return true; } catch { /* try A below */ } try { return (await dns.resolve4(d)).length > 0; } catch { return false; } }, now = () => Date.now(), onOwnerMail = async () => {}, relayToken = '' }) {
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const file = path.join(dataDir, 'support.json');
   let db = { sessions: {}, codes: {}, tickets: {}, outbox: [] };
@@ -111,6 +111,20 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
       if (req.method === 'GET' && parts[0] === 'health') return send(200, { ok: true });
       if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'start') return out(await authStart((await readJson(req)).email, ip));
       if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'verify') { const b = await readJson(req); if (limited('v:' + ip, 30, 3600e3)) return send(429, { error: 'Too many tries.' }); return out(authVerify(b.email, b.code)); }
+      if (req.method === 'POST' && parts[0] === 'owner' && parts[1] === 'notify') {   // the owner's Hearth server: a request was put on the list / is fixed → the person gets a mail
+        const given = String(req.headers.authorization || '').replace(/^Bearer /, '');
+        if (!relayToken || given.length !== relayToken.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(relayToken))) return send(401, { error: 'not allowed' });
+        const b = await readJson(req), t = db.tickets[String(b.id || '')];
+        if (!t) return send(404, { error: 'no such request' });
+        if (!['listed', 'fixed'].includes(b.event)) return send(400, { error: 'event must be listed or fixed' });
+        t.auto = t.auto || {}; if (t.auto[b.event]) return send(200, { ok: true, already: true });
+        t.auto[b.event] = now();
+        const note = String(b.note || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        const text = b.event === 'listed'
+          ? `Thank you for your message about "${t.title}". We read it and added it to our list. You will get another email when it is done.`
+          : `Good news: what you told us about "${t.title}" is done.${note ? `\n\nWhat we did: ${note}` : ''}\n\nUpdate Hearth to the newest version to get it. If something is still wrong, just reply to this email.`;
+        await addSupportMessage(t, text); return send(200, { ok: true });
+      }
       const token = String(req.headers.authorization || '').replace(/^Bearer /, ''), email = who(token);
       if (!email) return send(401, { error: 'Please sign in again.' });
       if (req.method === 'GET' && parts[0] === 'me') return send(200, { email });
