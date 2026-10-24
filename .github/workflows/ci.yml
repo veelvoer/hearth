@@ -25,6 +25,8 @@ jobs:
         run: node desktop/test/support-mail.test.js
       - name: Workflow test
         run: node desktop/test/workflow.test.js
+      - name: Week pins test
+        run: node desktop/test/weekpins.test.js
       - name: Usage limit continue
         run: node desktop/test/limit.test.js
       - name: Command rules test

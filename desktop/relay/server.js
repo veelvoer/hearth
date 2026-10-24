@@ -120,7 +120,14 @@ function start(opts) {
   const weekplan = require('./weekplan');
   const histFile = path.join(dir, 'weekhist.json'), planFile = path.join(dir, 'weekplan.json');
   let weekHist = (() => { try { const a = JSON.parse(fs.readFileSync(histFile, 'utf8')); return Array.isArray(a) ? a : []; } catch { return []; } })();
-  let weekTargets = (() => { try { return JSON.parse(fs.readFileSync(planFile, 'utf8')) || {}; } catch { return {}; } })();
+  // the pins belong to one week: a new week starts clean and shares its days evenly (the file holds { end: when that week resets, t: { weekday: percent } })
+  let weekTargetsEnd = 0;
+  let weekTargets = (() => { try { const d = JSON.parse(fs.readFileSync(planFile, 'utf8')); if (d && d.t && typeof d.t === 'object') { weekTargetsEnd = Number(d.end) || 0; return d.t; } } catch { /* none */ } return {}; })();   // an old file without "end" holds pins of an unknown week: dropped
+  const saveTargets = () => { try { fs.writeFileSync(planFile, JSON.stringify({ end: weekTargetsEnd, t: weekTargets }), { mode: 0o600 }); } catch { /* best effort */ } };
+  const rollWeek = () => {
+    const e = usage && usage.week && usage.week.resetsAt; if (!e) return;
+    if (!weekTargetsEnd || Math.abs(e - weekTargetsEnd) > 6 * 3600e3) { for (const k of Object.keys(weekTargets)) delete weekTargets[k]; weekTargetsEnd = e; saveTargets(); }
+  };
   /** Every new reading of the weekly limit is kept, so the days of the week can be told apart later (also when no app is open). */
   function noteWeek(u) {
     const next = weekplan.record(weekHist, u, u.at || Date.now());
@@ -861,7 +868,7 @@ function start(opts) {
         if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || okDir(cwd)) ? cwd : '', findClaude())); }
         if (parts[0] === 'projects' && parts.length === 1) return json(res, 200, listProjects());
         if (parts[0] === 'usage') return json(res, 200, usage);
-        if (parts[0] === 'weekplan') return json(res, 200, weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(u.searchParams.get('tz')) || 0));
+        if (parts[0] === 'weekplan') { rollWeek(); return json(res, 200, weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(u.searchParams.get('tz')) || 0)); }
         if (parts[0] === 'projects' && parts[1] === 'exists') { const c = String(u.searchParams.get('cwd') || ''); let ok = false; try { ok = fs.statSync(c).isDirectory() && (!root || okDir(c)); } catch { /* no */ } return json(res, 200, { exists: ok }); }
         if (parts[0] === 'sync' && !parts[1]) return json(res, 200, await syncStatus(u.searchParams.get('folder') || 'claude-projects'));
         if (parts[0] === 'projects' && parts[1] === 'export') {
@@ -1153,10 +1160,11 @@ function start(opts) {
         if (parts[0] === 'weekplan') {   // pin a weekday to a share of the week (pct), or give it back to the even sharing (pct null)
           const wd = Number(b.day);
           if (!Number.isInteger(wd) || wd < 0 || wd > 6) return json(res, 400, { error: 'day must be 0 (Sunday) to 6 (Saturday)' });
-          if (b.pct != null) { const pl = weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(b.tz) || 0), dd = pl.days && pl.days.find((x) => x.wd === wd); if (dd && dd.state === 'past') return json(res, 400, { error: 'that day is already over' }); }
+          rollWeek();
+          if (b.pct != null) { const pl = weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(b.tz) || 0), dd = pl.days && pl.days.find((x) => x.wd === wd && !x.start); if (dd && dd.state === 'past') return json(res, 400, { error: 'that day is already over' }); }
           if (b.pct == null) delete weekTargets[wd];
           else { const p = Number(b.pct); if (!Number.isFinite(p) || p < 0 || p > 100) return json(res, 400, { error: 'pct must be 0 to 100' }); weekTargets[wd] = Math.round(p * 10) / 10; }
-          try { fs.writeFileSync(planFile, JSON.stringify(weekTargets), { mode: 0o600 }); } catch { /* best effort */ }
+          saveTargets();
           return json(res, 200, weekplan.plan(usage, weekHist, weekTargets, Date.now(), Number(b.tz) || 0));
         }
         if (parts[0] === 'projects' && parts[1] === 'move') {  // put a project into the projects folder, chats included

@@ -97,7 +97,7 @@ fun dur(ms: Long): String {
 data class ApiCost(val total: Double, val days: List<Double>)
 
 /** One weekday of the weekly plan: what was used, what is planned in total, and whether you pinned it. */
-data class PlanDay(val wd: Int, val name: String, val state: String, val used: Double, val planned: Double, val fixed: Boolean, val target: Double?)
+data class PlanDay(val wd: Int, val name: String, val state: String, val used: Double, val planned: Double, val fixed: Boolean, val target: Double?, val start: Boolean = false)
 data class PlanSeg(val wd: Int, val f: Double, val state: String, val used: Double, val w: Double)
 data class WeekPlan(val unavailable: String?, val left: Double, val over: Boolean, val leftover: Double, val unknown: Double, val autoDays: Int, val autoEach: Double, val days: List<PlanDay>,
                     val segs: List<PlanSeg> = emptyList(), val targets: Map<Int, Double> = emptyMap(), val r: Double = 0.0)
@@ -109,29 +109,34 @@ private fun r1(x: Double) = Math.round(x * 10) / 10.0
  *  Used while a handle is dragged, so the other days follow at once. */
 fun groupsOf(segs: List<PlanSeg>, targets: Map<Int, Double>, r: Double): Groups {
     fun tgt(wd: Int): Double? = targets[wd]?.coerceIn(0.0, 100.0)
+    // the weekday of the reset has two pieces: the first is its own small day that cannot be pinned, the last one gets the pin
+    val split = segs.size > 1 && segs.first().wd == segs.last().wd
+    fun isStart(i: Int) = split && i == 0
+    fun keyOf(i: Int) = if (isStart(i)) segs[i].wd + 100 else segs[i].wd
     var fixedWant = 0.0; var autoW = 0.0
     val want = DoubleArray(segs.size) { -1.0 }
     segs.forEachIndexed { i, s ->
         if (s.state == "past") return@forEachIndexed
-        val t = tgt(s.wd)
-        if (t != null) { want[i] = maxOf(0.0, t * s.f - (if (s.state == "today") s.used else 0.0)); fixedWant += want[i] } else autoW += s.w
+        val t = if (isStart(i)) null else tgt(s.wd)
+        if (t != null) { want[i] = maxOf(0.0, t - (if (s.state == "today") s.used else 0.0)); fixedWant += want[i] } else autoW += s.w
     }
     val over = fixedWant > r + 1e-9
     val k = if (over && fixedWant > 0) r / fixedWant else 1.0
     val pool = maxOf(0.0, r - fixedWant)
     val alloc = DoubleArray(segs.size) { i -> val s = segs[i]; if (s.state == "past") 0.0 else if (want[i] >= 0) want[i] * k else if (over || autoW <= 0) 0.0 else pool * s.w / autoW }
     val leftover = if (autoW <= 0 && !over) maxOf(0.0, r - fixedWant) else 0.0
-    val order = segs.map { it.wd }.distinct()
+    val order = segs.indices.map { keyOf(it) }.distinct()
     val names = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-    val days = order.map { wd ->
-        val idx = segs.indices.filter { segs[it].wd == wd }
-        val t = tgt(wd)
+    val days = order.map { key ->
+        val idx = segs.indices.filter { keyOf(it) == key }
+        val wd = segs[idx[0]].wd; val st = isStart(idx[0])
+        val t = if (st) null else tgt(wd)
         val state = if (idx.any { segs[it].state == "today" }) "today" else if (segs[idx[0]].state == "past") "past" else "future"
         val used = idx.sumOf { segs[it].used }
         val planned = idx.sumOf { segs[it].used + (if (segs[it].state == "past") 0.0 else alloc[it]) }
-        PlanDay(wd, names[wd], state, r1(used), r1(planned), t != null, t)
+        PlanDay(wd, names[wd], state, r1(used), r1(planned), t != null, t, st)
     }
-    val autoDays = segs.indices.filter { segs[it].state != "past" && want[it] < 0 }.map { segs[it].wd }.distinct().size
+    val autoDays = segs.indices.filter { segs[it].state != "past" && want[it] < 0 }.map { keyOf(it) }.distinct().size
     return Groups(days, over, r1(leftover), autoDays, if (autoW > 0 && !over) r1(pool / autoW) else 0.0)
 }
 

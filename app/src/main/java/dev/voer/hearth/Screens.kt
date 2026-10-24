@@ -219,10 +219,10 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
                     if (pos.y > 70.dp.toPx()) {
                         val row = ((pos.y - 70.dp.toPx()) / rowH.toPx()).toInt().coerceIn(0, 2); var a2 = 0.0; var best: PlanDay? = null; var bd = Float.MAX_VALUE
                         baseDays.forEachIndexed { i, d -> val cx = ((a2 + d.planned / 2) / 100.0 * w).toFloat(); a2 += d.planned; if (rowsAt.getOrNull(i) == row && kotlin.math.abs(pos.x - cx) < bd) { bd = kotlin.math.abs(pos.x - cx); best = d } }
-                        best?.let { if (it.state != "past") onTap(it) }; return@detectTapGestures
+                        best?.let { if ((it.state != "past" && !it.start)) onTap(it) }; return@detectTapGestures
                     }
                     var at = 0.0
-                    baseDays.forEach { d -> if (pct >= at && pct < at + d.planned) { if (d.state != "past") onTap(d); return@detectTapGestures }; at += d.planned }
+                    baseDays.forEach { d -> if (pct >= at && pct < at + d.planned) { if ((d.state != "past" && !d.start)) onTap(d); return@detectTapGestures }; at += d.planned }
                 }
             }
             .pointerInput(p) {
@@ -230,7 +230,7 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
                 detectDragGestures(
                     onDragStart = { pos ->
                         val w = size.width.toFloat(); var at = 0.0; var best = -1; var bestDist = 30.dp.toPx()
-                        baseDays.forEachIndexed { i, d -> at += d.planned; if (i < baseDays.size - 1 && d.state != "past") { val dist = kotlin.math.abs(pos.x - (at / 100.0 * w).toFloat()); if (dist < bestDist) { bestDist = dist; best = i } } }
+                        baseDays.forEachIndexed { i, d -> at += d.planned; if (i < baseDays.size - 1 && (d.state != "past" && !d.start)) { val dist = kotlin.math.abs(pos.x - (at / 100.0 * w).toFloat()); if (dist < bestDist) { bestDist = dist; best = i } } }
                         k = best
                         if (k >= 0) { d0 = baseDays[k]; before = baseDays.take(k).sumOf { it.planned }; drag = k; value = d0!!.planned }
                     },
@@ -277,7 +277,7 @@ private fun WeekSlider(p: WeekPlan, onPin: (PlanDay, Double) -> Unit, onTap: (Pl
                     drawContext.canvas.nativeCanvas.drawText((if (v >= 10 || v == 0.0) v.toInt().toString() else v.toString()) + "%", cx, top + hh + 31.dp.toPx() + ly, paint)
                 }
                 at += d.planned
-                if (i < days.size - 1 && d.state != "past") {
+                if (i < days.size - 1 && (d.state != "past" && !d.start)) {
                     val kx = (at / 100.0 * w).toFloat(); val kw = 22.dp.toPx(); val kh = 44.dp.toPx(); val active = drag == i
                     val r = androidx.compose.ui.geometry.RoundRect(kx - kw / 2, top + hh / 2 - kh / 2, kx + kw / 2, top + hh / 2 + kh / 2, CornerRadius(12.dp.toPx()))
                     drawRoundRect(androidx.compose.ui.graphics.Color.Black.copy(alpha = .12f), Offset(r.left, r.top + 2.dp.toPx()), Size(kw, kh), CornerRadius(12.dp.toPx()))

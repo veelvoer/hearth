@@ -142,7 +142,7 @@ object Relay {
 
     private fun parsePlan(o: JSONObject): WeekPlan {
         val a = o.optJSONArray("days")
-        val days = if (a == null) emptyList() else List(a.length()) { a.getJSONObject(it).let { d -> PlanDay(d.getInt("wd"), d.getString("name"), d.getString("state"), d.getDouble("used"), d.getDouble("planned"), d.optBoolean("fixed"), if (d.isNull("target")) null else d.getDouble("target")) } }
+        val days = if (a == null) emptyList() else List(a.length()) { a.getJSONObject(it).let { d -> PlanDay(d.getInt("wd"), d.getString("name"), d.getString("state"), d.getDouble("used"), d.getDouble("planned"), d.optBoolean("fixed"), if (d.isNull("target")) null else d.getDouble("target"), d.optBoolean("start")) } }
         val sa = o.optJSONArray("segs")
         val segs = if (sa == null) emptyList() else List(sa.length()) { sa.getJSONObject(it).let { d -> PlanSeg(d.getInt("wd"), d.getDouble("f"), d.getString("state"), d.getDouble("used"), d.getDouble("w")) } }
         val to = o.optJSONObject("targets")

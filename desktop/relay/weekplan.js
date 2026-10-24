@@ -59,14 +59,17 @@ const cleanTargets = (t) => { const o = {}; for (let wd = 0; wd < 7; wd++) { con
 
 /** Shares the part of the week that is left (R percent) over the days that are still to come. Pure: the phone and the desktop use it to follow a slider while it moves.
  *  segs: [{wd, f (share of a day), state: past|today|future, used, w (weight when not pinned)}], targets: {weekday: percent of the week} */
-function groups(segs, targets, R) {
+function groups(segs0, targets, R) {
+  // the weekday of the reset has two pieces (the start of the window and the end): the first one is its own small day that cannot be pinned, the last one is the day that gets the pin
+  const split = segs0.length > 1 && segs0[0].wd === segs0[segs0.length - 1].wd;
+  const segs = segs0.map((s, i) => ({ ...s, start: split && i === 0 }));
   const tgt = (wd) => { const v = targets && targets[wd]; return v == null || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.min(100, Number(v))); };
   const rem = segs.filter((s) => s.state !== 'past');
   let fixedWant = 0, autoW = 0;
   const want = new Map(), alloc = new Map();
   for (const s of rem) {
-    const t = tgt(s.wd);
-    if (t != null) { const w = Math.max(0, t * s.f - (s.state === 'today' ? s.used : 0)); want.set(s, w); fixedWant += w; }
+    const t = s.start ? null : tgt(s.wd);
+    if (t != null) { const w = Math.max(0, t - (s.state === 'today' ? s.used : 0)); want.set(s, w); fixedWant += w; }
     else autoW += s.w;
   }
   const over = fixedWant > R + 1e-9;
@@ -75,17 +78,18 @@ function groups(segs, targets, R) {
   for (const s of rem) alloc.set(s, want.has(s) ? want.get(s) * k : (over || autoW <= 0 ? 0 : pool * s.w / autoW));
   const leftover = autoW <= 0 && !over ? Math.max(0, R - fixedWant) : 0;
   const order = [];
-  for (const s of segs) if (!order.includes(s.wd)) order.push(s.wd);
+  const keyOf = (s) => (s.start ? s.wd + 's' : String(s.wd));
+  for (const s of segs) if (!order.includes(keyOf(s))) order.push(keyOf(s));
   const NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const days = order.map((wd) => {
-    const g = segs.filter((s) => s.wd === wd), t = tgt(wd);
+  const days = order.map((key) => {
+    const g = segs.filter((s) => keyOf(s) === key), wd = g[0].wd, st = !!g[0].start, t = st ? null : tgt(wd);
     const state = g.some((s) => s.state === 'today') ? 'today' : g[0].state === 'past' ? 'past' : 'future';
     const used = g.reduce((a, s) => a + s.used, 0);
     const planned = g.reduce((a, s) => a + s.used + (s.state === 'past' ? 0 : (alloc.get(s) || 0)), 0);
-    return { wd, name: NAMES[wd], state, used: round(used), planned: round(planned), fixed: t != null, target: t };
+    return { wd, name: NAMES[wd], state, used: round(used), planned: round(planned), fixed: t != null, target: t, start: st };
   });
   const autoSegs = rem.filter((s) => !want.has(s));
-  return { days, over, leftover: round(leftover), autoDays: new Set(autoSegs.map((s) => s.wd)).size, autoEach: autoW > 0 && !over ? round(pool / autoW) : 0 };
+  return { days, over, leftover: round(leftover), autoDays: new Set(autoSegs.map(keyOf)).size, autoEach: autoW > 0 && !over ? round(pool / autoW) : 0 };
 }
 const round = (x) => Math.round(x * 10) / 10;
 
