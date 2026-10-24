@@ -10,12 +10,12 @@ let now=T('2026-10-11T10:00:00Z');
 const samples=[{t:T('2026-10-09T08:00:00Z'),w:5,r:end},{t:T('2026-10-10T08:00:00Z'),w:12,r:end},{t:T('2026-10-10T20:00:00Z'),w:30,r:end},{t:T('2026-10-11T08:00:00Z'),w:35,r:end}];
 let p=plan({week:{pct:35,resetsAt:end}},samples,{},now,tz);
 console.log(p.days.map(d=>`${d.name}:${d.state} used ${d.used} plan ${d.planned}${d.fixed?' fixed '+d.target:''}`).join('\n'));
-eq('7 bars',p.days.length,7);
+eq('8 bars: the weekday of the reset is split in a start and an end day',p.days.length,8);
 const sum=(p)=>p.days.reduce((a,d)=>a+d.planned,0);
 eq('plan sums to 100 (no unknown)',sum(p),100);
 // pin a future Sat... (Sat is past here) and Sun 20
 p=plan({week:{pct:35,resetsAt:end}},samples,{6:20,0:20},now,tz);
-const by=(p,n)=>p.days.find(d=>d.name===n);
+const by=(p,n)=>[...p.days].reverse().find(d=>d.name===n);   // the last one: the reset weekday also has a small day at the start
 eq('sat (already past) keeps what was used',by(p,'Sat').planned,25);
 eq('sun planned = max(20, used)',by(p,'Sun').planned,20);
 eq('sum 100',sum(p),100);
