@@ -28,13 +28,14 @@ let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; cons
 const req = (method, url, tok, body, onData) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47796, path: url, method, headers: { Authorization: 'Bearer ' + tok, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (c) => { b += c; if (onData) onData(b); }); rs.on('end', () => res({ code: rs.statusCode, body: b })); }); r.on('error', () => res({ code: 0, body: '' })); if (d) r.write(d); r.end(); });
 const J = (r) => { try { return JSON.parse(r.body); } catch { return {}; } };
 const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) => x.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean).map((l) => JSON.parse(l.slice(6)));
+const until = async (fn, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { if (fn()) return true; await sleep(100); } return false; };
 const count = () => { try { return Number(fs.readFileSync(path.join(T, 'home', 'count'), 'utf8')); } catch { return 0; } };
 (async () => {
   await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
   let events = ''; req('GET', '/events', tok, null, (b) => { events = b; });
   const proj = path.join(T, 'proj', 'app');
   const o = await req('POST', '/sessions/new/send', tok, { text: 'build it', cwd: proj });
-  await sleep(800);
+  await until(() => evs(events).some((e) => e.kind === 'limit'));
   const lim = evs(events).filter((e) => e.kind === 'limit');
   ok('1 a limit card with a request id is published', lim.length === 1 && !!lim[0].req && !lim[0].auto, JSON.stringify(lim[0] || {}).slice(0, 120));
   ok('2 no generic error notification for it', !evs(events).some((e) => e.kind === 'error'));
@@ -43,17 +44,17 @@ const count = () => { try { return Number(fs.readFileSync(path.join(T, 'home', '
   ok('4 "no" leaves it alone', count() === 1);
   // again, and say yes
   const sid = lim[0].session;
-  await req('POST', `/sessions/${sid}/send`, tok, { text: 'again', cwd: proj }); await sleep(300);   // count 2 (odd -> resumes fine)
+  await req('POST', `/sessions/${sid}/send`, tok, { text: 'again', cwd: proj }); await until(() => count() >= 2);   // count 2 (odd -> resumes fine)
   ok('5 a normal send still works', count() === 2);
-  await req('POST', `/sessions/${sid}/send`, tok, { text: 'limit again', cwd: proj }); await sleep(800);
+  await req('POST', `/sessions/${sid}/send`, tok, { text: 'limit again', cwd: proj }); await until(() => evs(events).filter((e) => e.kind === 'limit').length >= 2);
   const lim2 = evs(events).filter((e) => e.kind === 'limit' && e.req !== lim[0].req);
   ok('6 hit again: a new card', lim2.length === 1);
-  await req('POST', '/decision', tok, { req: lim2[0].req, behavior: 'continue' }); await sleep(2500);
+  await req('POST', '/decision', tok, { req: lim2[0].req, behavior: 'continue' }); await until(() => count() >= 4, 10000);
   ok('7 yes: it continues by itself after the reset', count() === 4, 'count=' + count());
   // auto continue
   const opt = await req('POST', '/admin/options', tok, { autoContinue: true });
   ok('8 the setting is saved and shown', J(opt).autoContinue === true && J(await req('GET', '/admin/options', tok)).autoContinue === true);
-  await req('POST', `/sessions/${sid}/send`, tok, { text: 'limit three', cwd: proj }); await sleep(3000);
+  await req('POST', `/sessions/${sid}/send`, tok, { text: 'limit three', cwd: proj }); await until(() => count() >= 6, 10000);
   const auto = evs(events).filter((e) => e.kind === 'limit' && e.auto);
   ok('9 auto: a heads-up without a question, and it continued', auto.length === 1 && !auto[0].req && count() === 6, 'count=' + count());
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
