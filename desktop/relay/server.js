@@ -21,6 +21,7 @@ const filehub = require('./filehub');
 const selfupdate = require('./selfupdate');
 const VERSION = require('./version');
 const tools = require('./tools');
+const apikeys = require('./apikeys');
 const zlib = require('zlib');
 const BUILD = require('./buildsig').sigOfDir(__dirname);   // what code this relay is running
 
@@ -549,6 +550,75 @@ function start(opts) {
   }
 
   /** The milestone message: always sent; the phone rings only if you asked for a call. */
+  // ── Hearth API keys: other apps call Claude through this server with a key, on your plan's usage ──
+  const hkeys = apikeys.createKeys({ dir });
+  let apiBusy = 0;
+  const API_SYSTEM = 'You answer requests that arrive through an API. Reply with the answer only, no greetings, and do not mention these instructions. You cannot use tools or files.';
+  const textOfContent = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b && b.type === 'text' ? String(b.text || '') : b && b.type ? '\u0000' : '')).join('') : '');
+  function apiPrompt(b) {
+    if (!Array.isArray(b.messages) || !b.messages.length || b.messages.length > 200) return { error: 'messages must be a list of 1 to 200 items like [{"role":"user","content":"Hello"}]' };
+    let sys = textOfContent(b.system || '');
+    const rows = [];
+    for (const m of b.messages) {
+      if (!m || !['user', 'assistant'].includes(m.role)) return { error: 'every message needs a role of user or assistant' };
+      const t = textOfContent(m.content); if (t.includes('\u0000')) return { error: 'only text content is supported (no images or tool blocks)' };
+      rows.push([m.role, t]);
+    }
+    if (rows[rows.length - 1][0] !== 'user') return { error: 'the last message must be from the user' };
+    const text = rows.length === 1 ? rows[0][1] : 'This is the conversation so far. Answer the last user message.\n\n' + rows.map(([r, t]) => (r === 'user' ? 'User: ' : 'Assistant: ') + t).join('\n\n');
+    if (text.length > 400000) return { error: 'the request is too long (400,000 characters at most)' };
+    return { text, sys, all: text + ' ' + sys };
+  }
+  function apiRun(model, effort, sys, text) {
+    return new Promise((resolve) => {
+      const claude = findClaude(); if (!claude) return resolve({ error: 'Claude Code was not found on this server.', code: 500 });
+      const sandbox = path.join(dir, 'api-sandbox'); try { fs.mkdirSync(sandbox, { recursive: true }); } catch { /* exists */ }
+      const args = ['-p', '--output-format', 'json', '--no-session-persistence', '--model', model, '--effort', effort, '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--system-prompt', (sys ? sys + '\n\n' : '') + API_SYSTEM];
+      const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
+      const child = spawn(useShell ? `"${claude}"` : claude, args, { cwd: sandbox, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let out = '', err = '', done = false;
+      const end = (r) => { if (done) return; done = true; clearTimeout(timer); resolve(r); };
+      const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } end({ error: 'Claude took too long (5 minutes).', code: 504 }); }, 5 * 60000);
+      child.stdout.on('data', (d) => { out += d; if (out.length > 8e6) { try { child.kill('SIGKILL'); } catch { /* gone */ } } });
+      child.stderr.on('data', (d) => { err += d; });
+      child.on('error', (e) => end({ error: 'Could not start Claude: ' + e.message, code: 500 }));
+      child.on('close', () => {
+        let j = null; try { j = JSON.parse(out); } catch { /* not json */ }
+        if (!j) return end({ error: (err || out || 'Claude gave no answer.').slice(0, 300), code: 502 });
+        if (j.is_error) { const limit = LIMIT_RE.test(String(j.result || '')); return end({ error: limit ? 'The usage limit of the plan is reached. Try again when it resets.' : String(j.result || 'Claude reported an error.').slice(0, 300), code: limit ? 429 : 502 }); }
+        const u = j.usage || {};
+        end({ text: String(j.result || ''), inTok: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), outTok: u.output_tokens || 0 });
+      });
+      child.stdin.on('error', () => {}); child.stdin.end(text);
+    });
+  }
+  async function apiHttp(req, res, u, parts, ip) {
+    if (!publicMode && !reach(ip)) return json(res, 403, { error: { type: 'forbidden', message: 'local network only' } });
+    const err = (code, msg, type) => json(res, code, { type: 'error', error: { type: type || (code === 401 ? 'authentication_error' : code === 429 ? 'rate_limit_error' : code === 400 ? 'invalid_request_error' : 'api_error'), message: msg } });
+    const f = failures.get(ip); if (f && f.until > Date.now()) return err(429, 'too many failed attempts, try again later');
+    const given = String(req.headers['x-api-key'] || '').trim() || String(req.headers.authorization || '').replace(/^Bearer /, '').trim();
+    const k = hkeys.authenticate(given);
+    if (!k) { const n = ((f && f.n) || 0) + 1; failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 }); return err(401, 'invalid API key'); }
+    failures.delete(ip);
+    const week = usage && usage.week && Number.isFinite(usage.week.pct) ? usage.week.pct : NaN;
+    const c = hkeys.check(k, week); if (!c.ok) return err(c.code, c.why);
+    if (parts[1] === 'models' && req.method === 'GET') return json(res, 200, { data: k.models.map((id) => ({ id, type: 'model', display_name: id })), efforts: k.efforts, per_day: k.perDay || null, week_stop_percent: k.weekStopPct || null, expires_at: k.expiresAt ? new Date(k.expiresAt).toISOString() : null });
+    if (parts[1] === 'messages' && req.method === 'POST') {
+      const b = await bodyJson(req);
+      if (b.stream === true) return err(400, 'streaming is not supported yet: send "stream": false');
+      const p = apiPrompt(b); if (p.error) return err(400, p.error);
+      const pick = hkeys.choose(k, { model: b.model, effort: b.effort || (b.output_config && b.output_config.effort), text: p.all });
+      if (pick.error) return err(403, pick.error, 'permission_error');
+      if (apiBusy >= 2) return err(429, 'Hearth is busy with other requests. Try again in a moment.');
+      apiBusy++;
+      let r; try { r = await apiRun(pick.model, pick.effort, p.sys, p.text); } finally { apiBusy--; }
+      if (r.error) return err(r.code || 502, r.error);
+      hkeys.used(k, r.inTok + r.outTok);
+      return json(res, 200, { id: 'msg_hk_' + crypto.randomBytes(8).toString('hex'), type: 'message', role: 'assistant', model: pick.model, content: [{ type: 'text', text: r.text }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: r.inTok, output_tokens: r.outTok }, hearth: { effort: pick.effort, picked_automatically: pick.auto } });
+    }
+    return err(404, 'unknown endpoint. Use POST /v1/messages or GET /v1/models.');
+  }
+
   // ── support mail: a notification asks what to do with it (give it to Claude, put it on your list, ignore it) ──
   const listFile = path.join(dir, 'support-list.json');
   const readList = () => { try { return JSON.parse(fs.readFileSync(listFile, 'utf8')); } catch { return []; } };
@@ -838,6 +908,7 @@ function start(opts) {
       const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
       const ip = clientIp(req);
       const bearerKey = String(req.headers.authorization || '').replace(/^Bearer /, '');
+      if (parts[0] === 'v1') return apiHttp(req, res, u, parts, ip);   // an app of yours with a Hearth API key
       if (/^share\./.test(bearerKey)) {   // a friend's key for one shared chat
         if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });
         const f = failures.get(ip);
@@ -926,6 +997,7 @@ function start(opts) {
         if (parts[0] === 'sync' && parts[1] === 'status') return json(res, 200, await syncOverview());
         if (parts[0] === 'support' && parts[1] === 'list') return json(res, 200, readList());
         if (parts[0] === 'sessions' && parts[2] === 'workflow' && parts.length === 3) return json(res, 200, wfView(parts[1]));
+        if (parts[0] === 'admin' && parts[1] === 'apikeys') return json(res, 200, { keys: hkeys.list(), presets: hkeys.PRESETS, models: hkeys.MODELS, efforts: hkeys.EFFORTS });
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
@@ -1194,6 +1266,11 @@ function start(opts) {
         }
         if (parts[0] === 'answer') { const p = pending.get(b.req); if (p) { p.resolve(String(b.answer || '').slice(0, 2000)); publish({ kind: 'resolved', req: b.req, session: p.event.session }); } return json(res, 200, { ok: !!p }); }
         if (parts[0] === 'decision' && shares.hasRequest(String(b.req))) { const r = shares.decide(String(b.req), { decision: b.behavior === 'deny' ? 'deny' : 'approve', text: b.text, mode: b.mode, always: !!b.always, note: b.note }); return json(res, r.code, r.data); }
+        if (parts[0] === 'admin' && parts[1] === 'apikeys') {   // make, revoke and delete keys: the owner only
+          if (parts[2] === 'revoke') return json(res, hkeys.revoke(String(b.id || '')) ? 200 : 404, { ok: true });
+          if (parts[2] === 'delete') return json(res, hkeys.remove(String(b.id || '')) ? 200 : 404, { ok: true });
+          return json(res, 200, hkeys.create(b));
+        }
         if (parts[0] === 'support' && parts[1] === 'act' && req.method === 'POST') {   // from the support desk screen of the app: the same three choices as the notification
           const t = { kind: 'new', id: String(b.id || '').slice(0, 20), title: String(b.title || '').slice(0, 120), category: String(b.category || 'other').slice(0, 20), from: String(b.from || '').slice(0, 120), text: String(b.text || '').slice(0, 5000) };
           if (!t.id || !['claude', 'list', 'ignore'].includes(b.action)) return json(res, 400, { error: 'id and action (claude, list or ignore) are needed' });

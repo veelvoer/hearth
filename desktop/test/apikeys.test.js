@@ -1,0 +1,57 @@
+// Hearth API keys: make a key, call /v1/messages with it, limits, models, auto picking, expiry, revoke. Fake "claude". Run: node desktop/test/apikeys.test.js
+const { spawn } = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
+if (process.platform === 'win32') { console.log('skipped on Windows'); process.exit(0); }
+fs.mkdirSync(path.join(os.homedir(), '.cache'), { recursive: true }); const T = fs.mkdtempSync(path.join(os.homedir(), '.cache', 'hearth-keys-'));
+for (const d of ['bin', 'home', 'proj']) fs.mkdirSync(path.join(T, d), { recursive: true });
+fs.writeFileSync(path.join(T, 'bin', 'claude'), `#!/usr/bin/env node
+let t = ''; process.stdin.on('data', (d) => { t += d; }); process.stdin.on('end', () => {
+  require('fs').appendFileSync(process.env.HOME + '/calls.txt', JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), in: t }) + '\\n');
+  console.log(JSON.stringify({ type: 'result', is_error: false, result: 'echo: ' + t.slice(0, 60), usage: { input_tokens: 10, output_tokens: 5 } }));
+});
+`, { mode: 0o755 });
+const relay = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--dir', path.join(T, 'd'), '--port', '47793', '--host', '127.0.0.1', '--projects', path.join(T, 'proj')], { env: { ...process.env, HOME: path.join(T, 'home'), PATH: path.join(T, 'bin') + path.delimiter + process.env.PATH }, stdio: 'ignore' });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
+const req = (method, url, hdr, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47793, path: url, method, headers: { ...hdr, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (c) => { b += c; }); rs.on('end', () => { let j = {}; try { j = JSON.parse(b); } catch { /* */ } res({ code: rs.statusCode, j }); }); }); r.on('error', () => res({ code: 0, j: {} })); if (d) r.write(d); r.end(); });
+const calls = () => { try { return fs.readFileSync(path.join(T, 'home', 'calls.txt'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+(async () => {
+  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token, own = { Authorization: 'Bearer ' + tok };
+  const msg = (text, extra) => ({ messages: [{ role: 'user', content: text }], ...extra });
+  ok('1 only the owner can make keys', (await req('POST', '/admin/apikeys', { Authorization: 'Bearer nope' }, { kind: 'low' })).code === 401);
+  const low = (await req('POST', '/admin/apikeys', own, { name: 'My app', kind: 'low', perDay: 3 })).j;
+  ok('2 a key is made and shown once, only its last 4 characters are kept', /^hk_/.test(low.key) && low.ends === low.key.slice(-4) && !JSON.stringify((await req('GET', '/admin/apikeys', own)).j).includes(low.key));
+  ok('3 the key file holds only a hash', !fs.readFileSync(path.join(T, 'd', 'apikeys.json'), 'utf8').includes(low.key));
+  ok('4 no key, no answer', (await req('POST', '/v1/messages', {}, msg('hi'))).code === 401 && (await req('POST', '/v1/messages', { 'x-api-key': 'hk_wrongwrongwrongwrongwrong' }, msg('hi'))).code === 401);
+  const H = { 'x-api-key': low.key };
+  const a = await req('POST', '/v1/messages', H, msg('Say hello'));
+  ok('5 a call works the way the normal API answers', a.code === 200 && a.j.type === 'message' && a.j.role === 'assistant' && a.j.content[0].type === 'text' && /echo: Say hello/.test(a.j.content[0].text) && a.j.usage.input_tokens === 10, JSON.stringify(a.j).slice(0, 140));
+  const c1 = calls()[0];
+  ok('6 Claude runs without tools, in its own empty folder, without a saved session', c1 && c1.args.includes('--tools') && c1.args[c1.args.indexOf('--tools') + 1] === '' && c1.args.includes('--no-session-persistence') && /api-sandbox$/.test(c1.cwd));
+  ok('7 a short question on a low key picks the lightest model and effort', a.j.model === 'haiku' && a.j.hearth.effort === 'low' && a.j.hearth.picked_automatically === true);
+  const big = await req('POST', '/v1/messages', H, msg('Please analyze and refactor this architecture step by step. ' + 'x'.repeat(4000) + ' ```code```'));
+  ok('8 a big job on a low key picks the best it may use, never more', big.code === 200 && big.j.model === 'sonnet' && ['medium'].includes(big.j.hearth.effort), big.j.model + ' ' + (big.j.hearth || {}).effort);
+  const no = await req('POST', '/v1/messages', H, msg('hi', { model: 'claude-opus-4' }));
+  ok('9 asking for a model the key may not use is refused and says what is allowed', no.code === 403 && /haiku, sonnet/.test(no.j.error.message));
+  const noe = await req('POST', '/v1/messages', H, msg('hi', { effort: 'max' }));
+  ok('10 same for the effort level', noe.code === 403);
+  ok('11 the per-day limit stops the key', (await req('POST', '/v1/messages', H, msg('third'))).code === 200 && (await req('POST', '/v1/messages', H, msg('fourth'))).code === 429);
+  const mod = await req('GET', '/v1/models', { 'x-api-key': (await req('POST', '/admin/apikeys', own, { kind: 'high', name: 'Heavy' })).j.key });
+  ok('12 the models call lists what a high key may use', mod.code === 200 && mod.j.data.map((x) => x.id).join() === 'sonnet,opus' && mod.j.efforts.join() === 'high,xhigh,max');
+  const gen = (await req('POST', '/admin/apikeys', own, { kind: 'general', name: 'All' })).j;
+  const g = await req('POST', '/v1/messages', { Authorization: 'Bearer ' + gen.key }, msg('hi', { model: 'opus', effort: 'max' }));
+  ok('13 a general key can use every model and effort, also with Bearer', g.code === 200 && g.j.model === 'opus' && g.j.hearth.effort === 'max' && calls().pop().args.includes('opus'));
+  ok('14 a bad request is explained', (await req('POST', '/v1/messages', { 'x-api-key': gen.key }, { messages: [] })).code === 400 && (await req('POST', '/v1/messages', { 'x-api-key': gen.key }, msg('hi', { stream: true }))).code === 400);
+  const exp = (await req('POST', '/admin/apikeys', own, { kind: 'general', name: 'Soon', expiresAt: Date.now() + 1500 })).j;
+  ok('15 before it expires it works', (await req('POST', '/v1/messages', { 'x-api-key': exp.key }, msg('hi'))).code === 200); await sleep(1700);
+  ok('16 after the expiry date it does not', (await req('POST', '/v1/messages', { 'x-api-key': exp.key }, msg('hi'))).code === 401);
+  const lim = (await req('POST', '/admin/apikeys', own, { kind: 'general', name: 'Careful', weekStopPct: 1 })).j;
+  fs.writeFileSync(path.join(T, 'd', 'usage.json'), JSON.stringify({ week: { pct: 50, resetsAt: Date.now() + 86400000 }, at: Date.now() }));
+  relay.kill(); await sleep(400);
+  const relay2 = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--dir', path.join(T, 'd'), '--port', '47793', '--host', '127.0.0.1', '--projects', path.join(T, 'proj')], { env: { ...process.env, HOME: path.join(T, 'home'), PATH: path.join(T, 'bin') + path.delimiter + process.env.PATH }, stdio: 'ignore' }); await sleep(2000);
+  ok('17 a key that stops at a point of the weekly usage stops there', (await req('POST', '/v1/messages', { 'x-api-key': lim.key }, msg('hi'))).code === 429);
+  ok('18 a revoked key stops at once', (await req('POST', '/admin/apikeys/revoke', own, { id: gen.id })).code === 200 && (await req('POST', '/v1/messages', { 'x-api-key': gen.key }, msg('hi'))).code === 401);
+  ok('19 keys survive a restart', (await req('GET', '/admin/apikeys', own)).j.keys.length === 5);
+  relay2.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
+  console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
+})();

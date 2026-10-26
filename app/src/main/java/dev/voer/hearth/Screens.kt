@@ -708,6 +708,70 @@ private fun SkillsCard() {
     }
 }
 
+/** Hearth API keys: your own apps can use Claude through your server, on your plan's usage. */
+@Composable
+private fun ApiKeysCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var data by remember { mutableStateOf<JSONObject?>(null) }
+    var fresh by remember { mutableStateOf<String?>(null) }
+    var msg by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf("low") }
+    var name by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf(0) }
+    var perDay by remember { mutableStateOf(0) }
+    var stopAt by remember { mutableStateOf(0) }
+    fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
+    fun load() { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.apiKeys(m) } }.onSuccess { data = it; msg = "" }.onFailure { msg = "This server has no API keys yet. Update it first." } } }
+    LaunchedEffect(Ui.machinesRev) { load() }
+    fun post(path: String, body: JSONObject, then: (JSONObject) -> Unit = {}) { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, path, body) } }.onSuccess { then(it); load() }.onFailure { msg = it.message ?: "Didn't work" } } }
+    Fold("server", "API keys", "Keys for your own apps. They use your plan's usage instead of credits. Low usage keys may only use light models and effort, high usage keys the strong ones, general keys everything. The guide is docs/API.md in the Hearth repository.") {
+        val d = data
+        if (d == null) { Txt(msg.ifEmpty { "Loading…" }, T.small, muted = true); return@Fold }
+        fresh?.let { k ->
+            Txt("Copy your key now. It is shown only once.", T.body.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.primary)
+            Txt(k, T.small.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.padding(vertical = 6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                TextAction("Copy") { (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Hearth key", k)); msg = "Key copied" }
+                TextAction("Done") { fresh = null }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        val keys = d.optJSONArray("keys")
+        if (keys == null || keys.length() == 0) Txt("No keys yet.", T.small, muted = true)
+        else for (i in 0 until keys.length()) {
+            val k = keys.getJSONObject(i); val id = k.getString("id")
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Txt(k.getString("name"), T.body)
+                    val ms = k.getJSONArray("models"); val lim = k.optInt("perDay")
+                    Txt(k.getString("kind") + " · …" + k.getString("ends") + " · " + (0 until ms.length()).joinToString("/") { ms.getString(it) } + (if (k.optLong("expiresAt") > 0) " · until " + java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT).format(java.util.Date(k.getLong("expiresAt"))) else "") + (if (lim > 0) " · ${k.optInt("usedToday")}/$lim today" else " · ${k.optInt("usedToday")} today") + (if (k.optDouble("weekStopPct") > 0) " · stops at ${k.optInt("weekStopPct")}% week" else "") + (if (k.optBoolean("revoked")) " · revoked" else ""), T.small, muted = true)
+                }
+                if (!k.optBoolean("revoked")) TextAction("Revoke") { post("/admin/apikeys/revoke", JSONObject().put("id", id)) }
+                Spacer(Modifier.width(12.dp))
+                TextAction("Delete") { post("/admin/apikeys/delete", JSONObject().put("id", id)) }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Label("New key")
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low" to "Low usage", "high" to "High usage", "general" to "General").forEach { (v, l) -> Chip(l, kind == v) { kind = v } } }
+        val pre = d.optJSONObject("presets")?.optJSONObject(kind)
+        if (pre != null) { val pm = pre.getJSONArray("models"); val pe = pre.getJSONArray("efforts"); Txt((0 until pm.length()).joinToString(", ") { pm.getString(it) } + " · effort " + (0 until pe.length()).joinToString(", ") { pe.getString(it) }, T.small, muted = true) }
+        Field(name, { name = it }, "Name, e.g. my bot")
+        Txt("Expires", T.small, muted = true)
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 30 to "30 days", 90 to "90 days", 365 to "1 year").forEach { (v, l) -> Chip(l, days == v) { days = v } } }
+        Txt("Requests a day", T.small, muted = true)
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "No limit", 50 to "50", 200 to "200", 1000 to "1000").forEach { (v, l) -> Chip(l, perDay == v) { perDay = v } } }
+        Txt("Stops when the week's usage reaches", T.small, muted = true)
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 50 to "50%", 75 to "75%", 90 to "90%").forEach { (v, l) -> Chip(l, stopAt == v) { stopAt = v } } }
+        Spacer(Modifier.height(6.dp))
+        Button("Make key", Modifier.fillMaxWidth()) {
+            post("/admin/apikeys", JSONObject().put("kind", kind).put("name", name).put("expiresInDays", days).put("perDay", perDay).put("weekStopPct", stopAt)) { o -> fresh = o.optString("key"); name = "" }
+        }
+        if (msg.isNotEmpty()) Txt(msg, T.small, muted = true)
+    }
+}
+
 /** What the server may do for you: work in any folder, Full auto, chats with root rights, and the commands allowed for good. */
 @Composable
 private fun PermissionsCard() {
@@ -942,6 +1006,7 @@ fun SettingsScreen() {
         MemoryCard()
         LimitCard()
         SkillsCard()
+        ApiKeysCard()
         PermissionsCard()
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {

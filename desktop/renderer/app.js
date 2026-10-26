@@ -313,7 +313,8 @@ function settingsView(only) {
   if (!only) cm.machines().then((ms) => ms[0] ? cm.voiceStatus(ms[0].id).then((s) => { const e = $('#vstat'); if (e) { e.textContent = s.stt && s.tts ? 'Ready' : 'Not installed'; e.parentElement.className = 'pill ' + (s.stt && s.tts ? 'ok' : ''); } }).catch(() => { const e = $('#vstat'); if (e) e.textContent = 'Not reachable'; }) : null);
   p.append(v);
   p.append(only ? h('div') : memoryCard());
-  p.append(only ? h('div') : limitCard());
+  p.append(only ? h('div') : usageOutCard());
+  p.append(only ? h('div') : apiKeysCard());
   p.append(only ? h('div') : permsCard());
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
@@ -455,7 +456,7 @@ function memoryCard() {
   return card;
 }
 /** When the plan limit stops a chat: carry on by itself once usage is back (on every connected computer), or ask each time. */
-function limitCard() {
+function usageOutCard() {
   const card = h('div', { class: 'card stack' }, ch('bell', 'When your usage runs out', 'A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.'));
   const body = h('div', { class: 'small muted' }, 'Loading…'); card.append(body);
   (async () => {
@@ -467,6 +468,33 @@ function limitCard() {
         toggle(on, async () => { const next = !on; let bad = 0; for (const m of ms) { try { await cm.relay(m.id, 'POST', '/admin/options', { autoContinue: next }); } catch { bad++; } } if (bad < ms.length) on = next; if (bad) toast(bad === ms.length ? 'Could not save. Update the server first.' : 'Saved on some computers only. Update the others.'); draw(); })));
     };
     draw();
+  })();
+  return card;
+}
+/** Hearth API keys: let your own apps use Claude through your server, on your plan's usage. */
+function apiKeysCard() {
+  const card = h('div', { class: 'card stack' }, ch('server', 'API keys', 'Keys for your own apps. They use your plan\'s usage instead of credits. Low usage keys may only use light models and effort, high usage keys the strong ones, general keys everything. Add a daily limit, a point of the weekly usage where the key stops, and an expiry date. The guide is in docs/API.md in the Hearth repository.'));
+  const body = h('div', { class: 'stack' }, h('div', { class: 'small muted' }, 'Loading…')); card.append(body);
+  (async () => {
+    let m; try { const ms = await cm.machines(); m = ms.find((x) => x.secure) || ms.find((x) => x.local) || ms[0]; } catch { /* none */ }
+    if (!m) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'No server connected.')); return; }
+    let data = null, fresh = null, kind = 'low';
+    const load = async () => { try { data = await cm.relay(m.id, 'GET', '/admin/apikeys'); } catch { data = null; } draw(); };
+    const draw = () => {
+      body.innerHTML = '';
+      if (!data) { body.append(h('div', { class: 'small muted' }, 'This server has no API keys yet. Update it first.')); return; }
+      if (fresh) body.append(h('div', { class: 'warnnote stack' }, h('b', {}, 'Copy your key now. It is shown only once.'), h('div', { class: 'mono small', style: 'word-break:break-all;user-select:all' }, fresh.key),
+        h('div', { class: 'row' }, h('button', { class: 'primary sm', onclick: () => { cm.copy ? cm.copy(fresh.key) : navigator.clipboard.writeText(fresh.key); toast('Key copied'); } }, 'Copy'), h('button', { class: 'ghost sm', onclick: () => { fresh = null; draw(); } }, 'Done'))));
+      data.keys.forEach((k) => body.append(h('div', { class: 'row crow' }, h('div', { class: 'grow', style: 'min-width:0' }, h('b', {}, k.name), h('div', { class: 'small muted' }, `${k.kind} · …${k.ends} · ${k.models.join('/')}${k.expiresAt ? ' · until ' + new Date(k.expiresAt).toLocaleDateString() : ''}${k.perDay ? ` · ${k.usedToday}/${k.perDay} today` : ` · ${k.usedToday} today`}${k.weekStopPct ? ` · stops at ${k.weekStopPct}% week` : ''}${k.revoked ? ' · revoked' : ''}`)),
+        !k.revoked ? h('button', { class: 'ghost sm', onclick: async () => { if (confirm('Revoke ' + k.name + '? Apps using it stop working.')) { try { await cm.relay(m.id, 'POST', '/admin/apikeys/revoke', { id: k.id }); } catch (e) { toast(clean(e)); } load(); } } }, 'Revoke') : null,
+        h('button', { class: 'ghost sm', onclick: async () => { if (confirm('Delete ' + k.name + '?')) { try { await cm.relay(m.id, 'POST', '/admin/apikeys/delete', { id: k.id }); } catch (e) { toast(clean(e)); } load(); } } }, 'Delete'))));
+      if (!data.keys.length) body.append(h('div', { class: 'small muted' }, 'No keys yet.'));
+      const name = h('input', { placeholder: 'Name, e.g. my bot' }), days = h('input', { type: 'number', min: '0', placeholder: 'Expires in days (empty: never)', style: 'width:210px' }), perDay = h('input', { type: 'number', min: '0', placeholder: 'Requests a day (empty: no limit)', style: 'width:210px' }), stop = h('input', { type: 'number', min: '0', max: '100', placeholder: 'Stop at % of the week (empty: never)', style: 'width:230px' });
+      body.append(h('div', { class: 'small muted' }, 'New key'), h('div', { class: 'row wrap' }, ...[['low', 'Low usage'], ['high', 'High usage'], ['general', 'General']].map(([v, l]) => chip(l, kind === v, () => { kind = v; draw(); }))),
+        h('div', { class: 'small muted' }, `${data.presets[kind].models.join(', ')} · effort ${data.presets[kind].efforts.join(', ')}`), h('div', { class: 'row wrap' }, name, days, perDay, stop),
+        h('div', {}, h('button', { class: 'primary sm', onclick: async () => { try { fresh = await cm.relay(m.id, 'POST', '/admin/apikeys', { kind, name: name.value, expiresInDays: Number(days.value) || 0, perDay: Number(perDay.value) || 0, weekStopPct: Number(stop.value) || 0 }); } catch (e) { toast(clean(e)); } load(); } }, 'Make key')));
+    };
+    load();
   })();
   return card;
 }

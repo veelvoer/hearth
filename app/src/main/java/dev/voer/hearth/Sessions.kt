@@ -487,13 +487,19 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     var serverBusy by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
-    var mode by remember { mutableStateOf(if (m.secure) "auto" else "acceptEdits") }
+    val appCtx = LocalContext.current
+    var mode by remember { mutableStateOf(Store.chatMode(appCtx, sess.id).ifEmpty { if (m.secure) "auto" else "acceptEdits" }) }
     var call by remember { mutableStateOf("off") }
     var run by remember { mutableStateOf("auto") }
     var options by remember { mutableStateOf(false) }
-    val appCtx = LocalContext.current
-    var model by remember { mutableStateOf(Store.chatModel(appCtx)) }
-    var effort by remember { mutableStateOf(Store.chatEffort(appCtx)) }
+    var model by remember { mutableStateOf(Store.chatModel(appCtx, sess.id)) }
+    var effort by remember { mutableStateOf(Store.chatEffort(appCtx, sess.id)) }
+    // what you chose belongs to the chat: a new chat gets its choices saved under its id, and every chat comes back with its own mode, model and effort
+    LaunchedEffect(sess.id) {
+        if (sess.id.isEmpty()) return@LaunchedEffect
+        if (Store.hasChatPrefs(appCtx, sess.id)) { mode = Store.chatMode(appCtx, sess.id); model = Store.chatModel(appCtx, sess.id); effort = Store.chatEffort(appCtx, sess.id) }
+        else Store.saveChatPrefs(appCtx, sess.id, mode, model, effort)
+    }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
     val guest = m.guest   // a shared chat of a friend: you read it, what you send goes to them to approve
     var gInfo by remember { mutableStateOf<GuestInfo?>(null) }
@@ -663,10 +669,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk") { voice = true } }
             if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options") { options = !options } }
         }
-        androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.5f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than half the screen, so the typing bar always stays
             Label("Permissions")
             ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
+                listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; Store.setChatMode(appCtx, sess.id, v); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
             }
             if (mode == "bypassPermissions") Txt("Full auto: no questions asked.", T.small, color = cs.primary)
             if (m.secure) {
@@ -680,11 +686,11 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (sess.kind != "talk") {
                 Label("Model")
                 ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, v) } }
+                    listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, sess.id, v) } }
                 }
                 Label("Effort")
                 ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max").forEach { (l, v) -> Chip(l, effort == v) { effort = v; Store.setChatEffort(appCtx, v) } }
+                    listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max").forEach { (l, v) -> Chip(l, effort == v) { effort = v; Store.setChatEffort(appCtx, sess.id, v) } }
                 }
             }
             if (sess.kind != "talk" && !guest) WorkflowPanel(m, sess.id)

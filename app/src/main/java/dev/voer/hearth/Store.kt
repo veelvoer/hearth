@@ -102,10 +102,18 @@ object Store {
     /** Language the call is held in: "en" or "nl". Replies are still spoken in the language they are written in. */
     fun voiceLang(c: Context): String = sp(c).getString("vlang", null) ?: if (java.util.Locale.getDefault().language == "nl") "nl" else "en"
     fun setVoiceLang(c: Context, v: String) = sp(c).edit().putString("vlang", v).apply()
-    fun chatModel(c: Context): String = sp(c).getString("cmodel", "") ?: ""
-    fun setChatModel(c: Context, v: String) = sp(c).edit().putString("cmodel", v).apply()
-    fun chatEffort(c: Context): String = sp(c).getString("ceffort", "") ?: ""
-    fun setChatEffort(c: Context, v: String) = sp(c).edit().putString("ceffort", v).apply()
+    // Mode, model and effort belong to a chat. The last choice also becomes the start for the next new chat.
+    private fun chatKey(name: String, sid: String) = if (sid.isEmpty()) name else name + "_" + sid
+    private fun chatGet(c: Context, name: String, sid: String): String = sp(c).getString(chatKey(name, sid), null) ?: sp(c).getString(name, "") ?: ""
+    private fun chatPut(c: Context, name: String, sid: String, v: String) { val e = sp(c).edit().putString(name, v); if (sid.isNotEmpty()) e.putString(chatKey(name, sid), v); e.apply() }
+    fun chatMode(c: Context, sid: String): String = chatGet(c, "cmode", sid)
+    fun setChatMode(c: Context, sid: String, v: String) = chatPut(c, "cmode", sid, v)
+    fun chatModel(c: Context, sid: String): String = chatGet(c, "cmodel", sid)
+    fun setChatModel(c: Context, sid: String, v: String) = chatPut(c, "cmodel", sid, v)
+    fun chatEffort(c: Context, sid: String): String = chatGet(c, "ceffort", sid)
+    fun setChatEffort(c: Context, sid: String, v: String) = chatPut(c, "ceffort", sid, v)
+    fun hasChatPrefs(c: Context, sid: String) = sp(c).contains(chatKey("cmode", sid))
+    fun saveChatPrefs(c: Context, sid: String, mode: String, model: String, effort: String) { setChatMode(c, sid, mode); setChatModel(c, sid, model); setChatEffort(c, sid, effort) }
     fun themeSystem(c: Context) = sp(c).getBoolean("themesys", false)
     fun setThemeSystem(c: Context, v: Boolean) = sp(c).edit().putBoolean("themesys", v).apply()
     fun voiceBrief(c: Context) = sp(c).getBoolean("vbrief", false)

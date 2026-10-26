@@ -1,5 +1,9 @@
 'use strict';
 /* Chats: Claude Code sessions as a chat app. Projects on the left, conversation on the right. */
+/** Mode, model and effort belong to a chat and are remembered (also after a restart). The last choice is the start of the next new chat. */
+const chatPrefs = () => { try { return JSON.parse(localStorage.getItem('cm.chatprefs') || '{}'); } catch { return {}; } };
+function loadChatPrefs(id) { const all = chatPrefs(), p = (id && all[id]) || all._ || {}; SS.mode = p.mode || 'acceptEdits'; SS.model = p.model || ''; SS.effort = p.effort || ''; }
+function saveChatPrefs(id) { const all = chatPrefs(), p = { mode: SS.mode, model: SS.model, effort: SS.effort }; all._ = p; if (id) all[id] = p; const keys = Object.keys(all).filter((k) => k !== '_'); if (keys.length > 300) for (const k of keys.slice(0, keys.length - 300)) delete all[k]; try { localStorage.setItem('cm.chatprefs', JSON.stringify(all)); } catch { /* full */ } }
 const SS = { machines: [], mid: null, live: {}, list: [], err: null, sel: null, msgs: [], parts: [], sending: false, mode: 'acceptEdits', model: '',
   search: '', closed: {}, found: [], pairing: false, voice: null, timers: [], chatErr: null, open: new Set(), lastCwd: '', projects: {}, effort: '', call: 'off', perms: [], queue: [], lastRun: null, opts: false, files: [], status: {} };
 const chatHandlers = {};
@@ -179,6 +183,7 @@ async function refreshBusy() {
 }
 function openSessionNow(s, voice) {
   SS.call = 'off';
+  loadChatPrefs(s.id);
   SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = []; SS.shared = null; SS.shareInfo = null; SS.sharedPeople = [];
   const run = SS.sel.id && RUNS.get(SS.sel.id); SS.parts = run ? run.parts : []; SS.sending = !!run; SS.queue = qOf(SS.sel);   // a run that is still going shows up again
   if (tab !== 'sessions') setTab('sessions');
@@ -350,9 +355,9 @@ function composer() {
   const sel = (opts, cur, fn) => h('select', { class: 'sel', onchange: (e) => fn(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));
   const box = h('div', { class: 'composer' }, h('div', { class: 'cbox' }, menu, h('div', { id: 'files', class: 'files' }), ta,
     h('div', { class: 'row cfoot' },
-      ...(isGuestMid(s.mid) ? [] : [sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; drawPane(); setChatAuto(v === 'bypassPermissions'); }),
-      sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; }),
-      sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; })]),
+      ...(isGuestMid(s.mid) ? [] : [sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; saveChatPrefs(s.id); drawPane(); setChatAuto(v === 'bypassPermissions'); }),
+      sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; saveChatPrefs(s.id); }),
+      sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; saveChatPrefs(s.id); })]),
       h('div', { class: 'grow' }),
       SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,
       (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
@@ -583,7 +588,7 @@ function sendMsg(text) {
   chatHandlers[sid] = (ev) => {
     const live = viewing();
     if (ev.t === 'queued') { toast(ev.online ? `Sent to ${ev.to}. It runs there now.` : 'Queued. It runs on your laptop when it is online.'); return; }
-    if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; s.title = text.slice(0, 70); RUNS.set(ev.id, run); { const nq = QUEUES.get('new') || []; QUEUES.set(ev.id, nq); if (QUEUES.get('new') === nq) QUEUES.delete('new'); } (SS.unsent || []).forEach((u) => { if (u.sel === s) u.id = ev.id; }); drawSide(); } return; }
+    if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; saveChatPrefs(ev.id); s.title = text.slice(0, 70); RUNS.set(ev.id, run); { const nq = QUEUES.get('new') || []; QUEUES.set(ev.id, nq); if (QUEUES.get('new') === nq) QUEUES.delete('new'); } (SS.unsent || []).forEach((u) => { if (u.sel === s) u.id = ev.id; }); drawSide(); } return; }
     if (ev.t === 'delta') { const last = run.parts[run.parts.length - 1]; if (last && last.type === 'text') last.text += ev.text; else run.parts.push({ type: 'text', text: ev.text }); }
     else if (ev.t === 'tool') run.parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, text: ev.text });
     else if (ev.t === 'result') { const t = run.parts.find((p) => p.type === 'tool' && p.id === ev.id); if (t) { t.result = ev.text; t.error = ev.error; } }
@@ -611,7 +616,7 @@ function renderPerms() {
   for (const p of SS.perms.filter((x) => s && x.ev.session === s.id)) {
     if (p.ev.kind === 'question') { box.append(questionCard(p)); continue; }
     if (p.ev.kind === 'request') { box.append(requestCard(p)); continue; }
-    if (p.ev.kind === 'limit') { box.append(limitCard(p)); continue; }
+    if (p.ev.kind === 'limit') { box.append(limitAskCard(p)); continue; }
     box.append(permCard(p));
   }
 }
@@ -662,7 +667,7 @@ function questionCard(p) {
     h('div', { class: 'row' }, h('div', { class: 'grow' }, input), ev.multi ? h('button', { class: 'ghost sm', onclick: () => answer([...picked, input.value.trim()].filter(Boolean).join(', ')) }, 'Send choices') : h('button', { class: 'primary sm', onclick: () => answer(input.value.trim()) }, 'Send'))));
 }
 /** The plan limit stopped this chat: continue when usage is back, or leave it. */
-function limitCard(p) {
+function limitAskCard(p) {
   return h('div', { class: 'perm pc', 'data-req': p.ev.req },
     h('div', { class: 'label' }, 'Usage limit reached'), h('div', { class: 'small muted' }, p.ev.text || ''),
     h('div', { class: 'popts' }, h('button', { class: 'popt', onclick: () => decide(p, 'continue') }, 'Continue when my usage is back'), h('button', { class: 'popt no', onclick: () => decide(p, 'skip') }, 'Not now')));

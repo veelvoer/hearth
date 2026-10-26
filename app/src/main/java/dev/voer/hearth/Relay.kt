@@ -227,6 +227,8 @@ object Relay {
     }
     /** The workflow of a chat: state, steps, which step, minutes left. */
     fun workflow(m: Machine, sid: String): JSONObject = JSONObject(getJson(m, "/sessions/$sid/workflow"))
+    /** The Hearth API keys of this server (without the secrets) and what the presets allow. */
+    fun apiKeys(m: Machine): JSONObject = JSONObject(getJson(m, "/admin/apikeys"))
     data class Skill(val name: String, val desc: String, val src: String, val own: Boolean)
     /** Every skill and slash command this computer knows: yours, from your Claude account, plugins. */
     fun skills(m: Machine): List<Skill> {
