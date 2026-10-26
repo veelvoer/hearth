@@ -709,6 +709,35 @@ private fun SkillsCard() {
     }
 }
 
+/** Let Claude build an MCP server for a program or service (Inkscape, Onshape, a web API...), test it and connect it. */
+@Composable
+private fun McpBuildCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var target by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    Fold("tour", "Make an MCP server", "An MCP server lets Claude control another program or service. Say what it should connect to (Inkscape, the Onshape API, a command line tool). Claude looks up how it can be controlled, writes the tools, tests them for real and connects it. You may be asked for an API key. It starts a chat you can follow in Chats.") {
+        Field(target, { target = it }, "What should it connect to?")
+        Spacer(Modifier.height(8.dp))
+        Field(notes, { notes = it }, "What should it be able to do? (optional)", singleLine = false)
+        Spacer(Modifier.height(8.dp))
+        Button(if (busy) "Starting…" else "Build it", Modifier.fillMaxWidth()) {
+            val m = Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } ?: run { msg = "Connect a server first."; return@Button }
+            if (target.isBlank() || busy) return@Button
+            busy = true; msg = ""
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/mcp/build", JSONObject().put("target", target).put("notes", notes)) } }
+                    .onSuccess { msg = "Claude is building it in " + it.optString("name") + ". Follow along in Chats."; target = ""; notes = "" }
+                    .onFailure { msg = it.message ?: "Couldn't start it" }
+                busy = false
+            }
+        }
+        if (msg.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Txt(msg, T.small, muted = true) }
+    }
+}
+
 /** Hearth API keys: your own apps can use Claude through your server, on your plan's usage. */
 @Composable
 private fun ApiKeysCard() {
@@ -1007,6 +1036,7 @@ fun SettingsScreen() {
         MemoryCard()
         LimitCard()
         SkillsCard()
+        McpBuildCard()
         ApiKeysCard()
         PermissionsCard()
         Card {

@@ -22,12 +22,25 @@ const selfupdate = require('./selfupdate');
 const VERSION = require('./version');
 const tools = require('./tools');
 const apikeys = require('./apikeys');
+const mcpkit = require('./mcpkit-files');
 const zlib = require('zlib');
 const BUILD = require('./buildsig').sigOfDir(__dirname);   // what code this relay is running
 
 const DISCOVER_PORT = 47600;
 const MODES = ['acceptEdits', 'auto', 'plan', 'manual', 'dontAsk', 'bypassPermissions'];
-const BUGS_PROMPT = "The user keeps a list of bugs and requests that came in as support mail. When they ask you to fix the bugs (or look at the list), call mcp__meter__bug_list, work through the open items one by one in the right project, and call mcp__meter__bug_fixed with the item's id after you fixed it. Never email anyone about them.";
+const MCP_BUILD_PROMPT = (target, notes, name, dir) => `You are going to build a working MCP server for: ${target}.${notes ? '\nThe user adds: ' + notes : ''}
+The project folder is ${dir}. It already holds a starter kit with no dependencies: server.js (the MCP protocol, do not edit), tools.js (YOU write the tools here), check.js (tests the server the way Claude uses it) and register.js (adds it to Claude Code and checks that it connects). Read all four files first.
+
+Do it in this order and do not skip steps:
+1. Find out how ${target} can be controlled from a program. A command line? A web API (read its documentation, then ask the user for an API key with the ask_user tool; never write a secret in a file, it goes to register.js as KEY=value)? A scripting or automation interface of a desktop program (for example its command-line actions, a Python or Node API, D-Bus, a local HTTP port)? Check what is really installed on this computer (which, --version, --help) and pick the most reliable way. Write what you found in README.md in two or three lines.
+2. Design 5 to 15 focused tools that a person would really want: names in lowercase_with_underscores, a description that says what it does and WHEN to use it, a complete inputSchema with a description for every argument. Put read-only tools first. Anything that deletes or overwrites must need an explicit confirm argument set to true.
+3. Write them in tools.js with the helpers (exec runs a program without a shell, http calls a web API, env reads a secret from the environment). Never build a command string from user input. Return short, useful text. When the program or service is missing, throw an Error that says what to install or set.
+4. Add a sample (safe, read-only arguments) to every tool that can be tested safely. Run: node check.js. Fix everything it reports until it says "All good."
+5. Test for real, not only the samples: call the tools that change things on a throwaway file or test data, and show me the results. If you cannot test something, say so.
+6. Register it: node register.js ${name} (add KEY=value for secrets). It must say the server connects. If not, fix it.
+7. Finish with a short summary: what the tools are, how to use them (two example sentences to say to Claude), what the user must do (new chat to see the tools, any key to add) and what you could not test. Keep the README.md up to date with that.
+Be careful and honest: a server that connects but gives wrong answers is worse than a smaller one that works.`;
+const BUGS_PROMPT = "The user keeps a list of bugs and requests that came in as support mail. When they ask you to fix the bugs (or look at the list), call mcp__meter__bug_list (it shows the support mails on the list and everything else on the user's Google Tasks list), work through the open items one by one in the right project, and call mcp__meter__bug_fixed with the item's id after you did it: that checks it off. Never email anyone about them.";
 const ASK_PROMPT = 'When you need the user to choose between options or make a decision, call the mcp__meter__ask_user tool (2-4 short options) instead of writing the options in your reply, then continue with their answer.';
 const HUB_PROMPT = "You are running on the user's always-on server. The user also has their own laptop, which syncs the same projects folder and your chats. When something has to happen on that laptop (install dependencies or tools there, run or test the app, anything needing their hardware or screen), use mcp__meter__run_on_laptop: it runs there automatically, continuing this conversation, as soon as the laptop is online. Use mcp__meter__laptop_status to see if it is online.";
 const ROOT_PROMPT = 'You are running as root (full administrator rights) on this server, started by the user on purpose. Files you create or change inside the project folder must stay owned by the normal user (run chown for them), so the user can still edit them. You can read and change any file, install software and manage services. Say what you are about to do before anything destructive or hard to undo (deleting data, changing users, firewall, disks, ssh), and prefer the smallest change that does the job.';
@@ -414,6 +427,7 @@ function start(opts) {
     const claude = findClaude();
     if (!claude) return { error: 500, message: 'Claude Code was not found on this computer. Install it first: https://claude.com/claude-code' };
     let mode = MODES.includes(body.mode) ? body.mode : (publicMode ? 'auto' : 'acceptEdits');
+    if (sidParam !== 'new' && getPrefs(sidParam).auto === true && bypassOk()) mode = 'bypassPermissions';   // a chat that is on Full auto stays on it, whatever the app sent (some models cannot judge by themselves in Auto and would ask)
     if (mode === 'bypassPermissions' && !bypassOk()) mode = 'auto';
     const settingsFile = path.join(dir, 'run-settings.json');
     const hookCmd = `curl -s -m ${Math.round(JOB_PERMISSION_WAIT_MS / 1000)} -X POST -H "Content-Type: application/json" --data-binary @- http://127.0.0.1:${port}/hook`;
@@ -630,10 +644,30 @@ function start(opts) {
     try {
       const tr = await fetch(process.env.HEARTH_GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: g.clientId, client_secret: g.clientSecret, refresh_token: g.refreshToken, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) });
       const tj = await tr.json(); if (!tj.access_token) return { ok: false, why: 'Google said no: ' + (tj.error_description || tj.error || tr.status) };
-      const r = await fetch(process.env.HEARTH_GOOGLE_TASKS_URL || 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks', { method: 'POST', headers: { Authorization: 'Bearer ' + tj.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: String(title).slice(0, 1000), notes: String(notes).slice(0, 8000) }), signal: AbortSignal.timeout(15000) });
+      const r = await fetch(GT_BASE(), { method: 'POST', headers: { Authorization: 'Bearer ' + tj.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: String(title).slice(0, 1000), notes: String(notes).slice(0, 8000) }), signal: AbortSignal.timeout(15000) });
       if (!r.ok) return { ok: false, why: 'Google Tasks answered ' + r.status };
       return { ok: true };
     } catch (e) { return { ok: false, why: String(e.message || e) }; }
+  }
+  // Google Tasks as the list: everything on it can be read and checked off, not only the support mails
+  const GT_BASE = () => process.env.HEARTH_GOOGLE_TASKS_URL || 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
+  let gtToken = { at: 0, v: '' };
+  async function gtAccess() {
+    const g = readCfg().googleTasks; if (!g || !g.refreshToken) return '';
+    if (gtToken.v && Date.now() - gtToken.at < 45 * 60000) return gtToken.v;
+    try {
+      const tr = await fetch(process.env.HEARTH_GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: g.clientId, client_secret: g.clientSecret, refresh_token: g.refreshToken, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) });
+      const tj = await tr.json(); if (tj.access_token) gtToken = { at: Date.now(), v: tj.access_token };
+    } catch { /* offline */ }
+    return gtToken.v;
+  }
+  async function gtOpen() {
+    const t = await gtAccess(); if (!t) return [];
+    try { const r = await fetch(GT_BASE() + '?showCompleted=false&showHidden=false&maxResults=100', { headers: { Authorization: 'Bearer ' + t }, signal: AbortSignal.timeout(15000) }); const j = await r.json(); return (j.items || []).filter((x) => x.status !== 'completed' && String(x.title || '').trim()); } catch { return []; }
+  }
+  async function gtComplete(taskId) {
+    const t = await gtAccess(); if (!t) return false;
+    try { const r = await fetch(GT_BASE() + '/' + encodeURIComponent(taskId), { method: 'PATCH', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }), signal: AbortSignal.timeout(15000) }); return r.ok; } catch { return false; }
   }
   const supportPending = () => [...pending.values()].filter((p) => p.event.kind === 'support').length;
   /** What to do with a support mail: "claude" starts a chat with it, "list" saves it (and puts it on Google Tasks), anything else does nothing. */
@@ -1005,7 +1039,8 @@ function start(opts) {
           const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => { try { return { ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true, shared: (() => { const sh = shares.bySession(x.id); return sh ? shares.live(sh).length : -1; })() }; } catch (e) { onLog('chat ' + x.id + ': ' + e.message); return { ...x, running: false, kind: 'code', root: false, shared: -1 }; } });
           const have = new Set(own.map((x) => x.id));
           const away = hubSync ? hubSync.elsewhere().filter((e) => !have.has(e.id) && e.cwd).map((e) => ({ id: e.id, title: e.title, cwd: e.cwd, mtime: Math.floor(e.mtime), live: false, busy: false, running: far.has(e.id), kind: getPrefs(e.id).kind, elsewhere: e.machine })) : [];
-          return json(res, 200, [...own, ...away].sort((x, y) => y.mtime - x.mtime));
+          const gone = new Set(readCfg().deleted || []);
+          return json(res, 200, [...own, ...away].filter((x) => !gone.has(x.id)).sort((x, y) => y.mtime - x.mtime));
         }
         if (parts[0] === 'sessions' && parts[2] === 'messages') {
           const ew = hubSync && hubSync.findElsewhere(parts[1]);
@@ -1074,13 +1109,20 @@ function start(opts) {
           if (!isLocalDirect(req)) return json(res, 403, { error: 'local only' });
           const q = await bodyJson(req), job = jobs.get(String(q.job || ''));
           if (q.tool === 'bug_list' || q.tool === 'bug_fixed') {
-            if (!job || !job.bugs) return json(res, 200, { text: 'The bug list is not available in this chat.' });
+            if (!job || !job.bugs) return json(res, 200, { text: 'The list is not available in this chat.' });
             const all = readList();
-            if (q.tool === 'bug_list') { const open = all.filter((x) => !x.done); return json(res, 200, { text: open.length ? open.length + ' open item(s):\n\n' + open.map((x) => `[${x.id}] ${x.title} (from ${x.from})\n${x.text}`).join('\n\n---\n') : 'The list is empty: nothing to fix.' }); }
-            const it = all.find((x) => x.id === String(q.id || '')); if (!it) return json(res, 200, { text: 'No item with id ' + q.id + '. Use bug_list to see the ids.' });
-            it.done = true; it.doneAt = Date.now(); it.note = String(q.note || '').slice(0, 500); try { fs.writeFileSync(listFile, JSON.stringify(all), { mode: 0o600 }); } catch { /* best effort */ }
+            if (q.tool === 'bug_list') {
+              const open = all.filter((x) => !x.done), tasks = (await gtOpen()).filter((t) => { const m = /Support (HRT-\d+)/.exec(t.title || ''); return !(m && open.some((x) => x.id === m[1])); });
+              const rows = [...open.map((x) => `[${x.id}] ${x.title} (support mail from ${x.from})\n${x.text}`), ...tasks.map((t) => `[gt:${t.id}] ${t.title} (Google Tasks)\n${t.notes || ''}`.trim())];
+              return json(res, 200, { text: rows.length ? rows.length + ' open item(s):\n\n' + rows.join('\n\n---\n') : 'The list is empty: nothing to do.' });
+            }
+            const id = String(q.id || ''), note = String(q.note || '').slice(0, 500);
+            if (id.startsWith('gt:')) { const ok = await gtComplete(id.slice(3)); return json(res, 200, { text: ok ? 'Checked off in Google Tasks.' : 'Could not check it off in Google Tasks (is it connected?).' }); }
+            const it = all.find((x) => x.id === id); if (!it) return json(res, 200, { text: 'No item with id ' + id + '. Use bug_list to see the ids.' });
+            it.done = true; it.doneAt = Date.now(); it.note = note; try { fs.writeFileSync(listFile, JSON.stringify(all), { mode: 0o600 }); } catch { /* best effort */ }
             supportNotify(it.id, 'fixed', it.note);
-            return json(res, 200, { text: 'Marked ' + it.id + ' as fixed.' });
+            const task = (await gtOpen()).find((t) => String(t.title || '').includes('Support ' + it.id)); if (task) await gtComplete(task.id);
+            return json(res, 200, { text: 'Marked ' + it.id + ' as fixed' + (task ? ' and checked off in Google Tasks.' : '.') });
           }
           const on = laptopOnline();
           if (q.tool === 'list_computers') { const l = computersList().filter((c) => c.kind === 'computer'); return json(res, 200, { text: l.length ? 'The user\'s computers:\n' + l.map((c) => `- ${c.name}: ${c.online ? 'online' : 'offline'}`).join('\n') : 'No computer of the user is linked to this server.' }); }
@@ -1202,6 +1244,30 @@ function start(opts) {
           return json(res, 200, { path: target });
         }
         if (parts[0] === 'sessions' && parts[2] === 'workflow' && parts.length === 3) { const r = wfSet(parts[1], b); return json(res, r.code, r.data); }
+        if (parts[0] === 'sessions' && (parts[2] === 'delete' || parts[2] === 'restore') && parts.length === 3) {   // a deleted chat goes to a trash folder first, so a mistake can be undone
+          const sid = parts[1], trash = path.join(core.projectsDir(), '.hearth-trash');
+          if (parts[2] === 'restore') {
+            const hit = (() => { try { return fs.readdirSync(trash).find((n) => n.endsWith('__' + sid + '.jsonl')); } catch { return null; } })();
+            if (!hit) return json(res, 404, { error: 'Nothing to restore: it was removed for good.' });
+            const meta = (() => { try { return JSON.parse(fs.readFileSync(path.join(trash, hit.replace(/\.jsonl$/, '.json')), 'utf8')); } catch { return {}; } })();
+            const back = meta.dir && fs.existsSync(meta.dir) ? meta.dir : path.dirname(meta.dir || path.join(core.projectsDir(), 'restored', 'x'));
+            fs.mkdirSync(back, { recursive: true }); fs.renameSync(path.join(trash, hit), path.join(back, sid + '.jsonl')); try { fs.unlinkSync(path.join(trash, hit.replace(/\.jsonl$/, '.json'))); } catch { /* none */ }
+            writeCfg({ deleted: (readCfg().deleted || []).filter((x) => x !== sid) }); bumpChats(); return json(res, 200, { ok: true });
+          }
+          const f = core.findSession(sid); if (!f) return json(res, 404, { error: 'This chat is already gone.' });
+          const j = jobs.get(sid); if (j && !j.done) return json(res, 409, { error: 'Claude is working on this chat. Stop it first.' });
+          if (shares.bySession(sid)) return json(res, 409, { error: 'This chat is shared. Stop sharing it first.' });
+          if (workflows[sid]) return json(res, 409, { error: 'This chat has a workflow. Stop it first.' });
+          try {
+            fs.mkdirSync(trash, { recursive: true });
+            for (const n of fs.readdirSync(trash)) { try { const st = fs.statSync(path.join(trash, n)); if (Date.now() - st.mtimeMs > 30 * 86400000) fs.unlinkSync(path.join(trash, n)); } catch { /* gone */ } }   // the trash keeps a chat for 30 days
+            const stem = Date.now() + '__' + sid;
+            fs.writeFileSync(path.join(trash, stem + '.json'), JSON.stringify({ dir: path.dirname(f.file), title: core.summarize(f).title }));
+            try { fs.renameSync(f.file, path.join(trash, stem + '.jsonl')); } catch { fs.copyFileSync(f.file, path.join(trash, stem + '.jsonl')); fs.unlinkSync(f.file); }
+          } catch (e) { return json(res, 500, { error: 'Could not delete it: ' + e.message }); }
+          writeCfg({ deleted: [...new Set([...(readCfg().deleted || []), sid])].slice(-2000) }); bumpChats();
+          return json(res, 200, { ok: true });
+        }
         if (parts[0] === 'sessions' && parts[2] === 'root') {   // give an existing chat root rights, or take them away again
           const sid = parts[1], on = !!b.on;
           if (!core.findSession(sid)) return json(res, 404, { error: 'no such session' });
@@ -1270,6 +1336,15 @@ function start(opts) {
           if (parts[2] === 'revoke') return json(res, hkeys.revoke(String(b.id || '')) ? 200 : 404, { ok: true });
           if (parts[2] === 'delete') return json(res, hkeys.remove(String(b.id || '')) ? 200 : 404, { ok: true });
           return json(res, 200, hkeys.create(b));
+        }
+        if (parts[0] === 'mcp' && parts[1] === 'build' && req.method === 'POST') {   // a Claude chat that builds an MCP server for something (Inkscape, Onshape, a web service...)
+          const target = String(b.target || '').trim().slice(0, 200); if (target.length < 2) return json(res, 400, { error: 'Tell me what it should connect to, like "Inkscape" or "the Onshape API".' });
+          const slug = target.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'server', name = 'mcp-' + slug;
+          const dirp = path.join(root || path.join(os.homedir(), 'projects'), name);
+          try { fs.mkdirSync(dirp, { recursive: true }); for (const [f, text] of Object.entries(mcpkit)) { const to = path.join(dirp, f); if (!fs.existsSync(to)) fs.writeFileSync(to, text, { mode: 0o644 }); } } catch (e) { return json(res, 500, { error: 'Could not make the folder: ' + e.message }); }
+          const r = startJob({ text: MCP_BUILD_PROMPT(target, String(b.notes || '').slice(0, 1500), name, dirp), cwd: dirp, mode: 'acceptEdits' }, 'new');
+          if (r.error) return json(res, r.error, { error: r.message });
+          return json(res, 200, { ok: true, cwd: dirp, name });
         }
         if (parts[0] === 'support' && parts[1] === 'act' && req.method === 'POST') {   // from the support desk screen of the app: the same three choices as the notification
           const t = { kind: 'new', id: String(b.id || '').slice(0, 20), title: String(b.title || '').slice(0, 120), category: String(b.category || 'other').slice(0, 20), from: String(b.from || '').slice(0, 120), text: String(b.text || '').slice(0, 5000) };

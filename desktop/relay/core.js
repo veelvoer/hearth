@@ -23,7 +23,7 @@ const clip = (v, n) => String(v == null ? '' : v).slice(0, n);
 function listFiles() {
   const out = [];
   let dirs = [];
-  try { dirs = fs.readdirSync(projectsDir(), { withFileTypes: true }).filter((d) => d.isDirectory()); } catch { return out; }
+  try { dirs = fs.readdirSync(projectsDir(), { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.')); } catch { return out; }
   for (const d of dirs) {
     const dir = path.join(projectsDir(), d.name);
     let names = [];

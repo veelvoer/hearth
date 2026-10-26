@@ -81,6 +81,8 @@ function drawSide() {
   side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
   const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => b.mtime - a.mtime);
   list.forEach((s) => side.append(chatItem(s)));
+  const own = !q && SS.projKey && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
+  if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, 'Delete all ' + own.length + ' chats of this project…')));
   if (!list.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
   if (SS.err) side.append(h('div', { class: 'small err' }, SS.err));
   side.scrollTop = keep;
@@ -275,6 +277,7 @@ function drawPane() {
       s.id && !guest && (me.root || s.root || (SS.sopts && SS.sopts[s.mid] && SS.sopts[s.mid].root)) ? rc('Root rights', h('div', { class: 'small' }, me.root ? 'This chat runs as root. Claude knows it has full administrator rights.' : 'This chat runs without root rights.'),
         h('div', {}, h('button', { class: 'ghost sm', onclick: async () => { try { await cm.relay(s.mid, 'POST', `/sessions/${s.id}/root`, { on: !me.root }); await pollLive(); drawPane(); toast(me.root ? 'Root rights removed.' : 'This chat runs as root now.'); } catch (e) { toast(clean(e)); } } }, me.root ? 'Take root rights away' : 'Run this chat as root'))) : null,
       me.shared >= 0 ? rc('Sharing', h('div', { class: 'small' }, me.shared ? `Shared with ${me.shared} ${me.shared === 1 ? 'person' : 'people'}. They send, you decide.` : 'Shared, nobody has joined yet.'), h('div', {}, h('button', { class: 'ghost sm', onclick: () => shOpenShare(s) }, 'Manage'))) : null,
+      s.id ? rc('Delete', h('div', { class: 'small muted' }, 'Moves this chat to the trash for 30 days.'), h('div', {}, h('button', { class: 'ghost sm', onclick: () => deleteChats([{ id: s.id, mid: s.mid, title: s.title }], '', false) }, 'Delete this chat…'))) : null,
       rc('This chat', h('div', { class: 'kv' }, h('span', {}, 'Tokens'), h('b', {}, me.tokens ? fmtN(me.tokens) : '–')), h('div', { class: 'kv' }, h('span', {}, 'Tool calls'), h('b', {}, String(tools))),
         h('div', { class: 'kv' }, h('span', {}, 'Cost at API prices'), h('b', {}, me.cost ? '$' + me.cost.toFixed(2) : '–')))));
   }
@@ -783,6 +786,18 @@ async function moveProject(s, mach, server, st, inside, name) {
     else toast('Moved. The chat will appear on ' + server.name + ' shortly.');
     loadList(); pollLive();
   } catch (e) { box.remove(); off(); SS.chatErr = clean(e); renderMsgs(); }
+}
+
+/** Deleting goes to a trash folder on the server first (30 days), and the toast offers Undo. A whole project needs its name typed, so it can never happen by accident. */
+async function deleteChats(list, label, many) {
+  if (many) { const t = prompt(`This deletes all ${list.length} chats of "${label}" (they stay in the trash for 30 days).\nType the project name to confirm:`); if (t === null) return; if (t.trim().toLowerCase() !== String(label).toLowerCase()) { toast('The name did not match. Nothing was deleted.'); return; } }
+  else if (!confirm(`Delete "${list[0].title}"?\nIt stays in the trash for 30 days, so you can undo it.`)) return;
+  const done = []; let bad = '';
+  for (const x of list) { try { await cm.relay(x.mid, 'POST', `/sessions/${x.id}/delete`, {}); done.push(x); } catch (e) { bad = clean(e); } }
+  if (SS.sel && done.some((x) => x.id === SS.sel.id)) { SS.sel = null; }
+  await pollLive(); drawSide(); drawPane();
+  if (done.length) toast(`Deleted ${done.length} chat${done.length > 1 ? 's' : ''}. Click here to undo.` + (bad ? ' Not all: ' + bad : ''), async () => { for (const x of done) { try { await cm.relay(x.mid, 'POST', `/sessions/${x.id}/restore`, {}); } catch { /* gone */ } } await pollLive(); drawSide(); toast('Restored.'); });
+  else if (bad) toast(bad);
 }
 
 // ───────── workflow: Claude works through steps by itself, each for a set time ─────────

@@ -141,5 +141,9 @@ function viewConnections(body, s) {
     return { rows: hit.map((x) => itemRow(x.name, x.target, h('span', { class: 'small ' + (x.status === 'connected' ? 'okc' : 'bad') }, x.status), x.name.startsWith('claude.ai ') ? null : h('button', { class: 'ghost sm', onclick: () => { cache = null; del(x.name); } }, 'Remove'))), note: 'Connections that start with “claude.ai” are managed in your Claude account settings. Every active connection adds a little to each message.' };
   });
   const orig = again; again = () => { cache = null; return orig(); }; 
-  body.append(add);
+  const bt = h('input', { class: 'grow', placeholder: 'What should it connect to? e.g. Inkscape, the Onshape API, a command line tool' }), bn = h('textarea', { rows: 2, placeholder: 'Anything it should be able to do (optional)', style: 'width:100%' });
+  const build = h('div', { class: 'stack', style: 'margin-top:14px' }, h('div', { class: 'small muted' }, 'Or let Claude build one for you'),
+    h('div', { class: 'row' }, bt, h('button', { class: 'primary sm', onclick: async (e) => { const btn = e.target; btn.disabled = true; btn.textContent = 'Starting…'; try { const r = await cm.relay(s.mid, 'POST', '/mcp/build', { target: bt.value, notes: bn.value }); toast('Claude is building it in ' + r.name + '. Open that chat to follow along.'); bt.value = ''; bn.value = ''; closeTools(); } catch (er) { toast(clean(er)); } btn.disabled = false; btn.textContent = 'Build it'; } }, 'Build it')), bn,
+    h('div', { class: 'small muted' }, 'Claude looks up how it can be controlled, writes the tools, tests them for real, and connects it. You may be asked for an API key.'));
+  body.append(add, build);
 }

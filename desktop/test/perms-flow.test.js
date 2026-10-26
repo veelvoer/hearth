@@ -92,6 +92,13 @@ const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) =
   ok('27 an old root chat goes on without root, and Claude is told so, when root is switched off', /RESULT/.test(cont.stream) && !/ROOTPROMPT/.test(cont.stream) && /DROPPED/.test(cont.stream), cont.stream.slice(-140));
   ok('28 giving a chat root rights is refused while root is off', (await req('POST', `/sessions/${rid}/root`, tok, { on: true })).code === 403);
   ok('29 a guest key cannot touch root', (await req('POST', `/sessions/${rid}/root`, 'share.abcd.abcdefghijklmnop', { on: true })).code === 401);
+  // a chat on Full auto stays on bypassPermissions whatever the app sends (some models cannot judge in Auto and would ask)
+  { const n1 = run('echo full', proj); await sleep(1200); const sid1 = (await req('GET', '/sessions', tok)).body.length ? JSON.parse((await req('GET', '/sessions', tok)).body)[0].id : null;
+    await req('POST', '/admin/options', tok, { bypass: true });
+    if (sid1) { await req('POST', `/sessions/${sid1}/auto`, tok, { on: true }); await sleep(300);
+      const f1 = { stream: '' }; f1.done = req('POST', `/sessions/${sid1}/send`, tok, { text: 'again', mode: 'auto' }, (b) => { f1.stream = b; }); await sleep(1500);
+      ok('30 a chat on Full auto is run on bypassPermissions even when the app sends "auto"', /BYPASS/.test(f1.stream), f1.stream.slice(0, 120)); }
+    else ok('30 a chat on Full auto is run on bypassPermissions even when the app sends "auto"', false, 'no chat'); }
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

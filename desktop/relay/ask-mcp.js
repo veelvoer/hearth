@@ -22,8 +22,8 @@ const HUB_TOOLS = [
 ];
 const BUGS = process.env.CM_BUGS === '1';   // the owner's own chats can read the bug list and tick items off
 const BUG_TOOLS = [
-  { name: 'bug_list', description: "List the open items on the user's list of bugs and requests (they came in as support mail). Each has an id, a title, who sent it and the text.", inputSchema: { type: 'object', properties: {} } },
-  { name: 'bug_fixed', description: 'Mark an item of the bug list as fixed, after you really fixed it.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id from bug_list, like HRT-12345.' }, note: { type: 'string', description: 'One short line about what you changed.' } }, required: ['id'] } },
+  { name: 'bug_list', description: "List everything that is still open on the user's list: the support mails they put on it and the other tasks on their Google Tasks list. Each has an id (like HRT-12345 or gt:abc), a title and the text.", inputSchema: { type: 'object', properties: {} } },
+  { name: 'bug_fixed', description: 'Check an item off the list, after you really did it. For a support mail this also tells the person who wrote.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id from bug_list, like HRT-12345 or gt:abc.' }, note: { type: 'string', description: 'One short line about what you changed.' } }, required: ['id'] } },
 ];
 function hub(tool, args) {
   return new Promise((resolve) => {

@@ -493,6 +493,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     var call by remember { mutableStateOf("off") }
     var run by remember { mutableStateOf("auto") }
     var options by remember { mutableStateOf(false) }
+    var delAsk by remember { mutableStateOf(false) }
     var model by remember { mutableStateOf(Store.chatModel(appCtx, sess.id)) }
     var effort by remember { mutableStateOf(Store.chatEffort(appCtx, sess.id)) }
     // what you chose belongs to the chat: a new chat gets its choices saved under its id, and every chat comes back with its own mode, model and effort
@@ -502,6 +503,11 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         else Store.saveChatPrefs(appCtx, sess.id, mode, model, effort)
     }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
+    if (delAsk) androidx.compose.material3.AlertDialog(onDismissRequest = { delAsk = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        title = { Txt("Delete this chat?", T.h2) },
+        text = { Txt("\"${sess.title}\" goes to the trash on the server for 30 days. You can restore it from the desktop app.", T.body) },
+        confirmButton = { TextAction("Delete") { delAsk = false; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/sessions/${sess.id}/delete", JSONObject()) } }.onSuccess { back() }.onFailure { err = it.message ?: "Couldn't delete it" } } } },
+        dismissButton = { TextAction("Cancel") { delAsk = false } })
     val guest = m.guest   // a shared chat of a friend: you read it, what you send goes to them to approve
     var gInfo by remember { mutableStateOf<GuestInfo?>(null) }
     var shareOpen by remember { mutableStateOf(false) }
@@ -699,6 +705,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("When it's done", call == "done") { setCall("done") }
                 Chip("Also if it needs me", call == "attention") { setCall("attention") }
+            }
+            if (sess.id.isNotEmpty() && !guest) {
+                Spacer(Modifier.height(4.dp))
+                TextAction("Delete this chat…") { delAsk = true }   // far from the send button and asks first, so it cannot happen by accident
             }
         } }
         androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {   // press and hold on any text to select and copy it
