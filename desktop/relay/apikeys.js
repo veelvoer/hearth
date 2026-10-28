@@ -21,7 +21,7 @@ function createKeys({ dir, now = () => Date.now() }) {
   let db = { keys: [] };
   try { const d = JSON.parse(fs.readFileSync(file, 'utf8')); if (d && Array.isArray(d.keys)) db = d; } catch { /* first run */ }
   const save = () => { try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(db), { mode: 0o600 }); fs.renameSync(file + '.tmp', file); } catch { /* best effort */ } };
-  const view = (k) => ({ id: k.id, name: k.name, kind: k.kind, ends: k.last4, models: k.models, efforts: k.efforts, perDay: k.perDay, weekStopPct: k.weekStopPct, expiresAt: k.expiresAt, created: k.created, revoked: !!k.revoked,
+  const view = (k) => ({ id: k.id, name: k.name, kind: k.kind, ends: k.last4, models: k.models, efforts: k.efforts, perDay: k.perDay, weekStopPct: k.weekStopPct, sessionStopPct: k.sessionStopPct || 0, session: k.session || 'none', expiresAt: k.expiresAt, created: k.created, revoked: !!k.revoked,
     usedToday: k.day === dayOf(now()) ? k.count : 0, total: k.total || 0, tokens: k.tokens || 0, lastUsed: k.lastUsed || 0 });
   const pickList = (given, all, fallback) => { const l = (Array.isArray(given) ? given : []).map(String).filter((x) => all.includes(x)); return l.length ? all.filter((x) => l.includes(x)) : fallback; };
 
@@ -31,7 +31,7 @@ function createKeys({ dir, now = () => Date.now() }) {
     const key = 'hk_' + crypto.randomBytes(24).toString('base64url');
     const exp = Number(b.expiresAt) > now() ? Number(b.expiresAt) : (Number(b.expiresInDays) > 0 ? now() + Math.min(3650, Number(b.expiresInDays)) * 86400000 : 0);
     const rec = { id: crypto.randomBytes(4).toString('hex'), name, kind, hash: sha(key), last4: key.slice(-4), models: pickList(b.models, MODELS, pre.models), efforts: pickList(b.efforts, EFFORTS, pre.efforts),
-      perDay: Math.max(0, Math.min(100000, Math.round(Number(b.perDay) || 0))), weekStopPct: Math.max(0, Math.min(100, Number(b.weekStopPct) || 0)), expiresAt: exp, created: now(), revoked: false, day: dayOf(now()), count: 0, total: 0, tokens: 0 };
+      perDay: Math.max(0, Math.min(100000, Math.round(Number(b.perDay) || 0))), weekStopPct: Math.max(0, Math.min(100, Number(b.weekStopPct) || 0)), sessionStopPct: Math.max(0, Math.min(100, Number(b.sessionStopPct) || 0)), session: ['none', 'key', 'named'].includes(b.session) ? (b.session === 'key' ? 'key' : b.session) : 'none', sessions: {}, expiresAt: exp, created: now(), revoked: false, day: dayOf(now()), count: 0, total: 0, tokens: 0 };
     db.keys.push(rec); save();
     return { key, ...view(rec) };
   }
@@ -45,14 +45,24 @@ function createKeys({ dir, now = () => Date.now() }) {
     return hit;
   }
   /** Can this key be used right now? [weekPct] is how much of the plan's week is used. */
-  function check(k, weekPct) {
+  function check(k, weekPct, sessionPct) {
     if (k.revoked) return { ok: false, code: 401, why: 'This key was revoked.' };
     if (k.expiresAt && k.expiresAt <= now()) return { ok: false, code: 401, why: 'This key has expired.' };
     if (k.day !== dayOf(now())) { k.day = dayOf(now()); k.count = 0; }
     if (k.perDay && k.count >= k.perDay) return { ok: false, code: 429, why: `This key may make ${k.perDay} requests a day and has used them. It resets at midnight UTC.` };
     if (k.weekStopPct && Number.isFinite(weekPct) && weekPct >= k.weekStopPct) return { ok: false, code: 429, why: `This key stops when ${k.weekStopPct}% of the weekly usage is used (now ${Math.round(weekPct)}%).` };
+    if (k.sessionStopPct && Number.isFinite(sessionPct) && sessionPct >= k.sessionStopPct) return { ok: false, code: 429, why: `This key stops when ${k.sessionStopPct}% of the 5-hour session is used (now ${Math.round(sessionPct)}%).` };
     return { ok: true };
   }
+  /** The remembered Claude session of a key (or of a name under that key). Made on first use; [reset] starts a new one. */
+  function session(k, name, reset) {
+    k.sessions = k.sessions || {}; const nm = k.session === 'key' ? 'main' : name;
+    let s = k.sessions[nm];
+    if (!s || reset) { s = k.sessions[nm] = { id: crypto.randomUUID(), started: false, last: 0 }; }
+    return { id: s.id, fresh: !s.started, name: nm, key: k.id };
+  }
+  function sessionUsed(k, name) { const s = (k.sessions || {})[k.session === 'key' ? 'main' : name]; if (s) { s.started = true; s.last = now(); save(); } }
+  function sessionForget(k, name) { const nm = k.session === 'key' ? 'main' : name; if (k.sessions) delete k.sessions[nm]; save(); }
   function used(k, tokens) { if (k.day !== dayOf(now())) { k.day = dayOf(now()); k.count = 0; } k.count++; k.total = (k.total || 0) + 1; k.tokens = (k.tokens || 0) + (tokens || 0); k.lastUsed = now(); save(); }
 
   /** How demanding a request looks, 0 (a one-liner) to 3 (long, or asks for real work). */
@@ -73,6 +83,6 @@ function createKeys({ dir, now = () => Date.now() }) {
     const d = difficulty(text, ef && ef !== 'auto' ? ef : '');
     return { model: named || spread(k.models, d), effort: ef && ef !== 'auto' && EFFORTS.includes(ef) ? ef : spread(k.efforts, d), auto: !named };
   }
-  return { create, list, revoke, remove, authenticate, check, used, choose, difficulty, PRESETS, MODELS, EFFORTS };
+  return { create, list, revoke, remove, authenticate, check, used, session, sessionUsed, sessionForget, choose, difficulty, PRESETS, MODELS, EFFORTS };
 }
 module.exports = { createKeys, MODELS, EFFORTS, PRESETS };

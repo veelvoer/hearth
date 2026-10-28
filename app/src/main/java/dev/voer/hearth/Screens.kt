@@ -751,6 +751,15 @@ private fun ApiKeysCard() {
     var days by remember { mutableStateOf(0) }
     var perDay by remember { mutableStateOf(0) }
     var stopAt by remember { mutableStateOf(0) }
+    var sessAt by remember { mutableStateOf(0) }
+    var memory by remember { mutableStateOf("none") }
+    val models = remember { mutableStateListOf<String>() }
+    val efforts = remember { mutableStateListOf<String>() }
+    var shownKind by remember { mutableStateOf("") }
+    LaunchedEffect(kind, data) {
+        val pre = data?.optJSONObject("presets")?.optJSONObject(kind) ?: return@LaunchedEffect
+        if (shownKind != kind) { shownKind = kind; models.clear(); efforts.clear(); val pm = pre.getJSONArray("models"); val pe = pre.getJSONArray("efforts"); for (i in 0 until pm.length()) models.add(pm.getString(i)); for (i in 0 until pe.length()) efforts.add(pe.getString(i)) }
+    }
     fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
     fun load() { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.apiKeys(m) } }.onSuccess { data = it; msg = "" }.onFailure { msg = "This server has no API keys yet. Update it first." } } }
     LaunchedEffect(Ui.machinesRev) { load() }
@@ -775,7 +784,7 @@ private fun ApiKeysCard() {
                 Column(Modifier.weight(1f).padding(end = 8.dp)) {
                     Txt(k.getString("name"), T.body)
                     val ms = k.getJSONArray("models"); val lim = k.optInt("perDay")
-                    Txt(k.getString("kind") + " · …" + k.getString("ends") + " · " + (0 until ms.length()).joinToString("/") { ms.getString(it) } + (if (k.optLong("expiresAt") > 0) " · until " + java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT).format(java.util.Date(k.getLong("expiresAt"))) else "") + (if (lim > 0) " · ${k.optInt("usedToday")}/$lim today" else " · ${k.optInt("usedToday")} today") + (if (k.optDouble("weekStopPct") > 0) " · stops at ${k.optInt("weekStopPct")}% week" else "") + (if (k.optBoolean("revoked")) " · revoked" else ""), T.small, muted = true)
+                    Txt(k.getString("kind") + " · …" + k.getString("ends") + " · " + (0 until ms.length()).joinToString("/") { ms.getString(it) } + (if (k.optLong("expiresAt") > 0) " · until " + java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT).format(java.util.Date(k.getLong("expiresAt"))) else "") + (if (lim > 0) " · ${k.optInt("usedToday")}/$lim today" else " · ${k.optInt("usedToday")} today") + (if (k.optDouble("weekStopPct") > 0) " · stops at ${k.optInt("weekStopPct")}% week" else "") + (if (k.optInt("sessionStopPct") > 0) " · ${k.optInt("sessionStopPct")}% session" else "") + (if (k.optString("session", "none") != "none") " · remembers" else "") + (if (k.optBoolean("revoked")) " · revoked" else ""), T.small, muted = true)
                 }
                 if (!k.optBoolean("revoked")) TextAction("Revoke") { post("/admin/apikeys/revoke", JSONObject().put("id", id)) }
                 Spacer(Modifier.width(12.dp))
@@ -784,19 +793,26 @@ private fun ApiKeysCard() {
         }
         Spacer(Modifier.height(12.dp))
         Label("New key")
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low" to "Low usage", "high" to "High usage", "general" to "General").forEach { (v, l) -> Chip(l, kind == v) { kind = v } } }
-        val pre = d.optJSONObject("presets")?.optJSONObject(kind)
-        if (pre != null) { val pm = pre.getJSONArray("models"); val pe = pre.getJSONArray("efforts"); Txt((0 until pm.length()).joinToString(", ") { pm.getString(it) } + " · effort " + (0 until pe.length()).joinToString(", ") { pe.getString(it) }, T.small, muted = true) }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low" to "Low usage", "high" to "High usage", "general" to "General").forEach { (v, l) -> Chip(l, kind == v) { kind = v; shownKind = "" } } }
+        Txt("Models it may use", T.small, muted = true)
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("haiku", "sonnet", "opus").forEach { v -> Chip(v, v in models) { if (v in models) { if (models.size > 1) models.remove(v) } else models.add(v) } } }
+        Txt("Effort levels it may use", T.small, muted = true)
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low", "medium", "high", "xhigh", "max").forEach { v -> Chip(v, v in efforts) { if (v in efforts) { if (efforts.size > 1) efforts.remove(v) } else efforts.add(v) } } }
+        Txt("Memory", T.small, muted = true)
+        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("none" to "None", "key" to "One session", "named" to "Per name").forEach { (v, l) -> Chip(l, memory == v) { memory = v } } }
+        if (memory != "none") Txt(if (memory == "key") "Every call continues the same session, so it remembers the code it worked on." else "Calls with the same \"session\" name continue that session; other names start their own.", T.small, muted = true)
         Field(name, { name = it }, "Name, e.g. my bot")
         Txt("Expires", T.small, muted = true)
         ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 30 to "30 days", 90 to "90 days", 365 to "1 year").forEach { (v, l) -> Chip(l, days == v) { days = v } } }
         Txt("Requests a day", T.small, muted = true)
         ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "No limit", 50 to "50", 200 to "200", 1000 to "1000").forEach { (v, l) -> Chip(l, perDay == v) { perDay = v } } }
-        Txt("Stops when the week's usage reaches", T.small, muted = true)
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 50 to "50%", 75 to "75%", 90 to "90%").forEach { (v, l) -> Chip(l, stopAt == v) { stopAt = v } } }
+        Txt("Stops at this much of the 5-hour session: " + (if (sessAt == 0) "never" else "$sessAt%"), T.small, muted = true)
+        androidx.compose.material3.Slider(sessAt / 100f, { sessAt = (it * 20).toInt() * 5 }, valueRange = 0f..1f, steps = 19)
+        Txt("Stops at this much of the week: " + (if (stopAt == 0) "never" else "$stopAt%"), T.small, muted = true)
+        androidx.compose.material3.Slider(stopAt / 100f, { stopAt = (it * 20).toInt() * 5 }, valueRange = 0f..1f, steps = 19)
         Spacer(Modifier.height(6.dp))
         Button("Make key", Modifier.fillMaxWidth()) {
-            post("/admin/apikeys", JSONObject().put("kind", kind).put("name", name).put("expiresInDays", days).put("perDay", perDay).put("weekStopPct", stopAt)) { o -> fresh = o.optString("key"); name = "" }
+            post("/admin/apikeys", JSONObject().put("kind", kind).put("name", name).put("models", org.json.JSONArray(models.toList())).put("efforts", org.json.JSONArray(efforts.toList())).put("session", memory).put("sessionStopPct", sessAt).put("expiresInDays", days).put("perDay", perDay).put("weekStopPct", stopAt)) { o -> fresh = o.optString("key"); name = "" }
         }
         if (msg.isNotEmpty()) Txt(msg, T.small, muted = true)
     }
@@ -911,9 +927,11 @@ fun SettingsScreen() {
     }
     Screen {
         Header("Settings")
+        SectionTitle("Connection")
         ComputersCard()
         UpdatesCard()
         Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; Spacer(Modifier.width(14.dp)); TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
+        SectionTitle("Notifications and calls")
         Fold("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.") {
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
@@ -942,6 +960,7 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(6.dp))
         }
+        SectionTitle("Look and feel")
         Fold("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
@@ -1032,13 +1051,16 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(8.dp))
         }
+        SectionTitle("Server")
         SyncCard()
         MemoryCard()
         LimitCard()
+        SectionTitle("Tools for Claude")
         SkillsCard()
         McpBuildCard()
         ApiKeysCard()
         PermissionsCard()
+        SectionTitle("Help")
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.", Modifier.weight(1f))

@@ -12,10 +12,10 @@
     }
     return box;
   }
-  function show(list, cur) {
+  function show(list, cur, title) {
     const over = h('div', { class: 'overlay pnover' });
     const close = () => { over.remove(); };
-    over.append(h('div', { class: 'modal pnmodal' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(26) }), h('div', { class: 'grow' }, h('h2', {}, 'Updated to ' + cur), h('div', { class: 'small muted' }, list.length > 1 ? 'Everything that changed since the version you had.' : 'What changed in this version.'))),
+    over.append(h('div', { class: 'modal pnmodal' }, h('div', { class: 'row' }, h('div', { html: sparkSVG(26) }), h('div', { class: 'grow' }, h('h2', {}, title || 'Updated to ' + cur), h('div', { class: 'small muted' }, list.length > 1 ? 'Everything that changed since the version you had.' : 'What changed in this version.'))),
       h('div', { class: 'pnbody' }, ...list.map(block)), h('div', { class: 'row' }, h('div', { class: 'grow' }), h('button', { class: 'primary', onclick: close }, 'Got it'))));
     over.onclick = (e) => { if (e.target === over) close(); };
     document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape' || e.key === 'Enter') { close(); document.removeEventListener('keydown', esc); } });
@@ -32,5 +32,7 @@
       if (list && list.length) show(list, cur);
     } catch { /* no notes: no popup */ }
   }
+  /** All patch notes, newest first (Settings → Updates → What changed). */
+  window.showPatchHistory = async () => { try { const cur = await cm.version(), list = await cm.notesSince('0.0.0', true); if (list && list.length) show(list, cur, 'What changed'); } catch { /* none */ } };
   window.addEventListener('load', () => setTimeout(check, 2500));
 })();

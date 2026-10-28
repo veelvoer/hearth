@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +61,24 @@ object Updates {
         return names.mapNotNull { Regex("^(\\d+\\.\\d+\\.\\d+)\\.md$").find(it)?.groupValues?.get(1) }
             .filter { cmp(it, now) <= 0 && (if (last == null) it == now else cmp(it, last) > 0) }.sortedWith { a, b -> cmp(b, a) }.take(12)
             .map { v -> v to plain(runCatching { c.assets.open("$v.md").bufferedReader().readText() }.getOrDefault("")) }.filter { it.second.isNotEmpty() }
+    }
+
+    /** Every patch note that came with this app, newest first (Settings → Updates → What changed). */
+    fun history(c: Context): List<Pair<String, List<String>>> {
+        val now = current(c); val names = runCatching { c.assets.list("")?.toList().orEmpty() }.getOrDefault(emptyList())
+        return names.mapNotNull { Regex("^(\\d+\\.\\d+\\.\\d+)\\.md$").find(it)?.groupValues?.get(1) }.filter { cmp(it, now) <= 0 }.sortedWith { a, b -> cmp(b, a) }.take(300)
+            .map { v -> v to plain(runCatching { c.assets.open("$v.md").bufferedReader().readText() }.getOrDefault("")) }.filter { it.second.isNotEmpty() }
+    }
+    /** Restarts the server program (the service manager starts it again). Returns null when it worked, or a text. */
+    suspend fun restartServer(m: Machine, force: Boolean): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val c = Relay.open(m, "/admin/restart", post = true, read = 30_000)
+            try {
+                c.outputStream.use { it.write((if (force) "{\"force\":true}" else "{}").toByteArray()) }
+                val body = (if (c.responseCode == 200) c.inputStream else c.errorStream).bufferedReader().readText()
+                if (c.responseCode == 200) null else JSONObject(body).optString("error", "The server said ${c.responseCode}")
+            } finally { c.disconnect() }
+        }.getOrElse { it.message ?: "Could not reach the server" }
     }
 
     fun current(c: Context): String = runCatching { c.packageManager.getPackageInfo(c.packageName, 0).versionName ?: "0" }.getOrDefault("0")
@@ -182,6 +201,16 @@ fun UpdatesCard() {
     var updating by remember { mutableStateOf("") }
     suspend fun look() { note = Updates.check(c) ?: ""; infos = servers.associate { it.host to Updates.serverInfo(it) } }
     LaunchedEffect(servers.size) { look() }
+    var history by remember { mutableStateOf(false) }
+    var restartAsk by remember { mutableStateOf<Machine?>(null) }
+    if (history) androidx.compose.material3.AlertDialog(onDismissRequest = { history = false }, containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
+        title = { Txt("What changed", T.h2) },
+        text = { androidx.compose.foundation.layout.Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { Updates.history(c).forEach { (v, lines) -> Txt("Hearth $v", T.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)); lines.forEach { Txt(it, T.small, muted = true) }; Spacer(Modifier.height(10.dp)) } } },
+        confirmButton = { TextAction("Close") { history = false } })
+    restartAsk?.let { m -> androidx.compose.material3.AlertDialog(onDismissRequest = { restartAsk = null }, containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
+        title = { Txt("Restart ${m.name}?", T.h2) }, text = { Txt("The server is back in a few seconds. Use this when it looks stuck or offline.", T.body) },
+        confirmButton = { TextAction("Restart") { restartAsk = null; scope.launch { var e = Updates.restartServer(m, false); if (e != null && e.contains("working")) e = "Claude is working on it. Restart again from here to stop it." .also { restartAsk = null }; note = e ?: "Restarting… it is back in a few seconds"; kotlinx.coroutines.delay(5000); infos = infos + (m.host to Updates.serverInfo(m)) } } },
+        dismissButton = { TextAction("Cancel") { restartAsk = null } }) }
     val r = Updates.release
     Card(Modifier.tourTarget("updates")) {
         Head("sync", "Updates", "Hearth looks on GitHub for a newer version. Tap Update to download and install it; Android asks once to allow installing updates. If you are connected to a server, it can be updated here too.")
@@ -199,6 +228,7 @@ fun UpdatesCard() {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             TextAction(if (Updates.busy) "Looking…" else "Check for updates") { if (!Updates.busy) scope.launch { look() } }
+            TextAction("What changed") { history = true }
             if (r != null) Button("Update", Modifier) { if (!Updates.busy) scope.launch { Updates.install(c, r) } }
         }
         servers.forEach { m ->
@@ -215,6 +245,7 @@ fun UpdatesCard() {
                         else -> "Version ${info.version} · up to date"
                     }, T.small, muted = true)
                 }
+                if (info?.canUpdate == true) TextAction("Restart") { restartAsk = m }
                 if (info?.version != null && info.canUpdate && Updates.latestVersion.isNotEmpty() && Updates.newer(Updates.latestVersion, info.version))
                     Button(if (updating == m.host) "Updating…" else "Update", Modifier) {
                         if (updating.isEmpty()) scope.launch { updating = m.host; note = Updates.updateServer(m) ?: "Server updated"; kotlinx.coroutines.delay(4000); infos = infos + (m.host to Updates.serverInfo(m)); updating = "" }

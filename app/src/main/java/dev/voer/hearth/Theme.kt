@@ -161,6 +161,10 @@ fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> U
     )
 }
 
+/** A title that groups the cards under it, so a long page is easy to find your way in. */
+@Composable
+fun SectionTitle(text: String) { Txt(text, T.h2.copy(fontSize = 20.sp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 14.dp, start = 4.dp)) }
+
 /** A card that is closed until you tap its title, so a long page of settings reads as a short list. The (i) keeps the explanation. */
 @Composable
 fun Fold(icon: String, title: String, tip: String? = null, content: @Composable ColumnScope.() -> Unit) {

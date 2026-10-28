@@ -12,9 +12,10 @@ Settings → **API keys** → New key (phone and desktop). Choose:
 | High usage | sonnet, opus | high, xhigh, max | hard questions, code, long texts |
 | General | every model | every level | your own tests |
 
-You can also set:
+You can change the list of **models** and **effort levels** of any kind yourself, and also set:
+- **Memory**: *None* (every call is new), *One session* (every call continues the same Claude session, so it remembers the code and everything said before) or *Per name* (calls with the same `"session": "alice"` continue that session, other names start their own). With memory, only your newest message is sent after the first call. Add `"reset_session": true` to a call to start over.
 - **Requests per day**: the key stops after that many (resets at midnight UTC).
-- **Stop at weekly usage**: the key stops when this much of your plan's week is used, so an app can never eat the last part of your week.
+- **Stop at session / weekly usage** (sliders): the key stops when this much of the 5-hour session or of the plan's week is used, so an app can never eat the last part of your limit.
 - **Expires after**: a number of days. After that the key stops working.
 
 The key (it starts with `hk_`) is shown **once**. Copy it then. Hearth only keeps a fingerprint, so a lost key cannot be shown again: make a new one. You can revoke or delete a key at any time.
@@ -78,7 +79,7 @@ Point it at your server: `base_url` = your Hearth address, `api_key` = your `hk_
 ## 4. What it can and cannot do
 
 - Text in, text out. No images, no tools, no files. `system` (text) and a `messages` list of up to 200 items are supported. `max_tokens` is accepted but ignored.
-- Each request starts fresh: nothing is saved on the server and Claude cannot touch your files.
+- Claude has no tools and cannot touch your files. Without memory each request starts fresh and nothing is saved. With memory, the conversation is kept on your server in a session that belongs to that key, and only that key can continue it.
 - At most 2 requests run at the same time on the server; others get 429 and can try again.
 - A request that takes longer than 5 minutes is stopped (504).
 
@@ -89,5 +90,5 @@ Point it at your server: `base_url` = your Hearth address, `api_key` = your `hk_
 | 400 | The request is wrong (the message says how). |
 | 401 | Wrong, revoked or expired key. Many wrong keys in a row block your address for 15 minutes. |
 | 403 | The model or effort is not allowed for this key. |
-| 429 | The key's daily limit or weekly stop is reached, the plan's own limit is reached, or the server is busy. |
+| 429 | The key's daily limit, session stop or weekly stop is reached, the plan's own limit is reached, or the server is busy. |
 | 502 / 504 | Claude failed or took too long. |

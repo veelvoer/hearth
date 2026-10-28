@@ -478,21 +478,27 @@ function apiKeysCard() {
   (async () => {
     let m; try { const ms = await cm.machines(); m = ms.find((x) => x.secure) || ms.find((x) => x.local) || ms[0]; } catch { /* none */ }
     if (!m) { body.innerHTML = ''; body.append(h('div', { class: 'small muted' }, 'No server connected.')); return; }
-    let data = null, fresh = null, kind = 'low';
+    let data = null, fresh = null, kind = 'low'; const draft = { kind: '', models: [], efforts: [], session: 'none', sessionStopPct: 0, weekStopPct: 0 };
     const load = async () => { try { data = await cm.relay(m.id, 'GET', '/admin/apikeys'); } catch { data = null; } draw(); };
     const draw = () => {
       body.innerHTML = '';
       if (!data) { body.append(h('div', { class: 'small muted' }, 'This server has no API keys yet. Update it first.')); return; }
       if (fresh) body.append(h('div', { class: 'warnnote stack' }, h('b', {}, 'Copy your key now. It is shown only once.'), h('div', { class: 'mono small', style: 'word-break:break-all;user-select:all' }, fresh.key),
         h('div', { class: 'row' }, h('button', { class: 'primary sm', onclick: () => { cm.copy ? cm.copy(fresh.key) : navigator.clipboard.writeText(fresh.key); toast('Key copied'); } }, 'Copy'), h('button', { class: 'ghost sm', onclick: () => { fresh = null; draw(); } }, 'Done'))));
-      data.keys.forEach((k) => body.append(h('div', { class: 'row crow' }, h('div', { class: 'grow', style: 'min-width:0' }, h('b', {}, k.name), h('div', { class: 'small muted' }, `${k.kind} · …${k.ends} · ${k.models.join('/')}${k.expiresAt ? ' · until ' + new Date(k.expiresAt).toLocaleDateString() : ''}${k.perDay ? ` · ${k.usedToday}/${k.perDay} today` : ` · ${k.usedToday} today`}${k.weekStopPct ? ` · stops at ${k.weekStopPct}% week` : ''}${k.revoked ? ' · revoked' : ''}`)),
+      data.keys.forEach((k) => body.append(h('div', { class: 'row crow' }, h('div', { class: 'grow', style: 'min-width:0' }, h('b', {}, k.name), h('div', { class: 'small muted' }, `${k.kind} · …${k.ends} · ${k.models.join('/')}${k.expiresAt ? ' · until ' + new Date(k.expiresAt).toLocaleDateString() : ''}${k.perDay ? ` · ${k.usedToday}/${k.perDay} today` : ` · ${k.usedToday} today`}${k.weekStopPct ? ` · stops at ${k.weekStopPct}% week` : ''}${k.sessionStopPct ? ` · ${k.sessionStopPct}% session` : ''}${k.session && k.session !== 'none' ? ' · remembers' : ''}${k.revoked ? ' · revoked' : ''}`)),
         !k.revoked ? h('button', { class: 'ghost sm', onclick: async () => { if (confirm('Revoke ' + k.name + '? Apps using it stop working.')) { try { await cm.relay(m.id, 'POST', '/admin/apikeys/revoke', { id: k.id }); } catch (e) { toast(clean(e)); } load(); } } }, 'Revoke') : null,
         h('button', { class: 'ghost sm', onclick: async () => { if (confirm('Delete ' + k.name + '?')) { try { await cm.relay(m.id, 'POST', '/admin/apikeys/delete', { id: k.id }); } catch (e) { toast(clean(e)); } load(); } } }, 'Delete'))));
       if (!data.keys.length) body.append(h('div', { class: 'small muted' }, 'No keys yet.'));
-      const name = h('input', { placeholder: 'Name, e.g. my bot' }), days = h('input', { type: 'number', min: '0', placeholder: 'Expires in days (empty: never)', style: 'width:210px' }), perDay = h('input', { type: 'number', min: '0', placeholder: 'Requests a day (empty: no limit)', style: 'width:210px' }), stop = h('input', { type: 'number', min: '0', max: '100', placeholder: 'Stop at % of the week (empty: never)', style: 'width:230px' });
+      const name = h('input', { placeholder: 'Name, e.g. my bot' }), days = h('input', { type: 'number', min: '0', placeholder: 'Expires in days (empty: never)', style: 'width:210px' }), perDay = h('input', { type: 'number', min: '0', placeholder: 'Requests a day (empty: no limit)', style: 'width:210px' });
+      const preset = data.presets[kind]; if (draft.kind !== kind) { draft.kind = kind; draft.models = preset.models.slice(); draft.efforts = preset.efforts.slice(); }
+      const multi = (all, picked) => h('div', { class: 'row wrap' }, ...all.map((v) => chip(v, picked.includes(v), () => { const i = picked.indexOf(v); if (i >= 0) { if (picked.length > 1) picked.splice(i, 1); } else picked.push(v); draw(); })));
+      const slider = (label, key) => { const out = h('b', {}, draft[key] ? draft[key] + '%' : 'Never'), r = h('input', { type: 'range', min: '0', max: '100', step: '5', value: String(draft[key] || 0), style: 'flex:1', oninput: () => { draft[key] = Number(r.value); out.textContent = draft[key] ? draft[key] + '%' : 'Never'; } }); return h('div', { class: 'row' }, h('span', { class: 'small', style: 'width:170px' }, label), r, out); };
       body.append(h('div', { class: 'small muted' }, 'New key'), h('div', { class: 'row wrap' }, ...[['low', 'Low usage'], ['high', 'High usage'], ['general', 'General']].map(([v, l]) => chip(l, kind === v, () => { kind = v; draw(); }))),
-        h('div', { class: 'small muted' }, `${data.presets[kind].models.join(', ')} · effort ${data.presets[kind].efforts.join(', ')}`), h('div', { class: 'row wrap' }, name, days, perDay, stop),
-        h('div', {}, h('button', { class: 'primary sm', onclick: async () => { try { fresh = await cm.relay(m.id, 'POST', '/admin/apikeys', { kind, name: name.value, expiresInDays: Number(days.value) || 0, perDay: Number(perDay.value) || 0, weekStopPct: Number(stop.value) || 0 }); } catch (e) { toast(clean(e)); } load(); } }, 'Make key')));
+        h('div', { class: 'small muted' }, 'Models it may use'), multi(data.models, draft.models), h('div', { class: 'small muted' }, 'Effort levels it may use'), multi(data.efforts, draft.efforts),
+        h('div', { class: 'small muted' }, 'Memory'), h('div', { class: 'row wrap' }, ...[['none', 'None: every call is new'], ['key', 'One session: it remembers the code'], ['named', 'A session per name']].map(([v, l]) => chip(l, draft.session === v, () => { draft.session = v; draw(); }))),
+        slider('Stop at this much of the 5-hour session', 'sessionStopPct'), slider('Stop at this much of the week', 'weekStopPct'),
+        h('div', { class: 'row wrap' }, name, days, perDay),
+        h('div', {}, h('button', { class: 'primary sm', onclick: async () => { try { fresh = await cm.relay(m.id, 'POST', '/admin/apikeys', { kind, name: name.value, models: draft.models, efforts: draft.efforts, session: draft.session, sessionStopPct: draft.sessionStopPct, weekStopPct: draft.weekStopPct, expiresInDays: Number(days.value) || 0, perDay: Number(perDay.value) || 0 }); } catch (e) { toast(clean(e)); } load(); } }, 'Make key')));
     };
     load();
   })();
@@ -533,10 +539,10 @@ function permsCard() {
 }
 function updatesCard() {
   const rows = h('div', { class: 'stack', style: 'gap:10px' });
-  const checkBtn = h('button', { class: 'ghost sm' }, 'Check'), goBtn = h('button', { class: 'primary sm', style: 'display:none' }, 'Update now');
+  const checkBtn = h('button', { class: 'ghost sm' }, 'Check'), goBtn = h('button', { class: 'primary sm', style: 'display:none' }, 'Update now'), histBtn = h('button', { class: 'ghost sm', onclick: () => window.showPatchHistory && window.showPatchHistory() }, 'What changed');
   const note = h('div', { class: 'small muted' });
   const ver = h('span', { class: 'small muted' }); cm.version().then((v) => { ver.textContent = 'Hearth ' + v; }).catch(() => {});
-  const card = h('div', { class: 'card stack' }, ch('sync', 'Updates', 'Hearth looks on GitHub for a newer version. The app, your server and (on the phone) the phone app update themselves; press Update when it shows.', ver), rows, h('div', { class: 'row' }, checkBtn, goBtn, h('div', { class: 'grow' }), note));
+  const card = h('div', { class: 'card stack' }, ch('sync', 'Updates', 'Hearth looks on GitHub for a newer version. The app, your server and (on the phone) the phone app update themselves; press Update when it shows.', ver), rows, h('div', { class: 'row' }, checkBtn, goBtn, histBtn, h('div', { class: 'grow' }), note));
   const NAMES = [['desktop', 'This computer', 'the app and its background service'], ['phone', 'Phone app', 'built here and installed over USB'], ['server', 'Server', 'your server']];
   let det = null;
   const draw = () => {
@@ -550,6 +556,7 @@ function updatesCard() {
     }
     const any = ['github', ...NAMES.map((x) => x[0])].some((k) => det[k] && det[k].need);
     goBtn.style.display = any ? '' : 'none';
+    if (rows.querySelector('.serverrow') === null && det.server && !det.server.na) rows.append(h('div', { class: 'row serverrow' }, h('div', { class: 'grow small muted' }, 'Server stuck or offline in Hearth?'), h('button', { class: 'ghost sm', onclick: async () => { if (!confirm('Restart your server? It is back in a few seconds.')) return; try { const ms = await cm.machines(), m = ms.find((x) => x.secure) || ms[0]; const r = await cm.relay(m.id, 'POST', '/admin/restart', {}).catch(async (e) => { if (/working|busy/i.test(clean(e)) && confirm('Claude is working on the server. Restart anyway? That stops it.')) return cm.relay(m.id, 'POST', '/admin/restart', { force: true }); throw e; }); toast(r && r.restarting ? 'Restarting… it is back in a few seconds.' : 'Done.'); } catch (e) { toast(clean(e)); } } }, 'Restart server')));
     note.textContent = det.checkedAt ? 'Checked ' + new Date(det.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   };
   const check = async () => {

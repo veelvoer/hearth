@@ -583,11 +583,12 @@ function start(opts) {
     if (text.length > 400000) return { error: 'the request is too long (400,000 characters at most)' };
     return { text, sys, all: text + ' ' + sys };
   }
-  function apiRun(model, effort, sys, text) {
+  const apiQueues = new Map();   // one call at a time per remembered session
+  function apiRun(model, effort, sys, text, ses) {
     return new Promise((resolve) => {
       const claude = findClaude(); if (!claude) return resolve({ error: 'Claude Code was not found on this server.', code: 500 });
-      const sandbox = path.join(dir, 'api-sandbox'); try { fs.mkdirSync(sandbox, { recursive: true }); } catch { /* exists */ }
-      const args = ['-p', '--output-format', 'json', '--no-session-persistence', '--model', model, '--effort', effort, '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--system-prompt', (sys ? sys + '\n\n' : '') + API_SYSTEM];
+      const sandbox = path.join(dir, 'api-sandbox', ses ? ses.key : '_'); try { fs.mkdirSync(sandbox, { recursive: true }); } catch { /* exists */ }
+      const args = ['-p', '--output-format', 'json', ...(ses ? (ses.fresh ? ['--session-id', ses.id] : ['--resume', ses.id]) : ['--no-session-persistence']), '--model', model, '--effort', effort, '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--system-prompt', (sys ? sys + '\n\n' : '') + API_SYSTEM];
       const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
       const child = spawn(useShell ? `"${claude}"` : claude, args, { cwd: sandbox, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
       let out = '', err = '', done = false;
@@ -614,9 +615,9 @@ function start(opts) {
     const k = hkeys.authenticate(given);
     if (!k) { const n = ((f && f.n) || 0) + 1; failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 }); return err(401, 'invalid API key'); }
     failures.delete(ip);
-    const week = usage && usage.week && Number.isFinite(usage.week.pct) ? usage.week.pct : NaN;
-    const c = hkeys.check(k, week); if (!c.ok) return err(c.code, c.why);
-    if (parts[1] === 'models' && req.method === 'GET') return json(res, 200, { data: k.models.map((id) => ({ id, type: 'model', display_name: id })), efforts: k.efforts, per_day: k.perDay || null, week_stop_percent: k.weekStopPct || null, expires_at: k.expiresAt ? new Date(k.expiresAt).toISOString() : null });
+    const week = usage && usage.week && Number.isFinite(usage.week.pct) ? usage.week.pct : NaN, sess = usage && usage.session && Number.isFinite(usage.session.pct) ? usage.session.pct : NaN;
+    const c = hkeys.check(k, week, sess); if (!c.ok) return err(c.code, c.why);
+    if (parts[1] === 'models' && req.method === 'GET') return json(res, 200, { data: k.models.map((id) => ({ id, type: 'model', display_name: id })), efforts: k.efforts, per_day: k.perDay || null, week_stop_percent: k.weekStopPct || null, session_stop_percent: k.sessionStopPct || null, memory: k.session, expires_at: k.expiresAt ? new Date(k.expiresAt).toISOString() : null });
     if (parts[1] === 'messages' && req.method === 'POST') {
       const b = await bodyJson(req);
       if (b.stream === true) return err(400, 'streaming is not supported yet: send "stream": false');
@@ -625,10 +626,24 @@ function start(opts) {
       if (pick.error) return err(403, pick.error, 'permission_error');
       if (apiBusy >= 2) return err(429, 'Hearth is busy with other requests. Try again in a moment.');
       apiBusy++;
-      let r; try { r = await apiRun(pick.model, pick.effort, p.sys, p.text); } finally { apiBusy--; }
+      let r;
+      try {
+        const sname = String(b.session || b.hearth_session || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) || 'main';
+        if (k.session !== 'none') {   // the session remembers the conversation, so only the newest message is sent after the first one
+          const last = textOfContent(b.messages[b.messages.length - 1].content), nm = k.session === 'named' ? sname : 'main';
+          const qk = k.id + ':' + nm, prev = apiQueues.get(qk) || Promise.resolve();
+          const run = prev.then(async () => {
+            const ses = hkeys.session(k, nm, b.reset_session === true);
+            const out = await apiRun(pick.model, pick.effort, ses.fresh ? p.sys : '', ses.fresh ? p.text : last, ses);
+            if (!out.error) hkeys.sessionUsed(k, ses.name); else if (ses.fresh) hkeys.sessionForget(k, ses.name);
+            return out;
+          });
+          apiQueues.set(qk, run.catch(() => {})); r = await run;
+        } else r = await apiRun(pick.model, pick.effort, p.sys, p.text, null);
+      } finally { apiBusy--; }
       if (r.error) return err(r.code || 502, r.error);
       hkeys.used(k, r.inTok + r.outTok);
-      return json(res, 200, { id: 'msg_hk_' + crypto.randomBytes(8).toString('hex'), type: 'message', role: 'assistant', model: pick.model, content: [{ type: 'text', text: r.text }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: r.inTok, output_tokens: r.outTok }, hearth: { effort: pick.effort, picked_automatically: pick.auto } });
+      return json(res, 200, { id: 'msg_hk_' + crypto.randomBytes(8).toString('hex'), type: 'message', role: 'assistant', model: pick.model, content: [{ type: 'text', text: r.text }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: r.inTok, output_tokens: r.outTok }, hearth: { effort: pick.effort, picked_automatically: pick.auto, session: k.session === 'none' ? null : (k.session === 'named' ? String(b.session || b.hearth_session || 'main') : 'main') } });
     }
     return err(404, 'unknown endpoint. Use POST /v1/messages or GET /v1/models.');
   }
@@ -1398,6 +1413,11 @@ function start(opts) {
         if (parts[0] === 'agent' && parts[1] === 'files' && parts[2] === 'delete') {
           if (!hubFiles) return json(res, 404, { error: 'this is not the server' });
           return json(res, 200, hubFiles.remove(String(b.rel || '')));
+        }
+        if (parts[0] === 'admin' && parts[1] === 'restart') {   // a plain restart of this server, from the app (the service manager starts it again)
+          if (!opts.selfUpdate) return json(res, 400, { error: 'This one restarts together with its app.' });
+          if (!b.force && [...jobs.values()].some((j) => !j.done)) return json(res, 409, { error: 'Claude is working on this server right now.', busy: true });
+          json(res, 200, { ok: true, restarting: true }); setTimeout(() => process.exit(0), 600); return undefined;
         }
         if (parts[0] === 'admin' && parts[1] === 'update') {   // replace this server's program with the newest release, then restart (the service manager starts it again)
           if (!opts.selfUpdate) return json(res, 400, { error: 'This one updates together with its app.' });
