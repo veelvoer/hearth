@@ -520,9 +520,10 @@ function start(opts) {
           if (ri.status === 'rejected') { job.limitHit = true; if (ri.resetsAt) job.limitReset = Number(ri.resetsAt) * 1000; }
         } else if (t === 'result') {
           job.error = !!o.is_error; job.resultText = typeof o.result === 'string' ? o.result : '';
+          if (job.error && AUTH_RE.test(job.resultText)) { job.authFail = true; job.resultText = `Claude is logged out on ${opts.name || os.hostname()}: its login expired and could not be renewed. Open a terminal on that computer and run "claude login", then send your message again.`; setTimeout(() => keepLogin(true), 2000); }
           if (job.error && LIMIT_RE.test(job.resultText)) { job.limitHit = true; const m = job.resultText.match(/\|(\d{9,13})\b/); if (m && !job.limitReset) job.limitReset = Number(m[1]) < 1e12 ? Number(m[1]) * 1000 : Number(m[1]); }
           const us = o.usage || {};
-          emit(job, { t: 'done', error: job.error, ms: o.duration_ms, cost: o.total_cost_usd, usage: { in: us.input_tokens || 0, out: us.output_tokens || 0, cr: us.cache_read_input_tokens || 0, cw: us.cache_creation_input_tokens || 0 } });
+          emit(job, { t: 'done', error: job.error, text: job.error ? String(job.resultText || '').slice(0, 400) : undefined, ms: o.duration_ms, cost: o.total_cost_usd, usage: { in: us.input_tokens || 0, out: us.output_tokens || 0, cr: us.cache_read_input_tokens || 0, cw: us.cache_creation_input_tokens || 0 } });
         }
       }
     });
@@ -780,6 +781,17 @@ function start(opts) {
   }
 
   /** The plan limit stopped a chat: ask whether to carry on once usage is back (or just carry on, when "Continue by itself" is on in settings). */
+  // Claude's login (OAuth) is renewed by Claude Code itself when it is about to expire. Several runs at the same moment can race for it and one loses, so a quiet run renews it early, one at a time.
+  const AUTH_RE = /OAuth (session|token)|Failed to authenticate|authentication_error|not logged in|please run \/?login|invalid[_ ]api[_ ]key/i;
+  const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
+  const loginInfo = () => { try { const o = JSON.parse(fs.readFileSync(credFile, 'utf8')).claudeAiOauth || {}; return { has: !!o.refreshToken, expiresAt: Number(o.expiresAt) || 0 }; } catch { return null; } };
+  let keeping = false;
+  async function keepLogin(force) {
+    const li = loginInfo(); if (!li || keeping) return;   // no credentials file here (another way of logging in): nothing to keep
+    if (!force && li.expiresAt - Date.now() > 40 * 60000) return;
+    keeping = true; try { lastCheck = 0; await checkUsage(); } catch { /* best effort */ } keeping = false;
+  }
+  setInterval(() => keepLogin(false), 10 * 60000).unref(); setTimeout(() => keepLogin(false), 20000).unref();
   const LIMIT_RE = /(usage|rate)\s+limit\s+(reached|hit)|hit your (usage |session |weekly )?limit|reached your (usage |session |weekly )?limit|limit reached/i;
   const limitWaits = new Map();   // chat id -> { timer, at }
   const limitResetAt = (job) => {
@@ -1047,6 +1059,7 @@ function start(opts) {
         if (parts[0] === 'support' && parts[1] === 'list') return json(res, 200, readList());
         if (parts[0] === 'sessions' && parts[2] === 'workflow' && parts.length === 3) return json(res, 200, wfView(parts[1]));
         if (parts[0] === 'admin' && parts[1] === 'apikeys') return json(res, 200, { keys: hkeys.list(), presets: hkeys.PRESETS, models: hkeys.MODELS, efforts: hkeys.EFFORTS });
+        if (parts[0] === 'projects' && parts[1] === 'trash') { const tr = path.join(root || moveRoot || '', '.hearth-trash'); let out = []; try { out = fs.readdirSync(tr).map((n) => { try { return { stem: n, ...JSON.parse(fs.readFileSync(path.join(tr, n, 'meta.json'), 'utf8')) }; } catch { return null; } }).filter(Boolean).sort((x, y) => y.at - x.at); } catch { /* none */ } return json(res, 200, out); }
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
@@ -1259,6 +1272,34 @@ function start(opts) {
           return json(res, 200, { path: target });
         }
         if (parts[0] === 'sessions' && parts[2] === 'workflow' && parts.length === 3) { const r = wfSet(parts[1], b); return json(res, r.code, r.data); }
+        if (parts[0] === 'projects' && (parts[1] === 'delete' || parts[1] === 'restore') && parts.length === 2) {   // a whole project (its folder and its chats) goes to a trash folder for 30 days
+          const base = root || moveRoot; if (!base) return json(res, 400, { error: 'This computer has no projects folder set up.' });
+          const trash = path.join(base, '.hearth-trash');
+          if (b.restore || parts[1] === 'restore') {
+            const stem = String(b.stem || ''); if (!/^[0-9]+__[A-Za-z0-9._ -]+$/.test(stem)) return json(res, 400, { error: 'unknown item' });
+            const meta = (() => { try { return JSON.parse(fs.readFileSync(path.join(trash, stem, 'meta.json'), 'utf8')); } catch { return null; } })();
+            if (!meta || !meta.cwd || !under(meta.cwd, base)) return json(res, 404, { error: 'Nothing to restore: it was removed for good.' });
+            if (fs.existsSync(meta.cwd)) return json(res, 409, { error: 'A folder with that name exists again. Rename or remove it first.' });
+            try { fs.mkdirSync(path.dirname(meta.cwd), { recursive: true }); fs.renameSync(path.join(trash, stem, 'files'), meta.cwd); if (fs.existsSync(path.join(trash, stem, 'chats'))) { const cd = claudeDir(meta.cwd); if (!fs.existsSync(cd)) fs.renameSync(path.join(trash, stem, 'chats'), cd); } fs.rmSync(path.join(trash, stem), { recursive: true, force: true }); } catch (e) { return json(res, 500, { error: 'Could not restore it: ' + e.message }); }
+            bumpChats(); return json(res, 200, { ok: true, cwd: meta.cwd });
+          }
+          const cwd = path.resolve(String(b.cwd || ''));
+          if (!b.cwd || !under(cwd, base) || cwd === path.resolve(base)) return json(res, 403, { error: 'Only a project inside the projects folder can be deleted.' });
+          let st; try { st = fs.statSync(cwd); } catch { return json(res, 404, { error: 'That project is already gone.' }); } if (!st.isDirectory()) return json(res, 400, { error: 'That is not a folder.' });
+          if ([...jobs.values()].some((j) => !j.done && j.cwd && under(j.cwd, cwd))) return json(res, 409, { error: 'Claude is working in this project. Stop it first.' });
+          const cd = claudeDir(cwd), ids = (() => { try { return fs.readdirSync(cd).filter((f) => f.endsWith('.jsonl')).map((f) => f.slice(0, -6)); } catch { return []; } })();
+          if (ids.some((id) => shares.bySession(id))) return json(res, 409, { error: 'A chat of this project is shared. Stop sharing it first.' });
+          if (ids.some((id) => workflows[id])) return json(res, 409, { error: 'A chat of this project has a workflow. Stop it first.' });
+          const stem = Date.now() + '__' + path.basename(cwd).replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 60), dest = path.join(trash, stem);
+          try {
+            fs.mkdirSync(dest, { recursive: true });
+            for (const n of fs.readdirSync(trash)) { try { const sp = path.join(trash, n); if (Date.now() - fs.statSync(sp).mtimeMs > 30 * 86400000) fs.rmSync(sp, { recursive: true, force: true }); } catch { /* gone */ } }   // 30 days
+            fs.writeFileSync(path.join(dest, 'meta.json'), JSON.stringify({ cwd, name: path.basename(cwd), chats: ids.length, at: Date.now() }));
+            const mv = (from, to) => { try { fs.renameSync(from, to); } catch (e) { if (e.code !== 'EXDEV') throw e; fs.cpSync(from, to, { recursive: true }); fs.rmSync(from, { recursive: true, force: true }); } };
+            mv(cwd, path.join(dest, 'files')); if (ids.length) mv(cd, path.join(dest, 'chats'));
+          } catch (e) { return json(res, 500, { error: 'Could not delete it: ' + e.message }); }
+          bumpChats(); return json(res, 200, { ok: true, stem, chats: ids.length });
+        }
         if (parts[0] === 'sessions' && (parts[2] === 'delete' || parts[2] === 'restore') && parts.length === 3) {   // a deleted chat goes to a trash folder first, so a mistake can be undone
           const sid = parts[1], trash = path.join(core.projectsDir(), '.hearth-trash');
           if (parts[2] === 'restore') {

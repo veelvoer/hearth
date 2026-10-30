@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -145,11 +146,12 @@ fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
 }
 
 /** Shrinks a little while pressed and springs back. */
-fun Modifier.pressable(onClick: () -> Unit): Modifier = composed {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun Modifier.pressable(onClick: () -> Unit, onLong: (() -> Unit)? = null): Modifier = composed {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed && Fx.motion) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
-    graphicsLayer { scaleX = s; scaleY = s }.clickable(interactionSource = src, indication = null, onClick = onClick)
+    graphicsLayer { scaleX = s; scaleY = s }.let { m -> if (onLong == null) m.clickable(interactionSource = src, indication = null, onClick = onClick) else m.combinedClickable(interactionSource = src, indication = null, onClick = onClick, onLongClick = onLong) }
 }
 
 @Composable

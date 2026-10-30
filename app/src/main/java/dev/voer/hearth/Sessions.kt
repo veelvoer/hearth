@@ -192,7 +192,9 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     }
     var query by remember { mutableStateOf("") }
     var onlyWorking by remember { mutableStateOf(false) }
-    var onlyShared by remember { mutableStateOf(false) }   // shared chats are kept apart: not in the normal list, but under their own chip
+    var onlyShared by remember { mutableStateOf(false) }
+    var delChat by remember { mutableStateOf<Pair<Machine, Sess>?>(null) }
+    var delErr by remember { mutableStateOf<String?>(null) }   // shared chats are kept apart: not in the normal list, but under their own chip
     Box(Modifier.fillMaxSize()) {
     Screen {
         Header("Chats") {
@@ -217,6 +219,11 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             return@Screen
         }
         Field(query, { query = it }, "Search chats")
+        delChat?.let { (mm, sx) -> androidx.compose.material3.AlertDialog(onDismissRequest = { delChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            title = { Txt("Delete this chat?", T.h2) }, text = { Txt("\"${sx.title}\" goes to the trash on the server for 30 days.", T.body) },
+            confirmButton = { TextAction("Delete") { delChat = null; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(mm, "/sessions/${sx.id}/delete", JSONObject()) } }.onSuccess { val k = mm.host + "|" + mm.token.take(8); lists[k] = lists[k]?.filter { it.id != sx.id } }.onFailure { delErr = it.message ?: "Couldn't delete it" } } } },
+            dismissButton = { TextAction("Cancel") { delChat = null } }) }
+        delErr?.let { Txt(it, T.small, color = MaterialTheme.colorScheme.error) }
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared) { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking) { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared) { onlyShared = true; onlyWorking = false }; Chip("Join chat ›", false) { join() } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
@@ -229,18 +236,18 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt(if (onlyWorking) "Nothing is running right now." else if (onlyShared) "No shared chats yet." else "No chats yet. Tap + to start one.", T.small, muted = true)
-        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now) { open(mm, s) } } }
+        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = if (mm.guest || s.shared > 0) null else ({ delChat = mm to s })) { open(mm, s) } } }
     }
     }
 }
 
 @Composable
-private fun SessionCard(s: Sess, machine: String?, now: Long, onClick: () -> Unit) {
+private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val working = s.running || s.busy
     val dark = cs.background.luminance() < .5f
     val shape = RoundedCornerShape(20.dp)
-    Row(Modifier.fillMaxWidth().pressable(onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().pressable(onClick, onLong).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)), contentAlignment = Alignment.Center) {
             Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
@@ -378,6 +385,17 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
     var sel by remember { mutableStateOf(defaultMachine(machines, c)) }
     var root by remember { mutableStateOf<String?>(null) }
     var projects by remember { mutableStateOf<List<Project>?>(null) }
+    var delProj by remember { mutableStateOf<Project?>(null) }
+    var delText by remember { mutableStateOf("") }
+    var delMsg by remember { mutableStateOf("") }
+    delProj?.let { pr -> androidx.compose.material3.AlertDialog(onDismissRequest = { delProj = null; delText = "" }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        title = { Txt("Delete project ${pr.name}?", T.h2) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Txt("Its files and all its chats go to the trash on the server for 30 days. Type the project name to confirm.", T.body); Field(delText, { delText = it }, pr.name) } },
+        confirmButton = { TextAction("Delete") {
+            if (!delText.trim().equals(pr.name, ignoreCase = true)) { delMsg = "The name did not match. Nothing was deleted."; delProj = null; delText = ""; return@TextAction }
+            val mm = sel; delProj = null; delText = ""
+            scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(mm, "/projects/delete", JSONObject().put("cwd", pr.path)) } }.onSuccess { projects = projects?.filter { it.path != pr.path }; delMsg = "Deleted ${pr.name}. You can bring it back from the desktop app (trash, 30 days)." }.onFailure { delMsg = it.message ?: "Couldn't delete it" } } } },
+        dismissButton = { TextAction("Cancel") { delProj = null; delText = "" } }) }
     var err by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -451,8 +469,9 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
         }
         val ps = projects
         if (ps == null && err == null) Txt("Loading…", T.small, muted = true)
+        if (delMsg.isNotEmpty()) Txt(delMsg, T.small, muted = true)
         if (ps != null && ps.isNotEmpty()) { Label(if (root != null) "Or continue a project" else "Recent projects"); ps.forEach { p ->
-            Card(Modifier.clickable { go(p.path) }) { Txt(p.name, T.h2); Txt(short(p.path), T.small, muted = true) }
+            Card(Modifier.pressable({ go(p.path) }, { if (root != null) delProj = p })) { Txt(p.name, T.h2); Txt(short(p.path), T.small, muted = true) }
         } }
         if (ps != null && ps.isEmpty() && root == null) Txt("No projects on ${m.name} yet. Start a chat in a folder from your computer first.", T.small, muted = true)
     }
@@ -595,7 +614,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                             "tool" -> { val f = tx.split('\u0000'); parts.add(Part(true, name = f.getOrElse(0) { "" }, detail = f.getOrElse(1) { "" }, id = f.getOrElse(2) { "" })) }
                             "result" -> { val f = tx.split('\u0000', limit = 2); val i = parts.indexOfFirst { it.tool && it.id == f[0] }
                                 if (i >= 0) parts[i] = Part(true, name = parts[i].name, detail = parts[i].detail, id = parts[i].id, result = f.getOrElse(1) { "" }, err = e, at = parts[i].at) }
-                            "done" -> if (e) err = "Claude reported an error."
+                            "done" -> if (e) err = tx.ifBlank { "Claude reported an error." }
                         }
                     }
                 }

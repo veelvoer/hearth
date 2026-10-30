@@ -33,7 +33,8 @@ object Repo {
                 val machines = Store.machines(app)
                 if (machines.isEmpty()) throw ApiException(0, "No computer connected")
                 if (ask) coroutineScope { machines.map { m -> async { runCatching { Relay.refreshUsage(m) } } }.awaitAll() }
-                val u = machines.mapNotNull { runCatching { Relay.usage(it) }.getOrNull() }.maxByOrNull { it.at }
+                // every computer is asked at once and none may hold the others up for long (an offline one used to add its whole timeout)
+                val u = coroutineScope { machines.map { m -> async { kotlinx.coroutines.withTimeoutOrNull(6000) { runCatching { Relay.usage(m) }.getOrNull() } } }.awaitAll() }.filterNotNull().maxByOrNull { it.at }
                     ?: throw ApiException(0, "No usage yet")
                 val prev = Store.usage(app)
                 Store.saveUsage(app, u)

@@ -71,10 +71,12 @@ function drawSide() {
   const ordered = [...groups.entries()].sort((a, b) => Math.max(...b[1].map((x) => x.mtime)) - Math.max(...a[1].map((x) => x.mtime)));
   if (SS.sel && !SS.sel.isNew && SS.sel.cwd && groups.has(SS.sel.cwd) && SS.projFor !== SS.sel) { SS.projKey = SS.sel.cwd; SS.projFor = SS.sel; }   // opening a chat shows its project
   if (!groups.has(SS.projKey)) SS.projKey = ordered[0] ? ordered[0][0] : null;
-  if (SS.tabsEl) {
+  if (SS.tabsEl) {   // a few recent projects as tabs, all the others behind one button with a search: a long row of tabs was unreadable with many projects
     SS.tabsEl.innerHTML = '';
-    for (const [key, items] of ordered) SS.tabsEl.append(h('button', { class: 'ptab' + (key === SS.projKey ? ' on' : ''), title: key, onclick: () => { SS.projKey = key; SS.search = ''; drawSide(); } },
-      folderName(key), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null));
+    const SHOW = 4, tabs = ordered.slice(0, SHOW).map((x) => x[0]); if (SS.projKey && !tabs.includes(SS.projKey)) tabs.push(SS.projKey);
+    const tabBtn = (key, items) => h('button', { class: 'ptab' + (key === SS.projKey ? ' on' : ''), title: key, onclick: () => { SS.projKey = key; SS.search = ''; drawSide(); } }, folderName(key), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null);
+    for (const key of tabs) SS.tabsEl.append(tabBtn(key, groups.get(key) || []));
+    if (ordered.length > tabs.length) SS.tabsEl.append(h('button', { class: 'ptab add', title: 'All projects', onclick: (e) => projectPicker(e.currentTarget, ordered) }, `All ${ordered.length} projects ▾`));
     SS.tabsEl.append(h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'), h('button', { class: 'ptab add', title: 'Open a chat a friend shared with you', onclick: shJoinDialog }, 'Join a shared chat'));
   }
   side.innerHTML = '';
@@ -595,7 +597,7 @@ function sendMsg(text) {
     if (ev.t === 'delta') { const last = run.parts[run.parts.length - 1]; if (last && last.type === 'text') last.text += ev.text; else run.parts.push({ type: 'text', text: ev.text }); }
     else if (ev.t === 'tool') run.parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, text: ev.text });
     else if (ev.t === 'result') { const t = run.parts.find((p) => p.type === 'tool' && p.id === ev.id); if (t) { t.result = ev.text; t.error = ev.error; } }
-    else if (ev.t === 'done') { if (live) SS.lastRun = { sid: s.id, ms: ev.ms, error: ev.error }; }
+    else if (ev.t === 'done') { if (live) { SS.lastRun = { sid: s.id, ms: ev.ms, error: ev.error }; if (ev.error && ev.text) SS.chatErr = ev.text; } }
     else if (ev.t === 'fail') { if (/still working on this chat/i.test(ev.text || '')) { finish(true); return; } if (live) SS.chatErr = ev.text; finish(); return; }
     else if (ev.t === 'end') { finish(); return; }
     if (live) scheduleLive();
@@ -788,6 +790,46 @@ async function moveProject(s, mach, server, st, inside, name) {
   } catch (e) { box.remove(); off(); SS.chatErr = clean(e); renderMsgs(); }
 }
 
+/** Every project in one list with a search, under the button that opened it. Pick one to switch; the ⋯ of an own project deletes it (to the trash for 30 days). */
+function projectPicker(anchor, ordered) {
+  document.querySelectorAll('.projpop').forEach((x) => x.remove());
+  const pop = h('div', { class: 'projpop' }), list = h('div', { class: 'projlist' }), q = h('input', { placeholder: 'Search projects', autofocus: true });
+  const close = () => { pop.remove(); document.removeEventListener('mousedown', away, true); };
+  const away = (e) => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
+  const draw = () => {
+    list.innerHTML = ''; const w = q.value.trim().toLowerCase();
+    ordered.filter(([k]) => !w || folderName(k).toLowerCase().includes(w) || k.toLowerCase().includes(w)).forEach(([k, items]) => {
+      const own = items.filter((x) => !x.guest && x.mid), canDelete = k !== 'Shared' && k !== 'Talks' && own.length && SS.machines.some((m) => m.id === own[0].mid);
+      list.append(h('div', { class: 'projrow' + (k === SS.projKey ? ' on' : '') }, h('button', { class: 'projpick', onclick: () => { SS.projKey = k; SS.search = ''; close(); drawSide(); } }, h('span', { class: 'grow ellip' }, folderName(k)), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null, h('span', { class: 'small muted' }, String(items.length))),
+        canDelete ? h('button', { class: 'ghost sm', title: 'Delete this project…', onclick: () => { close(); deleteProject(k, own); } }, '⋯') : null));
+    });
+    if (!list.children.length) list.append(h('div', { class: 'small muted', style: 'padding:8px' }, 'No project matches.'));
+  };
+  q.oninput = draw; q.onkeydown = (e) => { if (e.key === 'Escape') close(); if (e.key === 'Enter' && list.firstChild && list.firstChild.querySelector('.projpick')) list.firstChild.querySelector('.projpick').click(); };
+  const trashBtn = h('button', { class: 'link small', style: 'opacity:.75;text-align:left', onclick: async () => {
+    const mach = SS.machines.find((m) => m.secure) || SS.machines[0]; if (!mach) return;
+    try {
+      const tr = await cm.relay(mach.id, 'GET', '/projects/trash'); list.innerHTML = ''; trashBtn.remove();
+      if (!tr.length) list.append(h('div', { class: 'small muted', style: 'padding:8px' }, 'The trash is empty.'));
+      tr.forEach((t) => list.append(h('div', { class: 'projrow' }, h('span', { class: 'grow ellip', style: 'padding:8px 10px' }, `${t.name} · ${t.chats} chat${t.chats === 1 ? '' : 's'} · ${new Date(t.at).toLocaleDateString()}`),
+        h('button', { class: 'ghost sm', onclick: async () => { try { await cm.relay(mach.id, 'POST', '/projects/restore', { stem: t.stem }); toast('Restored ' + t.name); close(); await pollLive(); drawSide(); } catch (e) { toast(clean(e)); } } }, 'Restore'))));
+    } catch (e) { toast(clean(e)); }
+  } }, 'Trash: restore a deleted project');
+  pop.append(q, list, trashBtn); document.body.append(pop); draw();
+  const r = anchor.getBoundingClientRect(); pop.style.left = Math.max(8, Math.min(r.left, innerWidth - 330)) + 'px'; pop.style.top = (r.bottom + 6) + 'px';
+  setTimeout(() => { document.addEventListener('mousedown', away, true); q.focus(); }, 0);
+}
+/** A whole project (folder and chats) goes to the trash on the server for 30 days. You type its name first, so it never happens by accident. */
+async function deleteProject(key, own) {
+  const name = folderName(key), mid = own[0].mid;
+  const t = prompt(`Delete the project "${name}" with its files and its ${own.length} chat${own.length === 1 ? '' : 's'}?\nIt stays in the trash on the server for 30 days.\nType the project name to confirm:`);
+  if (t === null) return; if (t.trim().toLowerCase() !== name.toLowerCase()) { toast('The name did not match. Nothing was deleted.'); return; }
+  try {
+    const r = await cm.relay(mid, 'POST', '/projects/delete', { cwd: key });
+    if (SS.sel && SS.sel.cwd === key) SS.sel = null; SS.projKey = null; SS.projects[mid] = null; await pollLive(); drawSide(); drawPane();
+    toast(`Deleted "${name}". Click here to undo.`, async () => { try { await cm.relay(mid, 'POST', '/projects/restore', { stem: r.stem }); await pollLive(); drawSide(); toast('Restored.'); } catch (e) { toast(clean(e)); } });
+  } catch (e) { toast(clean(e)); }
+}
 /** Deleting goes to a trash folder on the server first (30 days), and the toast offers Undo. A whole project needs its name typed, so it can never happen by accident. */
 async function deleteChats(list, label, many) {
   if (many) { const t = prompt(`This deletes all ${list.length} chats of "${label}" (they stay in the trash for 30 days).\nType the project name to confirm:`); if (t === null) return; if (t.trim().toLowerCase() !== String(label).toLowerCase()) { toast('The name did not match. Nothing was deleted.'); return; } }

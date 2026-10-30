@@ -741,3 +741,8 @@ body { background:
 details.rcard.fold { padding: 12px 18px; gap: 8px; } details.rcard.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; margin: 0; }
 details.rcard.fold > summary::-webkit-details-marker { display: none; } details.rcard.fold > summary::after { content: '⌄'; color: var(--muted); } details.rcard.fold[open] > summary::after { content: '⌃'; }
 details.rcard.fold[open] > summary { margin-bottom: 4px; }
+
+/* the project picker: all projects behind one button */
+.projpop { position: fixed; z-index: 60; width: 320px; max-height: 60vh; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
+.projlist { overflow: auto; display: flex; flex-direction: column; gap: 2px; } .projrow { display: flex; align-items: center; gap: 4px; border-radius: 10px; } .projrow.on { background: var(--active); }
+.projpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; text-align: left; padding: 8px 10px; color: var(--ink); border-radius: 10px; } .projrow:hover { background: color-mix(in srgb, var(--clay) 8%, transparent); }

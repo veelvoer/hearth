@@ -35,6 +35,8 @@ jobs:
         run: node desktop/test/mcpkit.test.js
       - name: Delete chats test
         run: node desktop/test/delete-chats.test.js
+      - name: Login error test
+        run: node desktop/test/auth-error.test.js
       - name: Usage limit continue
         run: node desktop/test/limit.test.js
       - name: Command rules test

@@ -11,12 +11,13 @@ const { sigOfDir } = require('./relay/buildsig');
 const gh = require('./relay/selfupdate');
 
 const SKIP = new Set(['node_modules', 'dist', 'build', '.gradle', '.git', 'test', 'diagnostics', '.uploads']);
+const NOISE = /\.(conflict|sync-conflict)|\.tmp$|~$|\.swp$|\.orig$|\.rej$/;   // leftovers of syncing and editors are not code: they must never make an update look necessary
 
 function walk(dir, out, depth = 0) {
   let ents = [];
   try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of ents) {
-    if (SKIP.has(e.name) || e.name.startsWith('.')) continue;
+    if (SKIP.has(e.name) || e.name.startsWith('.') || NOISE.test(e.name)) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) { if (depth < 12) walk(p, out, depth + 1); } else out.push(p);
   }
@@ -49,7 +50,7 @@ function create(d) {
   async function computeRelease() {
     const l = await latest(), cur = d.version(), sv = await d.relayStatus('server');   // sv: object, null (unreachable) or undefined (no server)
     const server = !!(l && sv && sv.version && sv.canSelfUpdate && gh.newer(l.version, sv.version));
-    return { mode: 'release', latest: l && l.version, desktop: !!(l && gh.newer(l.version, cur)), phone: false, server, cur, sv, l };
+    return { mode: 'release', latest: l && l.version, desktop: !!(l && gh.newer(l.version, cur)), phone: false, server, cur, sv, l, sigKey: JSON.stringify([l && l.version, cur, sv && sv.version]) };
   }
 
   // a source checkout that came from GitHub can pull the newest code, then rebuild everything from it
@@ -75,14 +76,15 @@ function create(d) {
     const loc = await d.relayBuild('local');
     const localNeed = typeof loc === 'string' && loc !== rs;
     const behind = await behindGithub();
-    return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: selfUpd ? !!(lat && gh.newer(lat.version, sv.version)) : (hasServer && typeof srv === 'string' && srv !== rs), selfUpd, sv, latestV: lat && lat.version, github: behind > 0, behind, sigs: sg, rs, srv, loc };
+    return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: selfUpd ? !!(lat && gh.newer(lat.version, sv.version)) : (hasServer && typeof srv === 'string' && srv !== rs), selfUpd, sv, latestV: lat && lat.version, github: behind > 0, behind, sigs: sg, rs, srv, loc , sigKey: JSON.stringify([sg.desktop, rs, srv, lat && lat.version, sv && sv.version, loc]) };
   }
   const summary = (n) => (n && (n.desktop || n.phone || n.server || n.github) ? { desktop: n.desktop, phone: n.phone, server: n.server, github: !!n.github, behind: n.behind, canPhone: hasAndroid, canServer: hasServer || releaseMode, mode: n.mode || 'source', latest: n.latest, notes: n.l && n.l.notes ? String(n.l.notes) : '' } : null);
 
   async function check(force = false) {
     if (running) return;
-    const n = summary(await compute());
+    const full = await compute(), n = summary(full);
     if (!n) { last = ''; return; }
+    const st = d.getState(); if (full.sigKey && (st.appliedSig === full.sigKey || (st.laterSig === full.sigKey && Date.now() - (st.laterAt || 0) < 12 * 3600e3))) return;   // the same state that you already updated to (or put off): do not ask again; a newer version or newer code asks again
     if (dismissedAt && Date.now() - dismissedAt >= 30 * 60000) { dismissedAt = 0; last = ''; }
     const key = JSON.stringify(n);
     if (!force && (key === last || (dismissedAt && Date.now() - dismissedAt < 30 * 60000))) return;
@@ -246,13 +248,14 @@ function create(d) {
           if (!isWin && fs.existsSync(path.join(root, 'relay', 'update-local.sh'))) await sh('bash', [path.join(root, 'relay', 'update-local.sh')], { cwd: root });
           say('desktop', failed ? 'Restarting this app (some steps failed, see above)…' : 'Restarting…', 'ok');
           await sleep(failed ? 6000 : 1200);
+          try { const f = await compute(); const st = d.getState(); st.appliedSig = f.sigKey; d.save(); } catch { /* ok */ }
           running = false; d.relaunch(); return;
         } catch (e) { failed = true; say('desktop', e.message, 'fail'); }
       }
-    } finally { if (running) { running = false; d.send('update-progress', { step: 'end', state: failed ? 'fail' : 'ok' }); if (!failed) { last = ''; } } }
+    } finally { if (running) { running = false; d.send('update-progress', { step: 'end', state: failed ? 'fail' : 'ok' }); if (!failed) { last = ''; try { const f = await compute(); const st = d.getState(); st.appliedSig = f.sigKey; d.save(); } catch { /* ok */ } } } }
   }
 
-  return { check, run, later: () => { dismissedAt = Date.now(); }, status: async () => summary(await compute()), details, _sigs: sigs };
+  return { check, run, later: async () => { dismissedAt = Date.now(); try { const f = await compute(); const st = d.getState(); st.laterSig = f.sigKey; st.laterAt = Date.now(); d.save(); } catch { /* ok */ } }, status: async () => summary(await compute()), details, _sigs: sigs };
 }
 
 module.exports = { create };
