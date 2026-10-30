@@ -927,11 +927,10 @@ fun SettingsScreen() {
     }
     Screen {
         Header("Settings")
-        SectionTitle("Connection")
+        SectionTitle("Connection", "link")
         ComputersCard()
         UpdatesCard()
         Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; Spacer(Modifier.width(14.dp)); TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
-        SectionTitle("Notifications and calls")
         Fold("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.") {
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
@@ -960,7 +959,7 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(6.dp))
         }
-        SectionTitle("Look and feel")
+        SectionTitle("Look and feel", "paint")
         Fold("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
@@ -1051,16 +1050,16 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(8.dp))
         }
-        SectionTitle("Server")
+        SectionTitle("Server", "server")
         SyncCard()
         MemoryCard()
         LimitCard()
-        SectionTitle("Tools for Claude")
+        SectionTitle("Tools for Claude", "sliders")
         SkillsCard()
         McpBuildCard()
         ApiKeysCard()
         PermissionsCard()
-        SectionTitle("Help")
+        SectionTitle("Help", "support")
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.", Modifier.weight(1f))

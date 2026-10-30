@@ -221,11 +221,11 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
         }
         Field(query, { query = it }, "Search chats")
         delChat?.let { (mm, sx) -> androidx.compose.material3.AlertDialog(onDismissRequest = { delChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            title = { Txt("Delete this chat?", T.h2) }, text = { Txt("\"${sx.title}\" goes to the trash on the server for 30 days.", T.body) },
+            title = { Txt("Delete this chat?", T.h2) }, text = { androidx.compose.foundation.text.selection.DisableSelection { Txt("\"${sx.title}\" goes to the trash on the server for 30 days.", T.body) } },
             confirmButton = { TextAction("Delete") { delChat = null; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(mm, "/sessions/${sx.id}/delete", JSONObject()) } }.onSuccess { val k = mm.host + "|" + mm.token.take(8); lists[k] = lists[k]?.filter { it.id != sx.id } }.onFailure { delErr = it.message ?: "Couldn't delete it" } } } },
             dismissButton = { TextAction("Cancel") { delChat = null } }) }
         delErr?.let { Txt(it, T.small, color = MaterialTheme.colorScheme.error) }
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared) { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking) { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared) { onlyShared = true; onlyWorking = false }; Chip("Join chat ›", false) { join() } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared, "chat") { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking, "clock") { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared, "people") { onlyShared = true; onlyWorking = false }; Chip("Join chat", false, "plus") { join() } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't load chats right now" + (offline.mapNotNull { errs[key(it)] }.firstOrNull()?.let { " ($it)" } ?: "") + ". It tries again on its own.", T.small, muted = true)
@@ -248,7 +248,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
     val working = s.running || s.busy
     val dark = cs.background.luminance() < .5f
     val shape = RoundedCornerShape(20.dp)
-    Row(Modifier.fillMaxWidth().pressable(onLong, onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().pressable(onLong, onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { androidx.compose.foundation.text.selection.DisableSelection {   // a long press here is for deleting, not for selecting text
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)), contentAlignment = Alignment.Center) {
             Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
@@ -262,6 +262,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
                     T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
             }
         }
+    }
     }
 }
 
@@ -391,7 +392,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
     var delMsg by remember { mutableStateOf("") }
     delProj?.let { pr -> androidx.compose.material3.AlertDialog(onDismissRequest = { delProj = null; delText = "" }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
         title = { Txt("Delete project ${pr.name}?", T.h2) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Txt("Its files and all its chats go to the trash on the server for 30 days. Type the project name to confirm.", T.body); Field(delText, { delText = it }, pr.name) } },
+        text = { androidx.compose.foundation.text.selection.DisableSelection { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Txt("Its files and all its chats go to the trash on the server for 30 days. Type the project name to confirm.", T.body); Field(delText, { delText = it }, pr.name) } } },
         confirmButton = { TextAction("Delete") {
             if (!delText.trim().equals(pr.name, ignoreCase = true)) { delMsg = "The name did not match. Nothing was deleted."; delProj = null; delText = ""; return@TextAction }
             val mm = sel; delProj = null; delText = ""
@@ -472,7 +473,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
         if (ps == null && err == null) Txt("Loading…", T.small, muted = true)
         if (delMsg.isNotEmpty()) Txt(delMsg, T.small, muted = true)
         if (ps != null && ps.isNotEmpty()) { Label(if (root != null) "Or continue a project" else "Recent projects"); ps.forEach { p ->
-            Card(Modifier.pressable({ if (root != null) delProj = p }) { go(p.path) }) { Txt(p.name, T.h2); Txt(short(p.path), T.small, muted = true) }
+            Card(Modifier.pressable({ if (root != null) delProj = p }) { go(p.path) }) { androidx.compose.foundation.text.selection.DisableSelection { Txt(p.name, T.h2); Txt(short(p.path), T.small, muted = true) } }
         } }
         if (ps != null && ps.isEmpty() && root == null) Txt("No projects on ${m.name} yet. Start a chat in a folder from your computer first.", T.small, muted = true)
     }
@@ -525,7 +526,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
     if (delAsk) androidx.compose.material3.AlertDialog(onDismissRequest = { delAsk = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
         title = { Txt("Delete this chat?", T.h2) },
-        text = { Txt("\"${sess.title}\" goes to the trash on the server for 30 days. You can restore it from the desktop app.", T.body) },
+        text = { androidx.compose.foundation.text.selection.DisableSelection { Txt("\"${sess.title}\" goes to the trash on the server for 30 days. You can restore it from the desktop app.", T.body) } },
         confirmButton = { TextAction("Delete") { delAsk = false; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/sessions/${sess.id}/delete", JSONObject()) } }.onSuccess { back() }.onFailure { err = it.message ?: "Couldn't delete it" } } } },
         dismissButton = { TextAction("Cancel") { delAsk = false } })
     val guest = m.guest   // a shared chat of a friend: you read it, what you send goes to them to approve

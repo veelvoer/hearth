@@ -165,7 +165,7 @@ fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> U
 
 /** A title that groups the cards under it, so a long page is easy to find your way in. */
 @Composable
-fun SectionTitle(text: String) { Txt(text, T.h2.copy(fontSize = 20.sp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 14.dp, start = 4.dp)) }
+fun SectionTitle(text: String, icon: String? = null) { Row(Modifier.padding(top = 14.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) { if (icon != null) { Glyph(icon, 20.dp, MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp)) }; Txt(text, T.h2.copy(fontSize = 20.sp), color = MaterialTheme.colorScheme.primary) } }
 
 /** A card that is closed until you tap its title, so a long page of settings reads as a short list. The (i) keeps the explanation. */
 @Composable
@@ -216,7 +216,7 @@ fun Spark(size: Dp, color: Color = MaterialTheme.colorScheme.primary) {
 }
 
 @Composable
-fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
+fun Chip(text: String, selected: Boolean, icon: String? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val cs = MaterialTheme.colorScheme
     val group = LocalChipGroup.current
@@ -227,7 +227,7 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
         Modifier.pressable(onClick = onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c, c.size.width.toFloat(), c.size.height.toFloat()) }
             .clip(shape).background(solid).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
-    ) { Txt(text, T.small, color = ink) }
+    ) { Row(verticalAlignment = Alignment.CenterVertically) { if (icon != null) { Glyph(icon, 15.dp, ink); Spacer(Modifier.width(6.dp)) }; Txt(text, T.small, color = ink) } }
 }
 
 /** The selected chip's highlight is one shape that glides to the next chip; the chips themselves never move. */

@@ -149,8 +149,11 @@ private fun Main() {
             val bar = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 4.dp).tourTarget("tabs").panel(bar).padding(6.dp)) {
                 tabs.forEachIndexed { i, s ->
-                    Box(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(if (tab == i) active else androidx.compose.ui.graphics.Color.Transparent).clickable { Ui.tab = i }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
-                        Txt(s, T.small.copy(fontWeight = if (tab == i) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i, color = if (tab == i) cs.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                    Box(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(if (tab == i) active else androidx.compose.ui.graphics.Color.Transparent).clickable { Ui.tab = i }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Glyph(listOf("chat", "home", "history", "gear")[i], 22.dp, if (tab == i) cs.primary else cs.onSurfaceVariant)
+                            Txt(s, T.small.copy(fontSize = 11.sp, fontWeight = if (tab == i) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i, color = if (tab == i) cs.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                        }
                     }
                 }
             }
