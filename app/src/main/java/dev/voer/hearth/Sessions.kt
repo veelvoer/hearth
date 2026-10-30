@@ -193,6 +193,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     var query by remember { mutableStateOf("") }
     var onlyWorking by remember { mutableStateOf(false) }
     var onlyShared by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var delChat by remember { mutableStateOf<Pair<Machine, Sess>?>(null) }
     var delErr by remember { mutableStateOf<String?>(null) }   // shared chats are kept apart: not in the normal list, but under their own chip
     Box(Modifier.fillMaxSize()) {
@@ -247,7 +248,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
     val working = s.running || s.busy
     val dark = cs.background.luminance() < .5f
     val shape = RoundedCornerShape(20.dp)
-    Row(Modifier.fillMaxWidth().pressable(onClick, onLong).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().pressable(onLong, onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)), contentAlignment = Alignment.Center) {
             Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
@@ -471,7 +472,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
         if (ps == null && err == null) Txt("Loading…", T.small, muted = true)
         if (delMsg.isNotEmpty()) Txt(delMsg, T.small, muted = true)
         if (ps != null && ps.isNotEmpty()) { Label(if (root != null) "Or continue a project" else "Recent projects"); ps.forEach { p ->
-            Card(Modifier.pressable({ go(p.path) }, { if (root != null) delProj = p })) { Txt(p.name, T.h2); Txt(short(p.path), T.small, muted = true) }
+            Card(Modifier.pressable({ if (root != null) delProj = p }) { go(p.path) }) { Txt(p.name, T.h2); Txt(short(p.path), T.small, muted = true) }
         } }
         if (ps != null && ps.isEmpty() && root == null) Txt("No projects on ${m.name} yet. Start a chat in a folder from your computer first.", T.small, muted = true)
     }

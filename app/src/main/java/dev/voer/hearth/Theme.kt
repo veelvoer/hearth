@@ -147,7 +147,7 @@ fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
 
 /** Shrinks a little while pressed and springs back. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun Modifier.pressable(onClick: () -> Unit, onLong: (() -> Unit)? = null): Modifier = composed {
+fun Modifier.pressable(onLong: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed && Fx.motion) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
