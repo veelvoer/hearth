@@ -224,7 +224,7 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     val ink by androidx.compose.animation.animateColorAsState(if (selected) cs.onPrimary else cs.onSurface, androidx.compose.animation.core.tween(220), label = "chipink")
     val solid by androidx.compose.animation.animateColorAsState(if (selected && group == null) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
     Box(
-        Modifier.pressable(onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c, c.size.width.toFloat(), c.size.height.toFloat()) }
+        Modifier.pressable(onClick = onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c, c.size.width.toFloat(), c.size.height.toFloat()) }
             .clip(shape).background(solid).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) { Txt(text, T.small, color = ink) }
@@ -263,7 +263,7 @@ fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Ho
 fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Box(
-        modifier.pressable(onClick).clip(RoundedCornerShape(14.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
+        modifier.pressable(onClick = onClick).clip(RoundedCornerShape(14.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) { val ic = ACTION_ICONS[text]; Row(verticalAlignment = Alignment.CenterVertically) { if (ic != null) { Glyph(ic, 18.dp, cs.onPrimary); Spacer(Modifier.width(8.dp)) }; Txt(text, T.body.copy(fontWeight = FontWeight.Medium), color = cs.onPrimary) } }
 }
