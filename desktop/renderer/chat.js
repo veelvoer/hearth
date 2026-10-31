@@ -86,7 +86,9 @@ function drawSide() {
   const own = !q && SS.projKey && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
   if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, 'Delete all ' + own.length + ' chats of this project…')));
   if (!list.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
-  if (SS.err) side.append(h('div', { class: 'small err' }, SS.err));
+  if (SS.err) { const sv = SS.machines.find((m) => m.secure), box = h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small err' }, SS.err), h('div', { class: 'small muted' }, 'A stuck server restarts itself within a couple of minutes.'));
+    if (sv) { const note = h('span', { class: 'small muted' }); box.append(h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: async () => { note.textContent = 'Restarting…'; try { await cm.relay(sv.id, 'POST', '/admin/restart', { force: true }); note.textContent = 'Restarting. It is back in a few seconds.'; setTimeout(() => { pollLive(); }, 8000); } catch (e) { note.textContent = clean(e); } } }, 'Restart ' + (sv.name || 'server')), note)); }
+    side.append(box); }
   side.scrollTop = keep;
   if (hadFocus) { const i = $('#chat-search'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 }

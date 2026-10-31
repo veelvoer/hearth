@@ -37,6 +37,8 @@ jobs:
         run: node desktop/test/delete-chats.test.js
       - name: Login error test
         run: node desktop/test/auth-error.test.js
+      - name: Watchdog test
+        run: node desktop/test/watchdog.test.js
       - name: Usage limit continue
         run: node desktop/test/limit.test.js
       - name: Command rules test

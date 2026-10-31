@@ -228,7 +228,8 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
         ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared, "chat") { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking, "clock") { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared, "people") { onlyShared = true; onlyWorking = false }; Chip("Join chat", false, "plus") { join() } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
-        if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't load chats right now" + (offline.mapNotNull { errs[key(it)] }.firstOrNull()?.let { " ($it)" } ?: "") + ". It tries again on its own.", T.small, muted = true)
+        if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't load chats right now" + (offline.mapNotNull { errs[key(it)] }.firstOrNull()?.let { " ($it)" } ?: "") + ". It tries again on its own, and a stuck server restarts itself within a couple of minutes.", T.small, muted = true)
+        if (offline.isNotEmpty()) { val srv = offline.firstOrNull { it.secure }; if (srv != null) { TextAction("Restart ${srv.name}") { scope.launch { delErr = (Updates.restartServer(srv, false) ?: "Restarting… it is back in a few seconds.") } } } }
         // the server holds every chat, so its list is the list (same as on the desktop app); other computers only fill in what it lacks
         val hub = machines.firstOrNull { it.secure && lists[key(it)] != null }
         val all = (machines + guests).flatMap { mm -> (lists[key(mm)] ?: emptyList()).map { mm to it } }

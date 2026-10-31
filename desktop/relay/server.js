@@ -969,6 +969,8 @@ function start(opts) {
       const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
       const ip = clientIp(req);
       const bearerKey = String(req.headers.authorization || '').replace(/^Bearer /, '');
+      if (parts[0] === 'health' && parts.length === 1 && req.method === 'GET') return json(res, 200, { ok: true, boot: BOOT });   // for the watchdog of the program that started this one: nothing private in it
+      if (process.env.HEARTH_TEST === '1' && parts[0] === '__hang') { const t = Date.now(); while (Date.now() - t < 60000) { /* stuck on purpose, for the watchdog test */ } return json(res, 200, { ok: true }); }
       if (parts[0] === 'v1') return apiHttp(req, res, u, parts, ip);   // an app of yours with a Hearth API key
       if (/^share\./.test(bearerKey)) {   // a friend's key for one shared chat
         if (!publicMode && !reach(ip)) return json(res, 403, { error: 'local network only' });

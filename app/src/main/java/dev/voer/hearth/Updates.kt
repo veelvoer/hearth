@@ -239,13 +239,13 @@ fun UpdatesCard() {
                     Txt("Server · ${m.name}", T.body)
                     Txt(when {
                         !infos.containsKey(m.host) -> "Looking…"
-                        info == null -> "Can't be reached right now"
+                        info == null -> "Can't be reached right now. A stuck server restarts itself within a couple of minutes."
                         info.version == null -> "Older server: run the installer line again to update it"
                         Updates.latestVersion.isNotEmpty() && Updates.newer(Updates.latestVersion, info.version) -> "Version ${info.version} · update to ${Updates.latestVersion}"
                         else -> "Version ${info.version} · up to date"
                     }, T.small, muted = true)
                 }
-                if (info?.canUpdate == true) TextAction("Restart") { restartAsk = m }
+                if (infos.containsKey(m.host) && (info == null || info.canUpdate)) TextAction("Restart") { restartAsk = m }
                 if (info?.version != null && info.canUpdate && Updates.latestVersion.isNotEmpty() && Updates.newer(Updates.latestVersion, info.version))
                     Button(if (updating == m.host) "Updating…" else "Update", Modifier) {
                         if (updating.isEmpty()) scope.launch { updating = m.host; note = Updates.updateServer(m) ?: "Server updated"; kotlinx.coroutines.delay(4000); infos = infos + (m.host to Updates.serverInfo(m)); updating = "" }
