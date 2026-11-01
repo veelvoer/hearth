@@ -81,7 +81,7 @@ private fun WorkflowEditor(onClose: () -> Unit, start: (List<WfStep>, Boolean) -
                     if (steps.size > 1) TextAction("Remove step") { steps.remove(x) }
                 }
                 Txt("Add a step", T.small, muted = true)
-                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(BUG_TEST, BUG_FIX, LIST_FIX).forEach { p -> Chip(p.name, false) { if (steps.size < 10) steps.add(WfStep(p.name, p.prompt, p.minutes)) } }
                     Chip("Custom", false) { if (steps.size < 10) steps.add(WfStep("Step ${steps.size + 1}", "", 60)) }
                 }

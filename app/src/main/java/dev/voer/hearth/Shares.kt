@@ -198,7 +198,7 @@ fun ShareDialog(m: Machine, sid: String, title: String, onClose: () -> Unit) {
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)).padding(12.dp)) {
                         Txt(p.name, T.body.copy(fontWeight = FontWeight.SemiBold))
                         Row(verticalAlignment = Alignment.CenterVertically) { Txt("Full permission: runs without asking", T.small, modifier = Modifier.weight(1f)); Switch(p.auto, { on -> act { Shares.setGrant(m, i.id, p.id, on, p.mode) } }) }
-                        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, p.mode == k) { act { Shares.setGrant(m, i.id, p.id, p.auto, k) } } } }
+                        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, p.mode == k) { act { Shares.setGrant(m, i.id, p.id, p.auto, k) } } } }
                         TextAction("Remove ${p.name}") { act { Shares.remove(m, i.id, p.id) } }
                     }
                 }
@@ -238,7 +238,7 @@ fun RequestDock(m: Machine, a: CallEvent, done: () -> Unit) {
             Label("$from wants to use your Claude")
             Txt("It runs in this chat, on your account. You can change the prompt first.", T.small, muted = true)
             Field(text, { text = it }, "Prompt", singleLine = false)
-            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, mode == k) { mode = k } } }
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, mode == k) { mode = k } } }
             Row(verticalAlignment = Alignment.CenterVertically) { Txt("Always run $from's prompts without asking", T.small, modifier = Modifier.weight(1f)); Switch(always, { always = it }) }
             err?.let { Txt(it, T.small, color = cs.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) { Button("Run it") { decide(true) }; TextAction("Deny") { decide(false) } }
@@ -290,7 +290,7 @@ fun IncomingDock(info: GuestInfo, q: GuestReq, onDeny: () -> Unit, onRun: (Strin
             Label("${q.fromName} wants to use your Claude")
             Txt("It runs on your own account, on your own server, and the answer shows up in this chat. You can change the prompt first.", T.small, muted = true)
             Field(text, { text = it }, "Prompt", singleLine = false)
-            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, mode == k) { mode = k } } }
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SHARE_MODES.forEach { (k, l) -> Chip(l, mode == k) { mode = k } } }
             Row(verticalAlignment = Alignment.CenterVertically) { Txt("Always run ${q.fromName}'s prompts without asking", T.small, modifier = Modifier.weight(1f)); Switch(always, { always = it }) }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) { Button("Run it") { onRun(text, mode, always) }; TextAction("Deny", onDeny) }
         }

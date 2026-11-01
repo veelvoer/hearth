@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -158,10 +160,11 @@ fun Modifier.pressable(onLong: (() -> Unit)? = null, onClick: () -> Unit): Modif
 }
 
 @Composable
-fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun Card(modifier: Modifier = Modifier, flat: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(20.dp)
+    if (flat) { Column(modifier.fillMaxWidth(), content = content); return }
     Column(
-        modifier.appear().fillMaxWidth().panel(shape).padding(18.dp),
+        modifier.appear().fillMaxWidth().panel(shape).padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
         content = content,
     )
 }
@@ -176,10 +179,10 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
     var open by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(20.dp)
     Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
             if (tip != null) InfoDot(title, tip)
-            Txt(if (open) "⌃" else "⌄", T.body, muted = true)
+            Glyph(if (open) "chevu" else "chevd", 22.dp)
         }
         androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp), content = content) }
     }
@@ -246,7 +249,8 @@ class ChipGroupState { var coords: androidx.compose.ui.layout.LayoutCoordinates?
 val LocalChipGroup = androidx.compose.runtime.compositionLocalOf<ChipGroupState?> { null }
 
 @Composable
-fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp), content: @Composable RowScope.() -> Unit) {
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp), scroll: Boolean = false, content: @Composable () -> Unit) {
     val st = remember { ChipGroupState() }
     val primary = MaterialTheme.colorScheme.primary
     androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides st) {
@@ -258,7 +262,8 @@ fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Ho
                 val w by animateFloatAsState(r.width, spec, label = "hlw"); val hh by animateFloatAsState(r.height, spec, label = "hlh")
                 Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), y.roundToInt()) }.size(with(LocalDensity.current) { w.toDp() }, with(LocalDensity.current) { hh.toDp() }).clip(RoundedCornerShape(50)).background(primary))
             }
-            Row(horizontalArrangement = horizontalArrangement, content = content)
+            if (scroll) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = horizontalArrangement) { content() }
+            else FlowRow(horizontalArrangement = horizontalArrangement, verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
         } }
     }
 }
@@ -277,6 +282,6 @@ fun TextAction(text: String, onClick: () -> Unit) {
     val ic = ACTION_ICONS[text]; val col = MaterialTheme.colorScheme.primary
     Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (ic != null) { Glyph(ic, 16.dp, col); Spacer(Modifier.width(5.dp)) }
-        Txt(text, T.small.copy(fontWeight = FontWeight.Medium), color = col)
+        Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), color = col, maxLines = 1, softWrap = false)
     }
 }

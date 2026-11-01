@@ -16,7 +16,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -29,7 +32,21 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
         val u = this.size.width / 24f
         val st = Stroke(width = 1.8f * u, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
         fun line(a: Float, b: Float, c: Float, d: Float) = drawLine(color, Offset(a * u, b * u), Offset(c * u, d * u), 1.8f * u, StrokeCap.Round)
+        fun svg(d: String, fill: Boolean = false) = withTransform({ scale(u, u, Offset.Zero) }) {
+            drawPath(PathParser().parsePathString(d).toPath(), color, style = if (fill) Fill else Stroke(1.8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
         when (name) {
+            "chevd" -> svg("M6 9l6 6 6-6")
+            "chevu" -> svg("M6 15l6-6 6 6")
+            "chevr" -> svg("M9 6l6 6-6 6")
+            "key" -> svg("M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4")
+            "shield" -> svg("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z")
+            "chip" -> svg("M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3")
+            "plug" -> svg("M12 22v-5 M9 8V2 M15 8V2 M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z")
+            "sparkle" -> svg("M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z")
+            "gauge" -> svg("M12 14l4-4 M3.34 19a10 10 0 1 1 17.32 0")
+            "contrast" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); svg("M12 3a9 9 0 0 1 0 18z", fill = true) }
+            "clip" -> svg("M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48")
             "info" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); line(12f, 11f, 12f, 17f); line(12f, 7.6f, 12f, 7.7f) }
             "phone" -> { drawRoundRect(color, Offset(7 * u, 2 * u), Size(10 * u, 20 * u), CornerRadius(2.5f * u), style = st); line(11f, 18.5f, 13f, 18.5f) }
             "server" -> { drawRoundRect(color, Offset(3 * u, 4 * u), Size(18 * u, 6 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(3 * u, 14 * u), Size(18 * u, 6 * u), CornerRadius(1.5f * u), style = st) }
@@ -51,7 +68,6 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
             "back" -> { val p = Path().apply { moveTo(15 * u, 5 * u); lineTo(8 * u, 12 * u); lineTo(15 * u, 19 * u) }; drawPath(p, color, style = st) }
             "mail" -> { drawRoundRect(color, Offset(3 * u, 5 * u), Size(18 * u, 14 * u), CornerRadius(2.5f * u), style = st); val p = Path().apply { moveTo(3.5f * u, 7.5f * u); lineTo(12 * u, 13.5f * u); lineTo(20.5f * u, 7.5f * u) }; drawPath(p, color, style = st) }
             "copy" -> { drawRoundRect(color, Offset(8.5f * u, 8.5f * u), Size(11.5f * u, 11.5f * u), CornerRadius(2f * u), style = st); val p = Path().apply { moveTo(4.5f * u, 15.5f * u); lineTo(4.5f * u, 5.5f * u); cubicTo(4.5f * u, 4.5f * u, 5 * u, 4 * u, 6 * u, 4 * u); lineTo(15.5f * u, 4 * u) }; drawPath(p, color, style = st) }
-            "clip" -> { val p = Path().apply { moveTo(8 * u, 14 * u); lineTo(14.5f * u, 7.5f * u); cubicTo(16 * u, 6 * u, 18.5f * u, 8.5f * u, 17 * u, 10 * u); lineTo(9.5f * u, 17.5f * u); cubicTo(7 * u, 20 * u, 3.5f * u, 16.5f * u, 6 * u, 14 * u); lineTo(12.5f * u, 7.5f * u) }; drawPath(p, color, style = st) }
             "people" -> { drawCircle(color, 3.2f * u, Offset(9 * u, 8 * u), style = st); val p = Path().apply { moveTo(3 * u, 19 * u); cubicTo(3 * u, 13 * u, 15 * u, 13 * u, 15 * u, 19 * u) }; drawPath(p, color, style = st); drawCircle(color, 2.6f * u, Offset(17 * u, 8.5f * u), style = st); val q = Path().apply { moveTo(17 * u, 13.5f * u); cubicTo(20 * u, 13.5f * u, 21 * u, 16 * u, 21 * u, 18.5f * u) }; drawPath(q, color, style = st) }
             "chat" -> { val p = Path().apply { moveTo(5 * u, 5 * u); lineTo(19 * u, 5 * u); cubicTo(20.5f * u, 5 * u, 21 * u, 5.5f * u, 21 * u, 7 * u); lineTo(21 * u, 14 * u); cubicTo(21 * u, 15.5f * u, 20.5f * u, 16 * u, 19 * u, 16 * u); lineTo(11 * u, 16 * u); lineTo(7 * u, 20 * u); lineTo(7 * u, 16 * u); lineTo(5 * u, 16 * u); cubicTo(3.5f * u, 16 * u, 3 * u, 15.5f * u, 3 * u, 14 * u); lineTo(3 * u, 7 * u); cubicTo(3 * u, 5.5f * u, 3.5f * u, 5 * u, 5 * u, 5 * u); close() }; drawPath(p, color, style = st) }
             "home" -> { val p = Path().apply { moveTo(3.5f * u, 11 * u); lineTo(12 * u, 4 * u); lineTo(20.5f * u, 11 * u); moveTo(6 * u, 9.5f * u); lineTo(6 * u, 20 * u); lineTo(18 * u, 20 * u); lineTo(18 * u, 9.5f * u); moveTo(10 * u, 20 * u); lineTo(10 * u, 14 * u); lineTo(14 * u, 14 * u); lineTo(14 * u, 20 * u) }; drawPath(p, color, style = st) }
@@ -93,4 +109,4 @@ fun IconAction(glyph: String, desc: String, onClick: () -> Unit) =
 val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
     "Check for updates" to "sync", "Check again" to "sync", "Test call" to "phone", "Cancel" to "x", "Close" to "x", "Not now" to "x", "Got it" to "check", "Back" to "back", "Tour" to "tour",
     "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
-    "Make invite link" to "share", "Share link" to "share", "Stop sharing" to "trash", "Join" to "people", "Enter the address myself" to "link", "What changed" to "history", "Restart" to "sync", "Delete" to "trash", "Delete this chat…" to "trash", "Revoke" to "x", "Look again" to "sync", "Show all" to "plus", "Remove step" to "trash", "Open folder" to "folder", "Set up a workflow" to "sliders", "Add to tasks" to "check", "Fix with Claude" to "tour", "Save" to "check", "Install" to "download", "Continue" to "play", "Setup" to "widget", "Background access" to "clock", "Full-screen calls" to "phone")
+    "Make invite link" to "share", "Share link" to "share", "Stop sharing" to "trash", "Join" to "people", "Enter the address myself" to "link", "What changed" to "history", "Restart" to "sync", "Delete" to "trash", "Delete this chat…" to "trash", "Revoke" to "x", "Look again" to "sync", "Show all" to "plus", "Remove step" to "trash", "Open folder" to "folder", "Set up a workflow" to "sliders", "Add to tasks" to "check", "Fix with Claude" to "tour", "Save" to "check", "Install" to "download", "Continue" to "play", "Setup" to "play", "Background access" to "clock", "Full-screen calls" to "phone")

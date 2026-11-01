@@ -213,7 +213,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
                 Spacer(Modifier.height(6.dp))
                 Txt("Put the phone on the same Wi-Fi as your computer and open Hearth there. Or use the address and code of your server.", T.small, muted = true)
                 Spacer(Modifier.height(10.dp))
-                FindComputers { list -> Store.setCallMe(c, true); save(list) }
+                FindComputers(flat = true) { list -> Store.setCallMe(c, true); save(list) }
                 Spacer(Modifier.height(10.dp))
                 AddComputerInline(machines) { save(it); if (machines.isEmpty()) Store.setCallMe(c, true) }
             }
@@ -225,7 +225,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             confirmButton = { TextAction("Delete") { delChat = null; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(mm, "/sessions/${sx.id}/delete", JSONObject()) } }.onSuccess { val k = mm.host + "|" + mm.token.take(8); lists[k] = lists[k]?.filter { it.id != sx.id } }.onFailure { delErr = it.message ?: "Couldn't delete it" } } } },
             dismissButton = { TextAction("Cancel") { delChat = null } }) }
         delErr?.let { Txt(it, T.small, color = MaterialTheme.colorScheme.error) }
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared, "chat") { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking, "clock") { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared, "people") { onlyShared = true; onlyWorking = false }; Chip("Join chat", false, "plus") { join() } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared, "chat") { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking, "clock") { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared, "people") { onlyShared = true; onlyWorking = false }; Chip("Join chat", false, "plus") { join() } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't load chats right now" + (offline.mapNotNull { errs[key(it)] }.firstOrNull()?.let { " ($it)" } ?: "") + ". It tries again on its own, and a stuck server restarts itself within a couple of minutes.", T.small, muted = true)
@@ -268,19 +268,19 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
 }
 
 @Composable
-internal fun AddComputer(suggest: Machine?, done: (Machine?) -> Unit) {
+internal fun AddComputer(suggest: Machine?, flat: Boolean = false, done: (Machine?) -> Unit) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf(suggest?.host ?: "") }
     var tok by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    Card {
+    Card(flat = flat) {
         Label("Add a computer or server")
         Spacer(Modifier.height(6.dp))
         Txt("Paste the pairing link, or enter the address and the token or 6-digit code.", T.small, muted = true)
-        Spacer(Modifier.height(10.dp)); Field(host, { host = it.trim() }, "Pairing link, https://… or 192.168.1.20")
-        Spacer(Modifier.height(8.dp)); Field(tok, { tok = it.trim() }, "Token or 6-digit code (not needed with a link)", mono = true)
+        Spacer(Modifier.height(10.dp)); Field(host, { host = it.trim() }, "Pairing link or address")
+        Spacer(Modifier.height(8.dp)); Field(tok, { tok = it.trim() }, "Token or 6-digit code", mono = true)
         Spacer(Modifier.height(8.dp)); Field(name, { name = it }, "Name (optional)")
         err?.let { Spacer(Modifier.height(6.dp)); Txt(it, T.small, color = MaterialTheme.colorScheme.primary) }
         Spacer(Modifier.height(12.dp))
@@ -306,7 +306,7 @@ internal fun AddComputer(suggest: Machine?, done: (Machine?) -> Unit) {
 @Composable
 private fun AddComputerInline(machines: List<Machine>, onSaved: (List<Machine>) -> Unit) {
     val c = LocalContext.current
-    AddComputer(null) { r -> if (r != null) { onSaved(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show() } }
+    AddComputer(null, flat = true) { r -> if (r != null) { onSaved(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show() } }
 }
 
 /** Everything about which computers and servers this phone talks to lives here, not on the sessions screen. */
@@ -331,13 +331,13 @@ fun ComputersCard() {
         }
         Spacer(Modifier.height(8.dp))
         if (adding) {
-            FindComputers { list ->
+            FindComputers(flat = true) { list ->
                 if (machines.isEmpty()) Store.setCallMe(c, true)
                 commit(machines.filter { h -> list.none { it.host == h.host } } + list); adding = false
                 Toast.makeText(c, "Connected to ${list.first().name}", Toast.LENGTH_SHORT).show()
             }
             Spacer(Modifier.height(8.dp))
-            if (manual) AddComputer(null) { r ->
+            if (manual) AddComputer(null, flat = true) { r ->
                 if (r != null) { if (machines.isEmpty()) Store.setCallMe(c, true); commit(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show(); adding = false }
                 manual = false
             } else Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) { TextAction("Enter the address myself") { manual = true }; TextAction("Cancel") { adding = false } }
@@ -422,7 +422,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
         }
         if (machines.size > 1) {
             Label("Where should it run?")
-            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 machines.sortedBy { it.secure }.forEach { mm -> Chip(mm.name, mm == m) { sel = mm } }
             }
             if (m.secure) {
@@ -430,7 +430,7 @@ private fun NewSession(machines: List<Machine>, back: () -> Unit, start: (Machin
                 LaunchedEffect(m) { Ui.newRun = "vps"; runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
                 if (pcs.isNotEmpty()) {
                     Label("Which computer should work on it?")
-                    ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         (listOf("Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, Ui.newRun == v) { Ui.newRun = v } }
                     }
                 } else Txt("Runs on the server, so it keeps going when your computer is off.", T.small, muted = true)
@@ -684,8 +684,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val working = sending || serverBusy
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
         Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, cs.outline, RoundedCornerShape(12.dp)).clickable(onClick = back), contentAlignment = Alignment.Center) { Txt("‹", T.body.copy(fontSize = 20.sp), muted = true) }
-            Spacer(Modifier.width(12.dp))
+            IconAction("back", "Back", back)
+            Spacer(Modifier.width(4.dp))
             Column(Modifier.weight(1f)) {
                 Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -700,7 +700,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.5f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than half the screen, so the typing bar always stays
             Label("Permissions")
-            ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; Store.setChatMode(appCtx, sess.id, v); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
             }
             if (mode == "bypassPermissions") Txt("Full auto: no questions asked.", T.small, color = cs.primary)
@@ -708,17 +708,17 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Label("Run on")
                 var pcs by remember { mutableStateOf<List<Computer>>(emptyList()) }
                 LaunchedEffect(options) { runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
-                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, run == v) { run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } } }
                 }
             }
             if (sess.kind != "talk") {
                 Label("Model")
-                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, sess.id, v) } }
                 }
                 Label("Effort")
-                ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max").forEach { (l, v) -> Chip(l, effort == v) { effort = v; Store.setChatEffort(appCtx, sess.id, v) } }
                 }
             }

@@ -15,7 +15,7 @@ import org.json.JSONObject
 
 /** Computers on this Wi-Fi, found by themselves. Tap one: it asks the person at the computer to accept. */
 @Composable
-fun FindComputers(onConnected: (List<Machine>) -> Unit) {
+fun FindComputers(flat: Boolean = false, onConnected: (List<Machine>) -> Unit) {
     val scope = rememberCoroutineScope()
     var found by remember { mutableStateOf<List<Machine>?>(null) }
     var scanning by remember { mutableStateOf(false) }
@@ -53,7 +53,7 @@ fun FindComputers(onConnected: (List<Machine>) -> Unit) {
             }.onFailure { msg = (it as? ApiException)?.message ?: "Could not reach ${m.name}." }
         }
     }
-    Card {
+    Card(flat = flat) {
         Label("Computers on this Wi-Fi")
         Spacer(Modifier.height(8.dp))
         val w = waiting

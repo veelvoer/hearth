@@ -395,13 +395,13 @@ fun NowScreen() {
             }
         }
         val w = u?.week
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val wr = w?.resetsAt
-            Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f))
-            Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f))
+            Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f).fillMaxHeight())
+            Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f).fillMaxHeight())
         }
         WeekPlanCard()
-        cost?.takeIf { it.days.isNotEmpty() }?.let { cc ->
+        cost?.takeIf { it.days.isNotEmpty() && it.total > 0 }?.let { cc ->
             Card {
                 Txt("Cost per day", T.body.copy(fontWeight = FontWeight.SemiBold))
                 Spacer(Modifier.height(12.dp))
@@ -651,7 +651,7 @@ private fun LimitCard() {
         val m = Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } ?: return@LaunchedEffect
         runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/admin/options", org.json.JSONObject()) } }.onSuccess { on = it.optBoolean("autoContinue") }
     }
-    Fold("bell", "When your usage runs out", "A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.") {
+    Fold("gauge", "When your usage runs out", "A chat that hits your plan limit stops. Hearth can ask you if it should carry on when your usage is back, or carry on without asking.") {
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Txt("Continue by itself when I have usage again", T.body); Txt(if (on) "The chat carries on after the limit resets, and you get a heads-up." else "You get a notification and choose whether to continue.", T.small, muted = true) }
@@ -680,7 +680,7 @@ private fun SkillsCard() {
     fun machine(): Machine? { val ms = Store.machines(c); return ms.firstOrNull { it.secure } ?: ms.firstOrNull() }
     fun load() { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.skills(m) } }.onSuccess { list = it }.onFailure { msg = "Couldn't load skills. Update the server first." } } }
     LaunchedEffect(Ui.machinesRev) { load() }
-    Fold("tour", "Skills", "Skills Claude can use. Add one from a GitHub link (owner/repo, or a link to one skill folder) or paste the text of a SKILL.md. They are saved on your server and work in every chat there.") {
+    Fold("sparkle", "Skills", "Skills Claude can use. Add one from a GitHub link (owner/repo, or a link to one skill folder) or paste the text of a SKILL.md. They are saved on your server and work in every chat there.") {
         Spacer(Modifier.height(10.dp))
         val l = list
         if (l == null) Txt(if (msg.isEmpty()) "Loading…" else msg, T.small, muted = true)
@@ -721,7 +721,7 @@ private fun McpBuildCard() {
     var notes by remember { mutableStateOf("") }
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    Fold("tour", "Make an MCP server", "An MCP server lets Claude control another program or service. Say what it should connect to (Inkscape, the Onshape API, a command line tool). Claude looks up how it can be controlled, writes the tools, tests them for real and connects it. You may be asked for an API key. It starts a chat you can follow in Chats.") {
+    Fold("plug", "Make an MCP server", "An MCP server lets Claude control another program or service. Say what it should connect to (Inkscape, the Onshape API, a command line tool). Claude looks up how it can be controlled, writes the tools, tests them for real and connects it. You may be asked for an API key. It starts a chat you can follow in Chats.") {
         Field(target, { target = it }, "What should it connect to?")
         Spacer(Modifier.height(8.dp))
         Field(notes, { notes = it }, "What should it be able to do? (optional)", singleLine = false)
@@ -767,7 +767,7 @@ private fun ApiKeysCard() {
     fun load() { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.apiKeys(m) } }.onSuccess { data = it; msg = "" }.onFailure { msg = "This server has no API keys yet. Update it first." } } }
     LaunchedEffect(Ui.machinesRev) { load() }
     fun post(path: String, body: JSONObject, then: (JSONObject) -> Unit = {}) { val m = machine() ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, path, body) } }.onSuccess { then(it); load() }.onFailure { msg = it.message ?: "Didn't work" } } }
-    Fold("server", "API keys", "Keys for your own apps. They use your plan's usage instead of credits. Low usage keys may only use light models and effort, high usage keys the strong ones, general keys everything. The guide is docs/API.md in the Hearth repository.") {
+    Fold("key", "API keys", "Keys for your own apps. They use your plan's usage instead of credits. Low usage keys may only use light models and effort, high usage keys the strong ones, general keys everything. The guide is docs/API.md in the Hearth repository.") {
         val d = data
         if (d == null) { Txt(msg.ifEmpty { "Loading…" }, T.small, muted = true); return@Fold }
         fresh?.let { k ->
@@ -798,17 +798,17 @@ private fun ApiKeysCard() {
         Label("New key")
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low" to "Low usage", "high" to "High usage", "general" to "General").forEach { (v, l) -> Chip(l, kind == v) { kind = v; shownKind = "" } } }
         Txt("Models it may use", T.small, muted = true)
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("haiku", "sonnet", "opus").forEach { v -> Chip(v, v in models) { if (v in models) { if (models.size > 1) models.remove(v) } else models.add(v) } } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("haiku", "sonnet", "opus").forEach { v -> Chip(v, v in models) { if (v in models) { if (models.size > 1) models.remove(v) } else models.add(v) } } }
         Txt("Effort levels it may use", T.small, muted = true)
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low", "medium", "high", "xhigh", "max").forEach { v -> Chip(v, v in efforts) { if (v in efforts) { if (efforts.size > 1) efforts.remove(v) } else efforts.add(v) } } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low", "medium", "high", "xhigh", "max").forEach { v -> Chip(v, v in efforts) { if (v in efforts) { if (efforts.size > 1) efforts.remove(v) } else efforts.add(v) } } }
         Txt("Memory", T.small, muted = true)
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("none" to "None", "key" to "One session", "named" to "Per name").forEach { (v, l) -> Chip(l, memory == v) { memory = v } } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("none" to "None", "key" to "One session", "named" to "Per name").forEach { (v, l) -> Chip(l, memory == v) { memory = v } } }
         if (memory != "none") Txt(if (memory == "key") "Every call continues the same session, so it remembers the code it worked on." else "Calls with the same \"session\" name continue that session; other names start their own.", T.small, muted = true)
         Field(name, { name = it }, "Name, e.g. my bot")
         Txt("Expires", T.small, muted = true)
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 30 to "30 days", 90 to "90 days", 365 to "1 year").forEach { (v, l) -> Chip(l, days == v) { days = v } } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 30 to "30 days", 90 to "90 days", 365 to "1 year").forEach { (v, l) -> Chip(l, days == v) { days = v } } }
         Txt("Requests a day", T.small, muted = true)
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "No limit", 50 to "50", 200 to "200", 1000 to "1000").forEach { (v, l) -> Chip(l, perDay == v) { perDay = v } } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "No limit", 50 to "50", 200 to "200", 1000 to "1000").forEach { (v, l) -> Chip(l, perDay == v) { perDay = v } } }
         Txt("Stops at this much of the 5-hour session: " + (if (sessAt == 0) "never" else "$sessAt%"), T.small, muted = true)
         androidx.compose.material3.Slider(sessAt / 100f, { sessAt = (it * 20).toInt() * 5 }, valueRange = 0f..1f, steps = 19)
         Txt("Stops at this much of the week: " + (if (stopAt == 0) "never" else "$stopAt%"), T.small, muted = true)
@@ -838,7 +838,7 @@ private fun PermissionsCard() {
         val m = machine() ?: return
         scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.setOptions(m, body) } }.onSuccess { o = it; msg = "" }.onFailure { msg = it.message ?: "Couldn't save" } }
     }
-    Fold("server", "Server permissions", "Choose how much Claude may do on your server. Nothing here applies to your own computers.") {
+    Fold("shield", "Server permissions", "Choose how much Claude may do on your server. Nothing here applies to your own computers.") {
         Spacer(Modifier.height(10.dp))
         val v = o
         if (v == null) { Txt(msg, T.small, muted = true); return@Fold }
@@ -882,12 +882,12 @@ private fun MemoryCard() {
         val m = machine()
         if (m == null) msg = "Connect a computer or server first." else runCatching { withContext(Dispatchers.IO) { Relay.memory(m) } }.onSuccess { info = it; msg = "" }.onFailure { msg = "This server has no memory setting yet. Update it first." }
     }
-    Fold("server", "Server memory", "The most memory the server program may use, as a share of the memory that is free when it starts. 75% is the default. It takes effect when the server starts again.") {
+    Fold("chip", "Server memory", "The most memory the server program may use, as a share of the memory that is free when it starts. 75% is the default. It takes effect when the server starts again.") {
         Spacer(Modifier.height(10.dp))
         val i = info
         if (i == null) { Txt(msg, T.small, muted = true); return@Fold }
         val cur = picked ?: i.pct
-        ChipRow(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(25 to "25%", 50 to "50%", 75 to "75%", 90 to "90%", 0 to "No limit").forEach { (v, l) -> Chip(l, cur == v) { picked = v } }
         }
         Spacer(Modifier.height(8.dp))
@@ -962,8 +962,8 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(6.dp))
         }
-        SectionTitle("Look and feel", "paint")
-        Fold("paint", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
+        SectionTitle("Look and feel", "contrast")
+        Fold("contrast", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -985,7 +985,7 @@ fun SettingsScreen() {
         Card(Modifier.clickable { sub = "widgets" }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) { Txt("Widgets", T.body); Txt("Home screen widgets, sizes and colors", T.small, muted = true) }
-                Txt("›", T.title, muted = true)
+                Glyph("chevr", 24.dp)
             }
         }
         Fold("bell", "Alerts") {
