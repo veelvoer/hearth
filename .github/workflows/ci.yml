@@ -41,6 +41,8 @@ jobs:
         run: node desktop/test/watchdog.test.js
       - name: Contrast test
         run: node desktop/test/contrast.test.js
+      - name: App installer tests
+        run: node desktop/test/installer.test.js && node desktop/test/updater-flow.test.js && node desktop/test/packaging.test.js
       - name: Usage limit continue
         run: node desktop/test/limit.test.js
       - name: Command rules test

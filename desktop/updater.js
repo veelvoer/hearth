@@ -132,34 +132,60 @@ function create(d) {
   const adbDevices = (adb) => new Promise((resolve) => execFile(adb, ['devices'], { timeout: 8000 }, (e, out) => resolve(e ? null : String(out).split('\n').slice(1).filter((l) => /\tdevice$/.test(l.trim() + '')).map((l) => l.split('\t')[0]))));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const download = (url, file, onPct) => new Promise((resolve, reject) => {
-    gh.get(url, { ms: 120000 }).then((rs) => {
-      const total = Number(rs.headers['content-length']) || 0; let got = 0, last = 0;
-      const out = fs.createWriteStream(file);
-      rs.on('data', (c) => { got += c.length; if (total && Date.now() - last > 300) { last = Date.now(); onPct(Math.floor(got * 100 / total)); } });
-      rs.pipe(out); out.on('finish', () => resolve()); out.on('error', reject); rs.on('error', reject);
-    }, reject);
-  });
+  const MANUAL = ' You can also download it yourself: github.com/veelvoer/hearth/releases/latest';
+  const inst = require('./installer');
   async function installDesktop(l, say) {
     const pick = (re) => l.assets.find((a) => re.test(a.name));
     const tmp = path.join(os.tmpdir(), 'hearth-update'); fs.mkdirSync(tmp, { recursive: true });
-    if (process.platform === 'linux' && process.env.APPIMAGE) {
-      const a = pick(/AppImage$/); if (!a) throw new Error('No AppImage in the newest release.');
-      const target = process.env.APPIMAGE, part = target + '.new';
-      await download(a.url, part, (p) => say('desktop', `Downloading the new version… ${p}%`)); fs.chmodSync(part, 0o755); fs.renameSync(part, target);
-      return { relaunch: target };
+    const pct = (p) => say('desktop', `Downloading the new version… ${p}%`);
+    if (process.platform === 'linux') {
+      const a = pick(/AppImage$/), kind = inst.linuxKind(), deb = pick(/\.deb$/);
+      const fetchTo = (dirOrFile, name) => inst.download({ get: gh.get, asset: a, file: dirOrFile, onPct: pct });
+      if (kind.kind === 'appimage') {   // one AppImage file: the new file replaces it in one step
+        if (!a) throw new Error('There is no AppImage in the newest release.' + MANUAL);
+        const target = kind.file, dir = path.dirname(target);
+        if (inst.writable(dir)) { await fetchTo(target + '.new'); inst.replaceFile(target, target + '.new'); return { relaunch: target }; }
+        const moved = await fetchTo(path.join(os.homedir(), 'Downloads', a.name)); fs.chmodSync(moved, 0o755);
+        return { manual: 'The folder of the app is read-only, so the new version was saved as ' + moved + '. Start it from there.' };
+      }
+      if (kind.kind === 'extracted') {   // an AppImage that was unpacked into a folder: unpack the new one into its place
+        if (!a) throw new Error('There is no AppImage in the newest release.' + MANUAL);
+        const file = path.join(tmp, a.name); await fetchTo(file);
+        say('desktop', 'Installing the new version…');
+        try {
+          const r = await inst.swapUnpacked({ dir: kind.dir, appImage: file }); try { fs.unlinkSync(file); } catch { /* temp */ }
+          return { relaunch: kind.viaAppRun ? r.appRun : path.join(r.dir, path.basename(process.execPath)) };
+        } catch (e) {
+          if (e.code !== 'EACCES') throw new Error(e.message + ' The app you have now still works.' + MANUAL);
+          const moved = inst.moveToUserAppImage({ appImage: file });   // the folder cannot be written: continue as an AppImage in your own folder
+          return { relaunch: moved, note: 'The app moved to ' + moved + ' so it can update itself from now on.' };
+        }
+      }
+      // a package (.deb / .rpm / pacman) or a plain unpacked build: it cannot be replaced without a password
+      const hasDpkg = ['/usr/bin/dpkg', '/bin/dpkg'].some((x) => fs.existsSync(x));
+      if (kind.kind === 'system' && hasDpkg && deb) {
+        const file = path.join(os.homedir(), 'Downloads', deb.name); fs.mkdirSync(path.dirname(file), { recursive: true });
+        await inst.download({ get: gh.get, asset: deb, file, onPct: pct });
+        d.openPath(file); return { manual: 'The installer is open. Press Install, then start Hearth again.' };
+      }
+      if (!a) throw new Error('There is no AppImage in the newest release.' + MANUAL);
+      const file = path.join(tmp, a.name); await fetchTo(file);
+      const moved = inst.moveToUserAppImage({ appImage: file }); try { fs.unlinkSync(file); } catch { /* temp */ }
+      return { relaunch: moved, note: 'Hearth now runs from ' + moved + ' and updates itself from there. You can remove the old installed copy.' };
     }
     if (process.platform === 'win32' && !process.env.PORTABLE_EXECUTABLE_FILE) {
-      const a = pick(/win-x64\.exe$/); if (!a) throw new Error('No installer in the newest release.');
-      const file = path.join(tmp, a.name); await download(a.url, file, (p) => say('desktop', `Downloading the new version… ${p}%`));
+      const a = pick(/win-x64\.exe$/); if (!a) throw new Error('There is no installer in the newest release.' + MANUAL);
+      const file = path.join(tmp, a.name); await inst.download({ get: gh.get, asset: a, file, onPct: pct });
       spawn('cmd', ['/c', 'start', '/wait', '""', file, '/S', '&&', 'start', '""', process.execPath], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
       return { quit: true };
     }
-    if (process.platform === 'linux') {   // installed from a .deb: the system installer asks for the password itself
-      const a = pick(/\.deb$/); if (!a) throw new Error('No package in the newest release.');
-      const file = path.join(os.homedir(), 'Downloads', a.name); fs.mkdirSync(path.dirname(file), { recursive: true });
-      await download(a.url, file, (p) => say('desktop', `Downloading the new version… ${p}%`));
-      d.openPath(file); return { manual: 'The installer is open. Press Install, then start Hearth again.' };
+    if (process.platform === 'win32') {   // the portable exe: the new one is saved next to it, and a small script puts it in place after this app has closed
+      const a = pick(/portable\.exe$/), target = process.env.PORTABLE_EXECUTABLE_FILE; if (!a) throw new Error('There is no portable file in the newest release.' + MANUAL);
+      const fresh = target + '.new'; await inst.download({ get: gh.get, asset: a, file: fresh, onPct: pct });
+      const bat = path.join(tmp, 'hearth-swap.bat');
+      fs.writeFileSync(bat, `@echo off\r\nfor /l %%i in (1,1,30) do (move /y "${fresh}" "${target}" >nul 2>&1 && goto done)\r\ntimeout /t 1 >nul\r\n:done\r\nstart "" "${target}"\r\n`);
+      spawn('cmd', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      return { quit: true };
     }
     d.openExternal('https://github.com/veelvoer/hearth/releases/latest'); return { manual: 'The download page is open in your browser.' };
   }
@@ -179,8 +205,8 @@ function create(d) {
         if (await d.localBusy()) throw new Error('Claude is working on this computer right now. Try again when it has finished.');
         say('desktop', 'Downloading the new version…');
         const r = await installDesktop(l, say);
-        if (r.manual) say('desktop', r.manual, 'ok'); else { say('desktop', 'Restarting…', 'ok'); relaunch = r; }
-      } catch (e) { failed = true; say('desktop', e.message, 'fail'); }
+        if (r.manual) say('desktop', r.manual, 'ok'); else { say('desktop', (r.note ? r.note + ' ' : '') + 'Restarting…', 'ok'); relaunch = r; }
+      } catch (e) { failed = true; say('desktop', /download it yourself/.test(e.message) ? e.message : e.message + MANUAL, 'fail'); }
     }
     return { failed, relaunch };
   }

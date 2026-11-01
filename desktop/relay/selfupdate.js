@@ -29,7 +29,7 @@ const newer = (a, b) => { const x = parse(a), y = parse(b); for (let i = 0; i < 
 /** The newest release: { tag, version, notes, assets: [{ name, url, size }] } */
 async function latest() {
   const r = await get(`https://api.github.com/repos/${REPO}/releases/latest`, { json: true });
-  return { tag: r.tag_name, version: String(r.tag_name || '').replace(/^v/, ''), notes: String(r.body || '').slice(0, 1500), assets: (r.assets || []).map((a) => ({ name: a.name, url: a.browser_download_url, size: a.size })) };
+  return { tag: r.tag_name, version: String(r.tag_name || '').replace(/^v/, ''), notes: String(r.body || '').slice(0, 1500), assets: (r.assets || []).map((a) => ({ name: a.name, url: a.browser_download_url, size: a.size, digest: a.digest || "" })) };
 }
 
 const run = (cmd, args, o = {}) => new Promise((resolve) => { const p = spawn(cmd, args, o); let out = ''; p.stdout && p.stdout.on('data', (d) => { out += d; }); p.stderr && p.stderr.on('data', (d) => { out += d; }); p.on('error', (e) => resolve({ ok: false, out: e.message })); p.on('close', (c) => resolve({ ok: c === 0, out })); });
