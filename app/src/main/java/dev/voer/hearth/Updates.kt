@@ -227,7 +227,7 @@ fun UpdatesCard() {
         if (r != null && r.notes.isNotBlank()) { Spacer(Modifier.height(6.dp)); Label("What is new"); Updates.plain(r.notes).take(14).forEach { Txt(it, T.small, muted = true) } }
         listOf(note, Updates.message).filter { it.isNotBlank() }.forEach { Txt(it, T.small, color = androidx.compose.material3.MaterialTheme.colorScheme.primary) }
         Spacer(Modifier.height(8.dp))
-        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class) FlowRow(verticalArrangement = Arrangement.Center, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextAction(if (Updates.busy) "Looking…" else "Check for updates") { if (!Updates.busy) scope.launch { look() } }
             TextAction("What changed") { history = true }
             if (r != null) Button("Update", Modifier) { if (!Updates.busy) scope.launch { Updates.install(c, r) } }

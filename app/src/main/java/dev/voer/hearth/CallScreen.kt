@@ -112,7 +112,7 @@ fun CallScreen(m: Machine, s: Sess, mode: String, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Label("Hearth", Modifier.weight(1f))
-            Txt(mmss(now - CallSession.startedAt), T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), muted = true)
+            Txt(mmss(if (CallSession.startedAt == 0L) 0 else now - CallSession.startedAt), T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), muted = true)
         }
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
@@ -151,7 +151,7 @@ fun CallScreen(m: Machine, s: Sess, mode: String, onClose: () -> Unit) {
             }
         }
         Spacer(Modifier.height(26.dp))
-        RoundButton("End", on = false, big = true, danger = true, onClick = { CallSession.end() }) {
+        RoundButton("End", on = false, big = true, danger = true, onClick = { CallSession.end(); onClose() }) {
             Canvas(Modifier.size(32.dp)) { hangUpIcon(Color.White) }
         }
         Spacer(Modifier.height(10.dp))

@@ -1,7 +1,7 @@
 {
   "name": "hearth-desktop",
   "productName": "Hearth",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "description": "Hearth",
   "main": "main.js",
   "private": true,
