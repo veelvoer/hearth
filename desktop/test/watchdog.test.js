@@ -4,7 +4,7 @@ const fs = require('fs'), os = require('os'), path = require('path'), http = req
 if (process.platform === 'win32') { console.log('skipped on Windows'); process.exit(0); }
 fs.mkdirSync(path.join(os.homedir(), '.cache'), { recursive: true }); const T = fs.mkdtempSync(path.join(os.homedir(), '.cache', 'hearth-wd-'));
 for (const d of ['home', 'proj']) fs.mkdirSync(path.join(T, d), { recursive: true });
-const env = { ...process.env, HOME: path.join(T, 'home'), HEARTH_TEST: '1', HEARTH_WD_INTERVAL_MS: '400', HEARTH_WD_TIMEOUT_MS: '700', HEARTH_WD_FAILS: '2', HEARTH_WD_GRACE_MS: '1500' };
+const env = { ...process.env, HOME: path.join(T, 'home'), HEARTH_TEST: '1', HEARTH_MEM_CHILD: '', HEARTH_WD_INTERVAL_MS: '400', HEARTH_WD_TIMEOUT_MS: '700', HEARTH_WD_FAILS: '2', HEARTH_WD_GRACE_MS: '1500' };
 const log = path.join(T, 'log.txt'), fd = fs.openSync(log, 'w');
 const main = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--dir', path.join(T, 'd'), '--port', '47789', '--host', '127.0.0.1', '--projects', path.join(T, 'proj')], { env, stdio: ['ignore', fd, fd] });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
