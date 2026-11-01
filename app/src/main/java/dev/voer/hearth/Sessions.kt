@@ -45,7 +45,7 @@ import org.json.JSONObject
 fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier, bare: Boolean = false) {
     val cs = MaterialTheme.colorScheme
     Box(if (bare) modifier.fillMaxWidth().padding(vertical = 10.dp) else modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceVariant)
-        .border(1.dp, cs.outline, RoundedCornerShape(16.dp)).padding(14.dp)) {
+        .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp)).padding(14.dp)) {
         if (value.isEmpty()) Txt(hint, T.body, muted = true)
         BasicTextField(value, onChange, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
             keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text),
@@ -123,7 +123,7 @@ private fun ToolCard(name: String, detail: String, result: String?, err: Boolean
             Spacer(Modifier.width(10.dp))
             Text(detail, style = T.small.copy(fontFamily = FontFamily.Monospace), color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
-            if (at > 0) { Txt(clock(at), T.small.copy(fontSize = 11.sp), muted = true); Spacer(Modifier.width(8.dp)) }
+            if (at > 0) { Txt(clock(at), T.small.copy(fontSize = 12.sp), muted = true); Spacer(Modifier.width(8.dp)) }
             Txt(if (result == null) "…" else if (err) "✗" else "✓", T.small, color = if (err) cs.error else cs.onSurfaceVariant)
         }
         if (open) {
@@ -739,19 +739,19 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             itemsIndexed(msgs) { idx, msg ->
               Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
                 when (msg.role) {
-                    "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 11.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                         Column(horizontalAlignment = Alignment.End) {
                         Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }
-                        if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 11.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
+                        if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
                         }
                     }
                     "tool" -> ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
                     "meta" -> Txt(msg.text, T.small, muted = true)
-                    else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column { MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 11.sp), muted = true) }
+                    else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column { MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) }
                 }
               }
             }
-            itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err, p.at) else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 11.sp), muted = true) } }
+            itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err, p.at) else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
             queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
             if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {

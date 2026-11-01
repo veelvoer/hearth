@@ -685,7 +685,7 @@ async function decide(p, behavior) {
   renderPerms();
 }
 function toast(text, onclick) {
-  const t = h('div', { class: 'toast', onclick: () => { t.remove(); if (onclick) onclick(); } }, text);
+  const t = h('div', { class: 'toast', role: onclick ? 'button' : 'status', 'aria-live': 'polite', tabindex: onclick ? '0' : null, onclick: () => { t.remove(); if (onclick) onclick(); }, onkeydown: (e) => { if (onclick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); t.click(); } } }, text);   // read out by screen readers, and reachable by keyboard when it can be clicked
   document.body.append(t);
   setTimeout(() => t.remove(), 9000);
 }

@@ -11,6 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -171,9 +174,9 @@ private fun Ring(pct: Float, dia: Dp = 118.dp, stroke: Dp = 11.dp, onClay: Boole
 private fun Tile(label: String, value: String, sub: String? = null, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(18.dp)
     Column(modifier.panel(shape).padding(14.dp)) {
-        Txt(label, T.small.copy(fontSize = 12.sp), muted = true)
+        Txt(label, T.small.copy(fontSize = 13.sp), muted = true)
         Txt(value, T.title.copy(fontSize = 26.sp))
-        if (sub != null) Txt(sub, T.small.copy(fontSize = 12.sp), muted = true)
+        if (sub != null) Txt(sub, T.small.copy(fontSize = 13.sp), muted = true)
     }
 }
 
@@ -511,7 +514,7 @@ fun HistoryScreen() {
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(x.title, style = T.body.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        Txt(listOfNotNull(x.cwd.trimEnd('/').substringAfterLast('/').ifEmpty { null }, modelName(x.model), if (work) "working now" else dur(now - x.mtime) + " ago").joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
+                        Txt(listOfNotNull(x.cwd.trimEnd('/').substringAfterLast('/').ifEmpty { null }, modelName(x.model), if (work) "working now" else dur(now - x.mtime) + " ago").joinToString(" · "), T.small.copy(fontSize = 13.sp), muted = true)
                     }
                     if (x.tokens > 0) Txt(tokensShort(x.tokens), T.small, muted = true)
                 }
@@ -615,7 +618,7 @@ private fun pin(c: Context, s: Shape) {
 
 @Composable
 fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 6.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {   // the label and its switch are read together by TalkBack
         Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt(label, T.body); if (sub != null) Txt(sub, T.small, muted = true) }
         trailing()
     }

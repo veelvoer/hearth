@@ -87,7 +87,7 @@ fun Head(icon: String, title: String, tip: String? = null, modifier: Modifier = 
 /** A button that is only an icon (header actions). Tap target is 40dp. */
 @Composable
 fun IconAction(glyph: String, desc: String, onClick: () -> Unit) =
-    Box(Modifier.size(40.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick).semantics { contentDescription = desc }, contentAlignment = Alignment.Center) { Glyph(glyph, 22.dp, MaterialTheme.colorScheme.primary) }
+    Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = Alignment.Center) { Glyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
 
 /** The familiar icon that goes with a one-word button. */
 val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",

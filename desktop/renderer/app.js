@@ -482,7 +482,7 @@ function apiKeysCard() {
     const load = async () => { try { data = await cm.relay(m.id, 'GET', '/admin/apikeys'); } catch { data = null; } draw(); };
     const draw = () => {
       body.innerHTML = '';
-      if (!data) { body.append(h('div', { class: 'small muted' }, 'This server has no API keys yet. Update it first.')); return; }
+      if (!data || !Array.isArray(data.keys) || !data.presets) { body.append(h('div', { class: 'small muted' }, 'This server has no API keys yet. Update it first.')); return; }
       if (fresh) body.append(h('div', { class: 'warnnote stack' }, h('b', {}, 'Copy your key now. It is shown only once.'), h('div', { class: 'mono small', style: 'word-break:break-all;user-select:all' }, fresh.key),
         h('div', { class: 'row' }, h('button', { class: 'primary sm', onclick: () => { cm.copy ? cm.copy(fresh.key) : navigator.clipboard.writeText(fresh.key); toast('Key copied'); } }, 'Copy'), h('button', { class: 'ghost sm', onclick: () => { fresh = null; draw(); } }, 'Done'))));
       data.keys.forEach((k) => body.append(h('div', { class: 'row crow' }, h('div', { class: 'grow', style: 'min-width:0' }, h('b', {}, k.name), h('div', { class: 'small muted' }, `${k.kind} · …${k.ends} · ${k.models.join('/')}${k.expiresAt ? ' · until ' + new Date(k.expiresAt).toLocaleDateString() : ''}${k.perDay ? ` · ${k.usedToday}/${k.perDay} today` : ` · ${k.usedToday} today`}${k.weekStopPct ? ` · stops at ${k.weekStopPct}% week` : ''}${k.sessionStopPct ? ` · ${k.sessionStopPct}% session` : ''}${k.session && k.session !== 'none' ? ' · remembers' : ''}${k.revoked ? ' · revoked' : ''}`)),

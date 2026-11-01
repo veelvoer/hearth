@@ -13,6 +13,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -56,17 +59,17 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 val Clay = Color(0xFFF0643C)
-val Crail = Color(0xFFC15F3C)
+val Crail = Color(0xFFB04D2A)   // darker than before: text and buttons in this color now reach 4.5:1 contrast on the light background
 
 private val Light = lightColorScheme(
     primary = Crail, onPrimary = Color(0xFFFBFAF6), background = Color(0xFFF4F1EA), onBackground = Color(0xFF2F2B20),
     surface = Color(0xFFF4F1EA), onSurface = Color(0xFF2F2B20), surfaceVariant = Color(0xFFFBFAF6),
-    onSurfaceVariant = Color(0xFF7F7A6D), outline = Color(0xFFE2DCCD), secondary = Clay,
+    onSurfaceVariant = Color(0xFF6B665A), outline = Color(0xFFE2DCCD), outlineVariant = Color(0xFF8F8A7B), secondary = Clay,   // outlineVariant: the border of inputs and chips (3:1 against the surface)
 )
 private val Dark = darkColorScheme(
     primary = Clay, onPrimary = Color(0xFF1B1A19), background = Color(0xFF1B1A19), onBackground = Color(0xFFF4F2EC),
     surface = Color(0xFF1B1A19), onSurface = Color(0xFFF4F2EC), surfaceVariant = Color(0xFF252422),
-    onSurfaceVariant = Color(0xFF9A968C), outline = Color(0xFF34322E), secondary = Clay,
+    onSurfaceVariant = Color(0xFF9A968C), outline = Color(0xFF34322E), outlineVariant = Color(0xFF77736A), secondary = Clay,
 )
 
 /** App-wide colors: Claude's own palette, or the phone's Material You colors when "System" is chosen. */
@@ -124,10 +127,10 @@ fun ClaudeTheme(content: @Composable () -> Unit) {
 object T {
     val big = TextStyle(fontFamily = FontFamily.Serif, fontSize = 64.sp, letterSpacing = (-1.5).sp)
     val title = TextStyle(fontFamily = FontFamily.Serif, fontSize = 32.sp)
-    val h2 = TextStyle(fontFamily = FontFamily.Serif, fontSize = 19.sp)
-    val body = TextStyle(fontSize = 15.sp, lineHeight = 21.sp)
-    val small = TextStyle(fontSize = 13.sp, lineHeight = 18.sp)
-    val label = TextStyle(fontSize = 11.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
+    val h2 = TextStyle(fontFamily = FontFamily.Serif, fontSize = 20.sp)
+    val body = TextStyle(fontSize = 16.sp, lineHeight = 23.sp)
+    val small = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
+    val label = TextStyle(fontSize = 12.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable
@@ -220,11 +223,12 @@ fun Chip(text: String, selected: Boolean, icon: String? = null, onClick: () -> U
     val shape = RoundedCornerShape(50)
     val cs = MaterialTheme.colorScheme
     val group = LocalChipGroup.current
-    val line by androidx.compose.animation.animateColorAsState(if (selected) (if (group != null) Color.Transparent else cs.primary) else cs.outline, androidx.compose.animation.core.tween(220), label = "chipline")
+    val line by androidx.compose.animation.animateColorAsState(if (selected) (if (group != null) Color.Transparent else cs.primary) else cs.outlineVariant, androidx.compose.animation.core.tween(220), label = "chipline")
     val ink by androidx.compose.animation.animateColorAsState(if (selected) cs.onPrimary else cs.onSurface, androidx.compose.animation.core.tween(220), label = "chipink")
     val solid by androidx.compose.animation.animateColorAsState(if (selected && group == null) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
     Box(
         Modifier.pressable(onClick = onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c, c.size.width.toFloat(), c.size.height.toFloat()) }
+            .heightIn(min = 48.dp).semantics(mergeDescendants = true) { role = androidx.compose.ui.semantics.Role.Button; this.selected = selected }
             .clip(shape).background(solid).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) { Row(verticalAlignment = Alignment.CenterVertically) { if (icon != null) { Glyph(icon, 15.dp, ink); Spacer(Modifier.width(6.dp)) }; Txt(text, T.small, color = ink) } }
@@ -271,7 +275,7 @@ fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
 @Composable
 fun TextAction(text: String, onClick: () -> Unit) {
     val ic = ACTION_ICONS[text]; val col = MaterialTheme.colorScheme.primary
-    Row(Modifier.clickable(onClick = onClick).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (ic != null) { Glyph(ic, 16.dp, col); Spacer(Modifier.width(5.dp)) }
         Txt(text, T.small.copy(fontWeight = FontWeight.Medium), color = col)
     }

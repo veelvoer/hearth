@@ -1,24 +1,24 @@
 :root {
-  --bg: #F1EEE7; --card: #FBFAF6; --ink: #2F2B20; --muted: #7F7A6D; --line: #E2DCCD; --clay: #C15F3C; --clay-soft: #F0643C; --onclay: #FBFAF6; --side: #EEEAE0; --active: #E6DDCB; --bubble: #E9E2D2;
+  --bg: #F1EEE7; --card: #FBFAF6; --ink: #2F2B20; --muted: #6B665A; --line: #E2DCCD; --line-ctl: #8F8A7B; --clay: #B04D2A; --clay-soft: #F0643C; --onclay: #FBFAF6; --side: #EEEAE0; --active: #E6DDCB; --bubble: #E9E2D2;
   --serif: "Tiempos Headline", Georgia, "DejaVu Serif", serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1B1A19; --card: #252422; --ink: #F4F2EC; --muted: #9A968C; --line: #34322E; --clay: #F0643C; --onclay: #1B1A19; --side: #161514; --active: #2E2A26; --bubble: #2E2A26; }
+  :root { --bg: #1B1A19; --card: #252422; --ink: #F4F2EC; --muted: #9A968C; --line: #34322E; --line-ctl: #77736A; --clay: #F0643C; --onclay: #1B1A19; --side: #161514; --active: #2E2A26; --bubble: #2E2A26; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 h1, h2, h3 { font-family: var(--serif); font-weight: 400; margin: 0; }
 h1 { font-size: 28px; } h2 { font-size: 20px; } h3 { font-size: 17px; }
-.muted { color: var(--muted); } .small { font-size: 13px; }
-.label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); } .small { font-size: 14px; }
+.label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 button { font: inherit; cursor: pointer; border-radius: 12px; border: 1px solid transparent; padding: 10px 18px; }
 button.primary { background: var(--clay); color: var(--onclay); font-weight: 600; }
 button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-button.link { background: none; color: var(--clay); padding: 4px 0; font-weight: 600; font-size: 13px; border: 0; border-radius: 4px; }
+button.link { background: none; color: var(--clay); padding: 4px 0; font-weight: 600; font-size: 14px; min-height: 28px; border: 0; border-radius: 4px; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
 input, textarea, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%; }
 textarea { resize: none; }
-.chip { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; color: var(--ink); }
+.chip { background: transparent; border: 1px solid var(--line-ctl); border-radius: 999px; padding: 6px 14px; font-size: 14px; min-height: 32px; color: var(--ink); }
 .chip.on { background: var(--clay); color: var(--onclay); border-color: var(--clay); }
 .row { display: flex; align-items: center; gap: 10px; } .grow { flex: 1; min-width: 0; }
 .wrap { flex-wrap: wrap; }
@@ -532,7 +532,7 @@ main.flush { padding: 0 0 16px; overflow: hidden; }
 .mono { font-family: ui-monospace, "DejaVu Sans Mono", monospace; }
 .pane > .empty { flex: 1; }
 @media (max-width: 1100px) { .rightcol { display: none; } }
-@media (max-width: 860px) { .split > .side { display: none; } #nav .tabs { position: static; transform: none; } }
+@media (max-width: 860px) { .split > .side { display: none; } }
 /* a brand-new chat is one centred question, as in the design */
 .pane.isnew .chatmain { justify-content: center; background: none; border: 0; }
 .pane.isnew .chat-head { display: none; }
@@ -746,3 +746,15 @@ details.rcard.fold[open] > summary { margin-bottom: 4px; }
 .projpop { position: fixed; z-index: 60; width: 320px; max-height: 60vh; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
 .projlist { overflow: auto; display: flex; flex-direction: column; gap: 2px; } .projrow { display: flex; align-items: center; gap: 4px; border-radius: 10px; } .projrow.on { background: var(--active); }
 .projpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; text-align: left; padding: 8px 10px; color: var(--ink); border-radius: 10px; } .projrow:hover { background: color-mix(in srgb, var(--clay) 8%, transparent); }
+
+/* design rules (docs/DESIGN.md): every control is at least 32px tall, the border of an input is 3:1 against its surface, small text is 14px, state is never only a color */
+button, .chip, .ptab, summary { min-height: 32px; }
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), textarea, select { border-color: var(--line-ctl); }
+button.sm { min-height: 32px; }
+#nav .item .small { font-size: 13px; }
+@media (forced-colors: active) { .chip.on, .ptab.on, .toggle.on { outline: 2px solid Highlight; } }
+/* narrow windows: the top bar must fit (the tabs were pushed out of the window below 900px) */
+@media (max-width: 960px) { #nav { gap: 8px; padding: 9px 12px !important; } #nav .tabs { padding: 3px; } #nav .tabs button { padding: 8px 12px; } #nav .brand .lbl { display: none; } }
+@media (max-width: 760px) { #nav .tabs button { padding: 8px 8px; font-size: 14px; } #nav .navfoot .lbl, #nav .navfoot span { display: none; } }
+/* the tabs sit in the middle of the bar only when there is room: below 1240px they flow after the logo, so they never run into the status and the New chat button */
+@media (max-width: 1240px) { #nav .tabs, #nav .tabs.hlready { position: relative !important; left: 0 !important; transform: none !important; margin-left: 10px; } #nav .navfoot { margin-left: auto; } }
