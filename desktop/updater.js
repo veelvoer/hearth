@@ -162,7 +162,7 @@ function create(d) {
         }
       }
       // a package (.deb / .rpm / pacman) or a plain unpacked build: it cannot be replaced without a password
-      const hasDpkg = ['/usr/bin/dpkg', '/bin/dpkg'].some((x) => fs.existsSync(x));
+      const hasDpkg = typeof d.hasDpkg === 'boolean' ? d.hasDpkg : ['/usr/bin/dpkg', '/bin/dpkg'].some((x) => fs.existsSync(x));
       if (kind.kind === 'system' && hasDpkg && deb) {
         const file = path.join(os.homedir(), 'Downloads', deb.name); fs.mkdirSync(path.dirname(file), { recursive: true });
         await inst.download({ get: gh.get, asset: deb, file, onPct: pct });

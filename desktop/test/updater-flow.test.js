@@ -18,7 +18,7 @@ const srv = http.createServer((q, s) => { s.writeHead(200, { 'Content-Length': B
   const sent = []; let relaunched;
   const deskDir = path.join(T, 'asar-desktop'); fs.mkdirSync(deskDir);   // no main.js here: behaves like the packaged app
   const mk = () => updater.create({ root: T, desktopDir: deskDir, getState: () => ({}), save() {}, send: (ch, d) => sent.push(d), serverBusy: async () => false, localBusy: async () => false,
-    relaunch: (p) => { relaunched = p || 'default'; }, relayBuild: async () => undefined, version: () => '1.0.0', relayStatus: async () => undefined, relayPost: async () => ({}), openPath() {}, openExternal() {}, notify() {}, windowHidden: () => false });
+    relaunch: (p) => { relaunched = p || 'default'; }, relayBuild: async () => undefined, version: () => '1.0.0', relayStatus: async () => undefined, relayPost: async () => ({}), openPath() {}, openExternal() {}, notify() {}, windowHidden: () => false, hasDpkg: false });
   const run = async () => { sent.length = 0; relaunched = undefined; await mk().run({ desktop: true }); await new Promise((r) => setTimeout(r, 1600)); return sent.filter((x) => x.step === 'desktop').map((x) => x.text + '|' + x.state); };
   const keep = { APPIMAGE: process.env.APPIMAGE, APPDIR: process.env.APPDIR, HOME: process.env.HOME };
   // 1 AppImage file
