@@ -161,6 +161,7 @@ function drawWeekPlan() {
   box.append(h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Your week, day by day'), p && !p.unavailable ? h('span', { class: 'small muted' }, 'Drag a handle to plan a day') : null));
   if (WP.err) box.append(h('div', { class: 'small err' }, WP.err));
   if (!p) { if (!WP.err) box.append(h('div', { class: 'small muted' }, 'Loading…')); return; }
+  if (!p.unavailable && !Array.isArray(p.days)) { box.append(h('div', { class: 'small muted' }, 'No weekly reading yet.')); return; }
   if (p.unavailable) { box.append(h('div', { class: 'small muted' }, p.unavailable)); return; }
 
   const track = h('div', { class: 'wptrack' }), names = h('div', { class: 'wpnames' }), tip = h('div', { class: 'wptip' }), note = h('div', { class: 'small muted' });

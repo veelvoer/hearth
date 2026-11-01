@@ -36,10 +36,10 @@ let S = { signedIn: false, settings: {}, history: [] };
 let tab = 'sessions';
 const content = $('#content');
 const ICONS = {
-  dashboard: '<path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/>',
+  dashboard: '<path d="M3.5 11L12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-6h4v6"/>',
   now: '<path d="M12 21a9 9 0 1 1 9-9"/><path d="M12 12l4-4"/>',
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>', shared: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14c2.4 0 4.2 1.6 4.2 4.2"/>',
-  history: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>', panel: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
   refresh: '<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/>', mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
   addons: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><path d="M17 13.5v7M13.5 17h7"/>', sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
@@ -526,8 +526,8 @@ function permsCard() {
         body.append(status, h('div', { class: 'row wrap' }, test, !rr.ok && rr.line ? h('button', { class: 'ghost sm', onclick: () => { try { navigator.clipboard.writeText(rr.line); toast('Copied. Add it with: sudo visudo'); } catch { toast(rr.line); } } }, 'Copy the sudoers line') : null));
       }
       body.append(h('div', { class: 'subtitle' }, 'Commands allowed for good'));
-      if (!o.rules.length) body.append(h('div', { class: 'small muted' }, 'None yet. When Claude asks to run a command, choose “Yes, and don’t ask again”.'));
-      for (const r of o.rules) body.append(h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label || r.prefix), h('button', { class: 'ghost sm', onclick: () => save({ removeRule: r.id }) }, 'Remove')));
+      if (!(o.rules || []).length) body.append(h('div', { class: 'small muted' }, 'None yet. When Claude asks to run a command, choose “Yes, and don’t ask again”.'));
+      for (const r of (o.rules || [])) body.append(h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label || r.prefix), h('button', { class: 'ghost sm', onclick: () => save({ removeRule: r.id }) }, 'Remove')));
       const inp = h('input', { placeholder: 'Add a command, e.g. npm test', style: 'max-width:280px' });
       const add = () => { const v = inp.value.trim(); if (v) save({ addPrefix: v }); };
       inp.onkeydown = (e) => { if (e.key === 'Enter') add(); };

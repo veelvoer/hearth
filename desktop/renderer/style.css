@@ -738,8 +738,8 @@ body { background:
 .spwrap { display: flex; flex-direction: column; } .spwrap .spitem { width: 100%; }
 
 /* the side panel of a chat: closed cards you open by their title */
-details.rcard.fold { padding: 12px 18px; gap: 8px; } details.rcard.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; margin: 0; }
-details.rcard.fold > summary::-webkit-details-marker { display: none; } details.rcard.fold > summary::after { content: '⌄'; color: var(--muted); } details.rcard.fold[open] > summary::after { content: '⌃'; }
+details.rcard.fold { padding: 10px 18px; gap: 0; } details.rcard.fold[open] { gap: 8px; } details.rcard.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; margin: 0; }
+details.rcard.fold > summary::-webkit-details-marker { display: none; } details.rcard.fold > summary::after { content: ''; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: -4px 4px 0 0; flex: none; } details.rcard.fold[open] > summary::after { transform: rotate(-135deg); margin: 4px 4px 0 0; }
 details.rcard.fold[open] > summary { margin-bottom: 4px; }
 
 /* the project picker: all projects behind one button */
@@ -758,3 +758,10 @@ button.sm { min-height: 32px; }
 @media (max-width: 760px) { #nav .tabs button { padding: 8px 8px; font-size: 14px; } #nav .navfoot .lbl, #nav .navfoot span { display: none; } }
 /* the tabs sit in the middle of the bar only when there is room: below 1240px they flow after the logo, so they never run into the status and the New chat button */
 @media (max-width: 1240px) { #nav .tabs, #nav .tabs.hlready { position: relative !important; left: 0 !important; transform: none !important; margin-left: 10px; } #nav .navfoot { margin-left: auto; } }
+
+.narrowonly { display: none !important; }
+@media (max-width: 860px) { .narrowonly { display: inline-flex !important; } .split.listopen { grid-template-columns: 1fr !important; } .split.listopen > .side { display: block; flex: 1 !important; width: auto !important; max-width: none !important; } .split.listopen > :not(.side) { display: none; } }
+
+.pane.isnew, .pane.isnew .chatmain { min-height: 0; } .pane.isnew .chatmain { justify-content: flex-start; overflow-y: auto; } .pane.isnew .msgs { flex: none; }
+@media (max-height: 820px) { .pane.isnew .intro h2 { font-size: 32px; } .pane.isnew .intro svg, .pane.isnew .intro .logo { transform: scale(.8); margin: -8px 0; } }
+.pane.isnew .intro { padding-top: 0; } .pane.isnew .msgs { padding-top: 6px; }

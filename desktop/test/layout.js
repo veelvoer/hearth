@@ -8,6 +8,7 @@ const SIZES = [[820, 560], [1120, 780], [1500, 900]];
 const SCREENS = [
   ['dashboard', `setTab('dashboard')`], ['now', `setTab('now')`], ['history', `setTab('history')`], ['settings', `setTab('settings')`],
   ['chat', `openSession({id:'a1',title:'Fix the login handler tests and update the documentation for the whole API',cwd:'/home/you/code/api-server',mid:SS.mid,mtime:Date.now(),live:false})`],
+  ['chat-list', `openSession({id:'a1',title:'Fix the login handler tests',cwd:'/home/you/code/api-server',mid:SS.mid,mtime:Date.now(),live:false}); setTimeout(() => document.querySelector('.narrowonly')?.click(), 300)`],
   ['newchat', `setTab('sessions'); newChat()`],
   ['tools-skills', `openTools(SS.sel||{mid:SS.mid,cwd:'/x'},'skills')`], ['tools-plugins', `openTools(PT.s,'plugins')`], ['tools-conn', `openTools(PT.s,'connections')`], ['tools-changes', `openTools(PT.s,'changes')`], ['tools-notes', `openTools(PT.s,'notes')`],
   ['support-home', `openSupport('home')`], ['support-new', `openSupport('new')`], ['support-thread', `SP.open='HRT-48213'; openSupport('thread')`], ['support-login', `SP.signedIn=false; SP.view='login'; drawSupport()`], ['guide1', `if (OB.el) { OB.el.remove(); OB.el = null; } startTour()`], ['guide3', `(async()=>{ await showStep(3); })()`], ['guide5', `(async()=>{ await showStep(5); })()`], ['guide9', `(async()=>{ await showStep(9); })()`], ['tour0', `closeTools(); OB.step=0; startTutorial()`], ['tour1', `go(1)`], ['tour2', `go(2)`], ['tour3', `go(3)`], ['tour4', `go(4)`], ['tour5', `go(5)`], ['tour6', `go(6)`], ['tour7', `go(7)`],
@@ -24,6 +25,7 @@ const AUDIT = `(() => {
     if (e.scrollWidth > e.clientWidth + 2 && cs.overflowX === 'visible' && e.children.length === 0 && cs.display !== 'inline') out.push('text-clipped ' + (e.scrollWidth - e.clientWidth) + 'px: ' + name(e));
     if (/(INPUT|BUTTON|SELECT|TEXTAREA)/.test(e.tagName) && !scrolls && (r.bottom > H + 1)) out.push('below-window: ' + name(e));
   }
+  for (const el of [document.documentElement, document.body]) if (el.scrollWidth > W + 1) out.push('page scrolls sideways by ' + (el.scrollWidth - W) + 'px (' + el.tagName.toLowerCase() + ')');
   return [...new Set(out)].slice(0, 25);
 })()`;
 app.whenReady().then(async () => {
@@ -31,7 +33,7 @@ app.whenReady().then(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const report = [];
   const win = new BrowserWindow({ width: 1120, height: 780, show: false, webPreferences: { offscreen: true, preload: path.join(__dirname, 'stub-preload.js'), contextIsolation: true } });
-  const errors = []; win.webContents.on('console-message', (e) => { if (e.level === 'error' || e.level === 3) errors.push(e.message); });
+  const errors = []; win.webContents.on('console-message', (e) => { if (e.level === 'error' || e.level === 3) errors.push(e.message + ' @' + String(e.sourceId || '').split('/').pop() + ':' + e.lineNumber); });
   await win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html')); await sleep(900);
   await win.webContents.executeJavaScript(`S.settings.onboarded = true; 1`);
   for (const [w, h] of SIZES) {
@@ -40,6 +42,7 @@ app.whenReady().then(async () => {
       try { if (!/^tour[1-9]/.test(name) && !/^guide[2-9]/.test(name)) await win.webContents.executeJavaScript('if (OB.el) { OB.el.remove(); OB.el = null; } if (typeof TOUR !== \"undefined\" && TOUR.el) endTour(); closeTools(); if (typeof closeSupport === "function") closeSupport(); 1'); await win.webContents.executeJavaScript(code); } catch (e) { report.push(`[${w}x${h}] ${name}: SCRIPT ERROR ${e.message}`); continue; }
       await sleep(700);
       const issues = await win.webContents.executeJavaScript(AUDIT);
+      if (process.env.HIDE) await win.webContents.executeJavaScript(`document.querySelectorAll('.updcard').forEach((e) => e.remove()); 1`);
       fs.writeFileSync(`/tmp/hl_${w}_${name}.png`, (await win.webContents.capturePage()).toPNG());
       report.push(`[${w}x${h}] ${name}: ${issues.length ? '\n   ' + issues.join('\n   ') : 'ok'}`);
     }

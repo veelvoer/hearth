@@ -84,7 +84,7 @@ function drawSide() {
   const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => b.mtime - a.mtime);
   list.forEach((s) => side.append(chatItem(s)));
   const own = !q && SS.projKey && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
-  if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, 'Delete all ' + own.length + ' chats of this project…')));
+  if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, own.length === 1 ? 'Delete this chat…' : 'Delete all ' + own.length + ' chats of this project…')));
   if (!list.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
   if (SS.err) { const sv = SS.machines.find((m) => m.secure), box = h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small err' }, SS.err), h('div', { class: 'small muted' }, 'A stuck server restarts itself within a couple of minutes.'));
     if (sv) { const note = h('span', { class: 'small muted' }); box.append(h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: async () => { note.textContent = 'Restarting…'; try { await cm.relay(sv.id, 'POST', '/admin/restart', { force: true }); note.textContent = 'Restarting. It is back in a few seconds.'; setTimeout(() => { pollLive(); }, 8000); } catch (e) { note.textContent = clean(e); } } }, 'Restart ' + (sv.name || 'server')), note)); }
@@ -188,6 +188,7 @@ async function refreshBusy() {
   if (!now && SS.queue.length) sendMsg(SS.queue.shift());
 }
 function openSessionNow(s, voice) {
+  document.querySelector('.chatwrap .split')?.classList.remove('listopen');
   SS.call = 'off';
   loadChatPrefs(s.id);
   SS.sel = { id: s.id, title: s.title, cwd: s.cwd, mid: s.mid || SS.mid, live: s.live }; SS.mid = SS.sel.mid; SS.msgs = []; SS.shared = null; SS.shareInfo = null; SS.sharedPeople = [];
@@ -249,6 +250,7 @@ function drawPane() {
   const working = SS.sending || remoteWorking() || !!(me.running || me.busy);
   const main = h('div', { class: 'chatmain' });
   if (s.isNew) main.append(h('button', { class: 'ghost sm backbtn', onclick: backToChats }, '← All chats'));
+  else main.append(h('button', { class: 'ghost sm backbtn narrowonly', onclick: () => document.querySelector('.chatwrap .split')?.classList.add('listopen') }, '← All chats'));
   main.append(h('div', { class: 'chat-head' }, h('div', { class: 'grow', style: 'min-width:0' }, h('h3', { class: 'ellip' }, s.title),
     h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), me.root || s.root ? 'root' : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
@@ -256,7 +258,7 @@ function drawPane() {
     s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
-    s.id ? ibtn(SS.rightOff ? 'sliders' : 'check', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : ''); drawPane(); }, 'ghost sm') : null));
+    s.id ? ibtn('panel', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : ''); drawPane(); }, 'ghost sm') : null));
   main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
   if (guest || me.shared >= 0) main.append(h('div', { id: 'shin', class: 'shin' }), h('div', { id: 'shstatus', class: 'shstatus' }));
   main.append(h('div', { id: 'perms', class: 'perms' }));

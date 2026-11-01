@@ -250,10 +250,10 @@ val LocalChipGroup = androidx.compose.runtime.compositionLocalOf<ChipGroupState?
 
 @Composable
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp), scroll: Boolean = false, content: @Composable () -> Unit) {
+fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp), scroll: Boolean = false, multi: Boolean = false, content: @Composable () -> Unit) {
     val st = remember { ChipGroupState() }
     val primary = MaterialTheme.colorScheme.primary
-    androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides st) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides (if (multi) null else st)) {
         Box(modifier) { Box(Modifier.onGloballyPositioned { st.coords = it }) {
             val r = st.sel
             if (r != null) {

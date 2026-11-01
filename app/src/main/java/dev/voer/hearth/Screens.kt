@@ -797,17 +797,17 @@ private fun ApiKeysCard() {
         Spacer(Modifier.height(12.dp))
         Label("New key")
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low" to "Low usage", "high" to "High usage", "general" to "General").forEach { (v, l) -> Chip(l, kind == v) { kind = v; shownKind = "" } } }
-        Txt("Models it may use", T.small, muted = true)
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("haiku", "sonnet", "opus").forEach { v -> Chip(v, v in models) { if (v in models) { if (models.size > 1) models.remove(v) } else models.add(v) } } }
-        Txt("Effort levels it may use", T.small, muted = true)
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("low", "medium", "high", "xhigh", "max").forEach { v -> Chip(v, v in efforts) { if (v in efforts) { if (efforts.size > 1) efforts.remove(v) } else efforts.add(v) } } }
-        Txt("Memory", T.small, muted = true)
+        Txt("Models it may use", T.small, muted = true, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp), multi = true) { listOf("haiku", "sonnet", "opus").forEach { v -> Chip(v, v in models) { if (v in models) { if (models.size > 1) models.remove(v) } else models.add(v) } } }
+        Txt("Effort levels it may use", T.small, muted = true, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp), multi = true) { listOf("low", "medium", "high", "xhigh", "max").forEach { v -> Chip(v, v in efforts) { if (v in efforts) { if (efforts.size > 1) efforts.remove(v) } else efforts.add(v) } } }
+        Txt("Memory", T.small, muted = true, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("none" to "None", "key" to "One session", "named" to "Per name").forEach { (v, l) -> Chip(l, memory == v) { memory = v } } }
         if (memory != "none") Txt(if (memory == "key") "Every call continues the same session, so it remembers the code it worked on." else "Calls with the same \"session\" name continue that session; other names start their own.", T.small, muted = true)
         Field(name, { name = it }, "Name, e.g. my bot")
-        Txt("Expires", T.small, muted = true)
+        Txt("Expires", T.small, muted = true, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Never", 30 to "30 days", 90 to "90 days", 365 to "1 year").forEach { (v, l) -> Chip(l, days == v) { days = v } } }
-        Txt("Requests a day", T.small, muted = true)
+        Txt("Requests a day", T.small, muted = true, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
         ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "No limit", 50 to "50", 200 to "200", 1000 to "1000").forEach { (v, l) -> Chip(l, perDay == v) { perDay = v } } }
         Txt("Stops at this much of the 5-hour session: " + (if (sessAt == 0) "never" else "$sessAt%"), T.small, muted = true)
         androidx.compose.material3.Slider(sessAt / 100f, { sessAt = (it * 20).toInt() * 5 }, valueRange = 0f..1f, steps = 19)
@@ -863,7 +863,7 @@ private fun PermissionsCard() {
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.weight(1f)) { Field(cmd, { cmd = it }, "Add a command, e.g. npm test", mono = true) }
+            Box(Modifier.weight(1f)) { Field(cmd, { cmd = it }, "Command, e.g. npm test", mono = true) }
             TextAction("Add") { if (cmd.isNotBlank()) { save(org.json.JSONObject().put("addPrefix", cmd.trim())); cmd = "" } }
         }
         if (msg.isNotEmpty()) Txt(msg, T.small, color = MaterialTheme.colorScheme.error)
