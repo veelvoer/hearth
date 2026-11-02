@@ -25,7 +25,7 @@ fun Welcome(finish: (Boolean) -> Unit) {
     var step by remember { mutableIntStateOf(0) }
     var connected by remember { mutableStateOf(Store.machines(c).isNotEmpty()) }
     val last = 4
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
             repeat(last + 1) { i ->
                 Box(Modifier.height(6.dp).width(if (i == step) 22.dp else 6.dp).clip(RoundedCornerShape(50))
@@ -49,7 +49,7 @@ fun Welcome(finish: (Boolean) -> Unit) {
                     Txt("Talk to Claude Code from your phone. Your chats and projects stay the same on your computer and your phone.", T.body, muted = true)
                     Spacer(Modifier.height(16.dp))
                     listOf("Start and continue chats from anywhere", "Get a message, or a call, when Claude is done or needs you", "See how much of your Claude limit is left, also as a widget").forEach {
-                        Txt("•  $it", T.body); Spacer(Modifier.height(6.dp))
+                        Row { Txt("•", T.body); Spacer(Modifier.width(10.dp)); Txt(it, T.body, modifier = Modifier.weight(1f)) }; Spacer(Modifier.height(6.dp))
                     }
                 }
                 1 -> {
@@ -119,7 +119,7 @@ fun Welcome(finish: (Boolean) -> Unit) {
                     Txt("You're all set", T.title)
                     Spacer(Modifier.height(10.dp))
                     listOf("Tap New session, pick a project and say what you want.", "A project you start here is made on your server. If your laptop is off, Hearth offers to install it there the next time you open it.", "Choose Coding to build things, or Talk for a simple conversation.", "Use the options inside a chat to change the model or how much effort Claude puts in.", "You can replay this tutorial from Settings.").forEach {
-                        Txt("•  $it", T.body); Spacer(Modifier.height(6.dp))
+                        Row { Txt("•", T.body); Spacer(Modifier.width(10.dp)); Txt(it, T.body, modifier = Modifier.weight(1f)) }; Spacer(Modifier.height(6.dp))
                     }
                     Spacer(Modifier.height(8.dp))
                     Txt("Hearth is an independent app and is not made by or affiliated with Anthropic. “Claude” is a trademark of Anthropic.", T.small, muted = true)
@@ -127,11 +127,11 @@ fun Welcome(finish: (Boolean) -> Unit) {
             }
         } }
         Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (step in 1 until last) { TextAction("Back") { step -= 1 }; Spacer(Modifier.width(20.dp)) }
             if (step < last) TextAction("Skip tutorial") { finish(false) } else TextAction("Skip the tour") { finish(false) }
             Spacer(Modifier.weight(1f))
             Button(when (step) { 0 -> "Get started"; last -> "Show me around"; 1 -> if (connected) "Continue" else "Later"; else -> "Continue" }) { if (step == last) finish(true) else step += 1 }
-        }
+        } }
     }
 }

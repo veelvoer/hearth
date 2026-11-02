@@ -228,7 +228,7 @@ fun UpdatesCard() {
         listOf(note, Updates.message).filter { it.isNotBlank() }.forEach { Txt(it, T.small, color = androidx.compose.material3.MaterialTheme.colorScheme.primary) }
         Spacer(Modifier.height(8.dp))
         androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides androidx.compose.ui.Alignment.CenterStart) { @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class) FlowRow(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-            TextAction(if (Updates.busy) "Looking…" else "Check for updates") { if (!Updates.busy) scope.launch { look() } }
+            TextAction("Check for updates") { if (!Updates.busy) scope.launch { look() } }
             TextAction("What changed") { history = true }
             if (r != null) Button("Update", Modifier) { if (!Updates.busy) scope.launch { Updates.install(c, r) } }
         } }

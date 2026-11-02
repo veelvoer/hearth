@@ -137,8 +137,8 @@ object T {
 }
 
 @Composable
-fun Txt(s: String, style: TextStyle = T.body, muted: Boolean = false, color: Color = Color.Unspecified, modifier: Modifier = Modifier) =
-    Text(s, modifier, style = style, color = if (color != Color.Unspecified) color else
+fun Txt(s: String, style: TextStyle = T.body, muted: Boolean = false, color: Color = Color.Unspecified, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) =
+    Text(s, modifier, maxLines = maxLines, overflow = if (maxLines == Int.MAX_VALUE) androidx.compose.ui.text.style.TextOverflow.Clip else androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = style, color = if (color != Color.Unspecified) color else
         if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
 
 @Composable
@@ -183,10 +183,9 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
     Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
-            if (tip != null) InfoDot(title, tip)
             Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph(if (open) "chevu" else "chevd", 22.dp) }
         }
-        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp), content = content) }
+        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { if (tip != null) { Txt(tip, T.small, muted = true); Spacer(Modifier.height(10.dp)) }; content() } }
     }
 }
 

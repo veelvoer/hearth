@@ -379,7 +379,7 @@ fun ComputersCard() {
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) { Txt(mm.name, T.body); Txt(if (mm.secure) "Server · ${mm.host}" else "Computer · ${mm.host}", T.small, muted = true) }
-                TextAction("Remove") { commit(machines - mm) }
+                androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) { TextAction("Remove") { commit(machines - mm) } }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -745,19 +745,19 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val working = sending || serverBusy
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
         Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconAction("back", "Back", Alignment.CenterStart, back)
-            Spacer(Modifier.width(12.dp))
+            IconAction("back", "Back", Alignment.CenterStart, 44.dp, back)
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
-                Txt(listOf(if (guest) "Shared by ${m.label}" else if (sess.kind == "talk") "Talk" else folder(sess.cwd), if (guest) null else m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true)
+                Txt(listOf(if (guest) "Shared by ${m.label}" else if (sess.kind == "talk") "Talk" else folder(sess.cwd), if (guest) null else m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.weight(1f, fill = false), maxLines = 1)
                 }
             }
-            if (sess.id.isNotEmpty() && sharedChat) { IconAction("people", "Shared chat settings") { optionsOpen = true } }
-            if (sess.id.isNotEmpty() && !guest) { IconAction("share", "Share") { shareOpen = true } }
-            if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk") { voice = true } }
-            if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options") { options = !options } }
+            if (sess.id.isNotEmpty() && sharedChat) { IconAction("people", "Shared chat settings", Alignment.CenterEnd, 44.dp) { optionsOpen = true } }
+            if (sess.id.isNotEmpty() && !guest) { IconAction("share", "Share", Alignment.CenterEnd, 44.dp) { shareOpen = true } }
+            if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk", Alignment.CenterEnd, 44.dp) { voice = true } }
+            if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options", Alignment.CenterEnd, 44.dp) { options = !options } }
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.65f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than two thirds of the screen, so the typing bar always stays
             Label("Permissions")

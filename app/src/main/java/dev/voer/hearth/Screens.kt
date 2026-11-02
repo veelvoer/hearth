@@ -112,7 +112,7 @@ fun Header(title: String, sub: String? = null, action: (@Composable () -> Unit)?
             Txt(title, T.title)
             if (sub != null) Txt(sub, T.small, muted = true)
         }
-        action?.invoke()
+        if (action != null) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) { action() }
     }
 
 private val hm = DateTimeFormatter.ofPattern("HH:mm")
@@ -934,7 +934,7 @@ fun SettingsScreen() {
         SectionTitle("Connection", "link")
         ComputersCard()
         UpdatesCard()
-        Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; Spacer(Modifier.width(14.dp)); TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
+        Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
         Fold("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.") {
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
@@ -986,7 +986,7 @@ fun SettingsScreen() {
         Card(Modifier.clickable { sub = "widgets" }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) { Txt("Widgets", T.body); Txt("Home screen widgets, sizes and colors", T.small, muted = true) }
-                Glyph("chevr", 24.dp)
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph("chevr", 24.dp) }
             }
         }
         Fold("bell", "Alerts") {
@@ -1065,10 +1065,7 @@ fun SettingsScreen() {
         PermissionsCard()
         SectionTitle("Help", "support")
         Card {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.", Modifier.weight(1f))
-                Button("Contact", Modifier) { support = true }
-            }
+            Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.") { Spacer(Modifier.width(6.dp)); Button("Contact", Modifier) { support = true } }
             Spacer(Modifier.height(10.dp))
             val warn = RoundedCornerShape(12.dp)
             Column(Modifier.fillMaxWidth().clip(warn).background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)).border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .35f), warn).padding(12.dp)) {

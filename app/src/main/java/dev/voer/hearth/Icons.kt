@@ -87,7 +87,7 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
 }
 
 /** Where the picture sits inside a 48dp button: a button at the right edge of a row hugs that edge, one at the left edge hugs the left, so every picture lines up with the text above and below it. */
-val LocalIconAlign = androidx.compose.runtime.compositionLocalOf<Alignment> { Alignment.CenterEnd }
+val LocalIconAlign = androidx.compose.runtime.compositionLocalOf<Alignment> { Alignment.Center }
 
 /** The little (i): tap it for the explanation instead of reading a paragraph. */
 @Composable
@@ -103,18 +103,20 @@ fun InfoDot(title: String, text: String) {
 fun Head(icon: String, title: String, tip: String? = null, modifier: Modifier = Modifier, trailing: @Composable RowScope.() -> Unit = {}) =
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
-        if (tip != null) InfoDot(title, tip)
-        trailing()
+        androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) {   // everything at the right end hugs the right edge
+            if (tip != null) InfoDot(title, tip)
+            trailing()
+        }
     }
 
 /** A button that is only an icon (header actions). Tap target is 40dp. */
 @Composable
-fun IconAction(glyph: String, desc: String, align: Alignment = LocalIconAlign.current, onClick: () -> Unit) =
-    Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = align) { Glyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
+fun IconAction(glyph: String, desc: String, align: Alignment = LocalIconAlign.current, size: Dp = 48.dp, onClick: () -> Unit) =
+    Box(Modifier.size(size).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = align) { Glyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
 
 /** The familiar icon that goes with a one-word button. */
 /** These buttons show only their icon (the words stay as the screen reader label); every other button keeps its words. */
-val ICON_ONLY = setOf("Cancel", "Close", "Not now", "Got it", "Done", "Save", "Back", "Copy", "Share", "Attach", "Tour", "Setup", "What changed", "Look again", "Refresh", "Check for updates", "Check again", "Remove", "Add", "Write an email")
+val ICON_ONLY = setOf("Cancel", "Close", "Not now", "Got it", "Done", "Save", "Back", "Copy", "Share", "Attach", "Tour", "Setup", "What changed", "Look again", "Refresh", "Check for updates", "Check again", "Remove", "Add")
 val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
     "Check for updates" to "sync", "Check again" to "sync", "Test call" to "phone", "Cancel" to "x", "Close" to "x", "Not now" to "x", "Got it" to "check", "Back" to "back", "Tour" to "tour",
     "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Share" to "share", "Pin to top" to "pin", "Unpin" to "pin", "Rename" to "edit", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
