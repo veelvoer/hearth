@@ -198,7 +198,7 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
             Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph(if (open) "chevu" else "chevd", 22.dp) }
         }
-        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { if (tip != null) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { InfoDot(title, tip) }; content() } }
+        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { if (tip != null) { Txt(tip, T.small, muted = true); Spacer(Modifier.height(10.dp)) }; content() } }
     }
 }
 
