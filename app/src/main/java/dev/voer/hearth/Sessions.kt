@@ -307,7 +307,6 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (pinned) { Glyph("pin", 14.dp, cs.primary); Spacer(Modifier.width(5.dp)) }
                 Text(s.title, style = T.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -316,6 +315,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
                     T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
             }
         }
+        if (pinned) { Spacer(Modifier.width(10.dp)); Glyph("pin", 18.dp, cs.primary) }   // at the end, so every title starts at the same place
     }
     }
 }
