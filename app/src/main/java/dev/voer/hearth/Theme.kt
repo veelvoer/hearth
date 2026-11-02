@@ -280,9 +280,9 @@ fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-fun TextAction(text: String, showText: Boolean = false, onClick: () -> Unit) {
+fun TextAction(text: String, onClick: () -> Unit) {
     val ic = ACTION_ICONS[text]; val col = MaterialTheme.colorScheme.primary
-    if (ic != null && text in ICON_ONLY && !showText) {   // icon only: the words are for the screen reader
+    if (ic != null && text in ICON_ONLY) {   // icon only: the words are for the screen reader
         Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = text).semantics { contentDescription = text }, contentAlignment = Alignment.Center) { Glyph(ic, 24.dp, col) }
         return
     }
