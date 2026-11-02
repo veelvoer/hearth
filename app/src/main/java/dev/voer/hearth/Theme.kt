@@ -86,12 +86,22 @@ object Fx {
     fun load(c: android.content.Context) { if (loaded) return; loaded = true; glass = Store.glass(c); motion = Store.motion(c) }
 }
 
+@Composable
+fun systemColors(): Boolean = ThemePrefs.system == true && Build.VERSION.SDK_INT >= 31
+
+/** The quiet fill behind avatars, your message bubbles and small tags. */
+@Composable
+fun softFill(): Color {
+    val cs = MaterialTheme.colorScheme
+    return if (systemColors()) cs.secondaryContainer else if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)
+}
+
 /** The panel look. Frosted: a see-through surface with a light edge and a faint highlight at the top. Plain: the solid surface color. */
 @Composable
 fun Modifier.panel(shape: androidx.compose.ui.graphics.Shape): Modifier {
     val cs = MaterialTheme.colorScheme
     val dark = cs.background.luminance() < .5f
-    return if (Fx.glass) {
+    return if (Fx.glass && !systemColors()) {
         val edge = if (dark) Color.White.copy(alpha = .10f) else Color.White.copy(alpha = .75f)
         this.clip(shape)
             .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(cs.surfaceVariant.copy(alpha = if (dark) .62f else .78f), cs.surfaceVariant.copy(alpha = if (dark) .44f else .5f))))
@@ -103,7 +113,7 @@ fun Modifier.panel(shape: androidx.compose.ui.graphics.Shape): Modifier {
 @Composable
 fun Modifier.glow(): Modifier {
     val cs = MaterialTheme.colorScheme
-    if (!Fx.glass) return this.background(cs.background)
+    if (!Fx.glass || systemColors()) return this.background(cs.background)
     val dark = cs.background.luminance() < .5f
     val a = if (dark) .20f else .24f
     return this.background(cs.background).drawBehind {
@@ -120,7 +130,10 @@ fun ClaudeTheme(content: @Composable () -> Unit) {
     Fx.load(c)
     val dark = isSystemInDarkTheme()
     val scheme = when {
-        ThemePrefs.system == true && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(c) else dynamicLightColorScheme(c)
+        ThemePrefs.system == true && Build.VERSION.SDK_INT >= 31 -> (if (dark) dynamicDarkColorScheme(c) else dynamicLightColorScheme(c)).let { d ->
+            // the phone's palette, arranged the way the app uses it: quiet cards on a plain page, a light hairline, a stronger line for inputs
+            d.copy(background = d.surface, surfaceVariant = d.surfaceContainerLow, outline = d.outlineVariant, outlineVariant = d.outline)
+        }
         dark -> Dark
         else -> Light
     }

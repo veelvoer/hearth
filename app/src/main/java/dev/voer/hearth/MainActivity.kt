@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -148,14 +149,17 @@ private fun Main() {
         }
         if (!Ui.chatOpen) {
             val cs = MaterialTheme.colorScheme
-            val active = if (cs.background.luminance() < .5f) androidx.compose.ui.graphics.Color(0xFF2E2A26) else androidx.compose.ui.graphics.Color(0xFFE9E2D2)
-            val bar = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 4.dp).tourTarget("tabs").panel(bar).padding(6.dp)) {
-                tabs.forEachIndexed { i, s ->
-                    Box(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(if (tab == i) active else androidx.compose.ui.graphics.Color.Transparent).clickable { Ui.tab = i }.semantics { contentDescription = s }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Glyph(listOf("chat", "home", "history", "gear")[i], 26.dp, if (tab == i) cs.primary else cs.onSurfaceVariant)
-                            if (tab == i) Txt(s, T.small.copy(fontSize = 12.sp, fontWeight = if (tab == i) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), muted = tab != i, color = if (tab == i) cs.primary else androidx.compose.ui.graphics.Color.Unspecified)
+            // a standard bottom bar: full width, flat, the same four places always with their names, the current one marked with a pill behind its icon
+            Column(Modifier.fillMaxWidth().background(cs.surfaceVariant).tourTarget("tabs")) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(cs.outline))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    tabs.forEachIndexed { i, s ->
+                        val on = tab == i
+                        Column(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable(role = androidx.compose.ui.semantics.Role.Tab, onClickLabel = s) { Ui.tab = i }.semantics { contentDescription = s; selected = on }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.width(60.dp).height(30.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp)).background(if (on) softFill() else androidx.compose.ui.graphics.Color.Transparent), contentAlignment = Alignment.Center) {
+                                Glyph(listOf("chat", "home", "history", "gear")[i], 24.dp, if (on) cs.primary else cs.onSurfaceVariant)
+                            }
+                            Txt(s, T.small.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), color = if (on) cs.primary else cs.onSurfaceVariant)
                         }
                     }
                 }

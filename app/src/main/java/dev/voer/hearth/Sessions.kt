@@ -301,7 +301,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
     val shape = RoundedCornerShape(20.dp)
     Row(Modifier.fillMaxWidth().pressable(onLong, onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { androidx.compose.foundation.text.selection.DisableSelection {   // a long press here is for deleting, not for selecting text
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(softFill()), contentAlignment = Alignment.Center) {
             Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
         }
         Spacer(Modifier.width(14.dp))
@@ -800,9 +800,9 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             itemsIndexed(msgs) { idx, msg ->
               Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
                 when (msg.role) {
-                    "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(softFill()).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                         Column(horizontalAlignment = Alignment.End) {
-                        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }
+                        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(softFill()).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }
                         if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
                         }
                     }
@@ -892,7 +892,7 @@ private fun PermDock(m: Machine, a: CallEvent, done: () -> Unit) {
             val opts = listOfNotNull("Yes" to "allow", if (againLabel != null) againLabel to "allow_always" else null, "No" to "deny")
             opts.forEachIndexed { i, (label, b) ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, if (b == "deny") cs.outline else cs.primary.copy(alpha = .6f), RoundedCornerShape(12.dp)).clickable { decide(b) }.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (dark) Color(0xFF2E2A26) else Color(0xFFE9E2D2)).padding(horizontal = 8.dp, vertical = 2.dp)) { Txt("${i + 1}", T.small.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = if (b == "deny") cs.onSurfaceVariant else cs.primary) }
+                    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(softFill()).padding(horizontal = 8.dp, vertical = 2.dp)) { Txt("${i + 1}", T.small.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = if (b == "deny") cs.onSurfaceVariant else cs.primary) }
                     Spacer(Modifier.width(12.dp))
                     Txt(label, T.body)
                 }
