@@ -983,10 +983,10 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(8.dp))
         }
-        Card(Modifier.clickable { sub = "widgets" }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Txt("Widgets", T.body); Txt("Home screen widgets, sizes and colors", T.small, muted = true) }
-                Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph("chevr", 24.dp) }
+        Column(Modifier.appear().fillMaxWidth().panel(RoundedCornerShape(20.dp)).padding(horizontal = 18.dp, vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { sub = "widgets" }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {   // looks like the folding cards, but opens its own page
+                Glyph("widget", 18.dp); Spacer(Modifier.width(8.dp)); Label("Widgets", Modifier.weight(1f))
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph("chevr", 22.dp) }
             }
         }
         Fold("bell", "Alerts") {
