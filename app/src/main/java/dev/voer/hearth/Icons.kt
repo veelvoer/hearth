@@ -38,6 +38,8 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
         when (name) {
             "pin" -> svg("M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z")
             "edit" -> svg("M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z")
+            "send" -> svg("M12 19V5 M5 12l7-7 7 7")
+            "stop" -> drawRoundRect(color, Offset(7 * u, 7 * u), Size(10 * u, 10 * u), CornerRadius(2f * u))
             "chevd" -> svg("M6 9l6 6 6-6")
             "chevu" -> svg("M6 15l6-6 6 6")
             "chevr" -> svg("M9 6l6 6-6 6")
@@ -84,11 +86,14 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
     }
 }
 
+/** Where the picture sits inside a 48dp button: a button at the right edge of a row hugs that edge, one at the left edge hugs the left, so every picture lines up with the text above and below it. */
+val LocalIconAlign = androidx.compose.runtime.compositionLocalOf<Alignment> { Alignment.CenterEnd }
+
 /** The little (i): tap it for the explanation instead of reading a paragraph. */
 @Composable
 fun InfoDot(title: String, text: String) {
     var open by remember { mutableStateOf(false) }
-    Box(Modifier.size(32.dp).clip(RoundedCornerShape(50)).clickable { open = true }, contentAlignment = Alignment.Center) { Glyph("info", 18.dp) }
+    Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable { open = true }, contentAlignment = LocalIconAlign.current) { Glyph("info", 20.dp) }
     if (open) AlertDialog(onDismissRequest = { open = false }, confirmButton = { TextAction("Got it") { open = false } }, title = { Txt(title, T.h2) }, text = { Txt(text, T.body) },
         containerColor = MaterialTheme.colorScheme.surfaceVariant)
 }
@@ -104,8 +109,8 @@ fun Head(icon: String, title: String, tip: String? = null, modifier: Modifier = 
 
 /** A button that is only an icon (header actions). Tap target is 40dp. */
 @Composable
-fun IconAction(glyph: String, desc: String, onClick: () -> Unit) =
-    Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = Alignment.Center) { Glyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
+fun IconAction(glyph: String, desc: String, align: Alignment = LocalIconAlign.current, onClick: () -> Unit) =
+    Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = align) { Glyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
 
 /** The familiar icon that goes with a one-word button. */
 /** These buttons show only their icon (the words stay as the screen reader label); every other button keeps its words. */

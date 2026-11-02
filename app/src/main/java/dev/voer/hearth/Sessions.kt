@@ -227,11 +227,11 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshTick++; refreshing = true; scope.launch { delay(900); refreshing = false } }, modifier = Modifier.fillMaxSize()) {
     Screen {
         Header("Chats") {
-            if (machines.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
-                    .clickable { talk(machines.firstOrNull { it.secure } ?: machines.first()) }, contentAlignment = Alignment.Center) { Glyph("mic", 18.dp) }
-                Box(Modifier.size(44.dp).tourTarget("new").clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary).clickable { newSession() }, contentAlignment = Alignment.Center) {
-                    Txt("+", T.title.copy(fontSize = 26.sp), color = MaterialTheme.colorScheme.onPrimary)
+            if (machines.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "Talk") { talk(machines.firstOrNull { it.secure } ?: machines.first()) }, contentAlignment = Alignment.Center) { Glyph("mic", 22.dp) }
+                Box(Modifier.size(48.dp).tourTarget("new").clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "New chat") { newSession() }, contentAlignment = Alignment.Center) {
+                    Glyph("plus", 24.dp, MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -394,7 +394,7 @@ fun ComputersCard() {
                 if (r != null) { if (machines.isEmpty()) Store.setCallMe(c, true); commit(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show(); adding = false }
                 manual = false
             } else Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) { TextAction("Enter the address myself") { manual = true }; TextAction("Cancel") { adding = false } }
-        } else TextAction("Add") { adding = true }
+        } else androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { TextAction("Add") { adding = true } }
     }
 }
 
@@ -744,9 +744,9 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     if (voice && sess.id.isNotEmpty()) { CallScreen(m, sess, mode) { voice = false; scope.launch { reload() } }; return }
     val working = sending || serverBusy
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
-        Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconAction("back", "Back", back)
-            Spacer(Modifier.width(4.dp))
+        Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconAction("back", "Back", Alignment.CenterStart, back)
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -810,10 +810,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                     "meta" -> Txt(msg.text, T.small, muted = true)
                     else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column {
                         MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true)
-                        if (idx == msgs.indexOfLast { it.role == "assistant" } && !working) Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {   // the newest reply can be copied or sent on in one tap
+                        if (idx == msgs.indexOfLast { it.role == "assistant" } && !working) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { Row {   // the newest reply can be copied or sent on in one tap
                             TextAction("Copy") { (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Claude", msg.text)); Toast.makeText(c, "Copied", Toast.LENGTH_SHORT).show() }
                             TextAction("Share") { c.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, msg.text), null)) }
-                        }
+                        } }
                     }
                 }
               }
@@ -856,13 +856,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }   // a person asks to use your Claude here
         val boxShape = if (perm != null || reqAsk != null || incoming != null) RoundedCornerShape(0.dp, 0.dp, 24.dp, 24.dp) else RoundedCornerShape(24.dp)
         Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = if (perm != null || reqAsk != null || incoming != null) 0.dp else 8.dp)) {
-            Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!guest) TextAction("Attach") { pick.launch("*/*") }
+            Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (!guest) IconAction("clip", "Attach", Alignment.Center) { pick.launch("*/*") } else Spacer(Modifier.width(12.dp))
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty() && sess.kind != "talk") "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
-                Box(Modifier.size(38.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
-                    Txt(if (stop) "■" else if (sending) "…" else "↑", T.body.copy(fontWeight = FontWeight.Bold), color = cs.onPrimary)
+                Box(Modifier.size(40.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
+                    if (stop) Glyph("stop", 22.dp, cs.onPrimary) else if (sending) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else Glyph("send", 22.dp, cs.onPrimary)
                 }
             }
         }

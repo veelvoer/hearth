@@ -184,7 +184,7 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
             if (tip != null) InfoDot(title, tip)
-            Glyph(if (open) "chevu" else "chevd", 22.dp)
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph(if (open) "chevu" else "chevd", 22.dp) }
         }
         androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp), content = content) }
     }
@@ -283,7 +283,7 @@ fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
 fun TextAction(text: String, onClick: () -> Unit) {
     val ic = ACTION_ICONS[text]; val col = MaterialTheme.colorScheme.primary
     if (ic != null && text in ICON_ONLY) {   // icon only: the words are for the screen reader
-        Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = text).semantics { contentDescription = text }, contentAlignment = Alignment.Center) { Glyph(ic, 24.dp, col) }
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = text).semantics { contentDescription = text }, contentAlignment = LocalIconAlign.current) { Glyph(ic, 24.dp, col) }
         return
     }
     Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
