@@ -766,3 +766,5 @@ button.sm { min-height: 32px; }
 @media (max-height: 820px) { .pane.isnew .intro h2 { font-size: 32px; } .pane.isnew .intro svg, .pane.isnew .intro .logo { transform: scale(.8); margin: -8px 0; } }
 .pane.isnew .intro { padding-top: 0; } .pane.isnew .msgs { padding-top: 6px; }
 .md { position: relative; } .copyrep { position: absolute; top: -8px; right: 0; opacity: 0; transition: opacity .15s; } .md:hover .copyrep, .copyrep:focus-visible { opacity: 1; }
+.g4 { align-items: stretch; } .g4 > * { display: flex; flex-direction: column; justify-content: flex-start; }
+.chat-head h3 { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: clip; }

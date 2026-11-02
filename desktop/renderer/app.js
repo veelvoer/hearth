@@ -304,7 +304,7 @@ function settingsView(only) {
     h('div', { class: 'small muted' }, 'Hearth clay, or pick your own color.'),
     h('div', { class: 'subtitle' }, 'Preview'),
     h('div', { class: 'previewbox' }, h('div', { class: 'previewbubble' }, 'Can you fix the tests?'), h('div', { class: 'previewdone' }, 'Done — all 48 pass.'), h('div', {}, h('button', { class: 'primary sm', tabindex: '-1' }, 'Primary button'))),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Frosted glass', h('div', { class: 'small muted' }, 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass !== false, () => set({ glass: st.glass === false }))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Frosted glass', h('div', { class: 'small muted' }, 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass === true, () => set({ glass: st.glass !== true }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Animations', h('div', { class: 'small muted' }, 'Gliding highlights, fades and counting numbers. Turn off for the lightest, fastest app.')), toggle(st.motion !== false, () => set({ motion: st.motion === false })))));
   p.append(h('div', { class: 'card stack' }, ch('bell', 'Alerts', 'You get a notification when your usage crosses these levels. “Session reset” tells you when a heavy 5-hour session rolls over and you have a fresh one.'),
     h('div', { class: 'row' }, [50, 75, 90, 100].map((v) => chip(v + '%', st.thresholds.includes(v), () => set({ thresholds: st.thresholds.includes(v) ? st.thresholds.filter((x) => x !== v) : [...st.thresholds, v] })))),
@@ -641,7 +641,7 @@ function updateAppIcon(accent) {
 /** Frosted glass and animations are switches: off means plain solid panels and no motion, which is much lighter on weak graphics. */
 function applyPerf() {
   const st = S.settings || {}, r = document.documentElement;
-  r.classList.toggle('noglass', st.glass === false);
+  r.classList.toggle('noglass', st.glass !== true);
   r.classList.toggle('noanim', st.motion === false);
 }
 async function applyPalette() {

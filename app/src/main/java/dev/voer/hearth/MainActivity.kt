@@ -113,6 +113,7 @@ private fun Root() {
     LaunchedEffect(Unit) { news = Updates.whatsNew(c, wasOnboarded) }
     if (news.isNotEmpty()) {
         androidx.compose.material3.AlertDialog(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
             onDismissRequest = { news = emptyList() },
             title = { Txt("Updated to Hearth ${Updates.current(c)}", T.h2) },
             text = {

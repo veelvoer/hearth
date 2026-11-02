@@ -347,6 +347,7 @@ private fun WeekPlanCard() {
         var text by remember(d.wd) { mutableStateOf(((d.target ?: Math.round(d.planned).toDouble())).let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() }) }
         val full = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")[d.wd]
         androidx.compose.material3.AlertDialog(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
             onDismissRequest = { sel = null },
             title = { Txt(full, T.h2) },
             text = { Column { Txt("Share of the whole week for this day (percent).", T.small, muted = true); Spacer(Modifier.height(8.dp)); Field(text, { text = it.filter { ch -> ch.isDigit() || ch == '.' }.take(5) }, "e.g. 20", number = true) } },

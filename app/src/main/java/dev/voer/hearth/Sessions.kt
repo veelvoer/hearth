@@ -23,6 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
@@ -748,7 +751,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             IconAction("back", "Back", Alignment.CenterStart, 40.dp, back)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sess.title, style = T.h2.copy(fontSize = 17.sp, lineHeight = 21.sp), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
                 Txt(listOf(if (guest) "Shared by ${m.label}" else if (sess.kind == "talk") "Talk" else folder(sess.cwd), if (guest) null else m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.weight(1f, fill = false), maxLines = 1)
@@ -861,7 +864,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 if (!guest) IconAction("clip", "Attach", Alignment.Center) { pick.launch("*/*") } else Spacer(Modifier.width(12.dp))
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty() && sess.kind != "talk") "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
-                Box(Modifier.size(40.dp).pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(40.dp).semantics { contentDescription = if (stop) "Stop" else if (sending) "Sending" else "Send"; role = androidx.compose.ui.semantics.Role.Button }.pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
                     if (stop) Glyph("stop", 22.dp, cs.onPrimary) else if (sending) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else Glyph("send", 22.dp, cs.onPrimary)
                 }
             }

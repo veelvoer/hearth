@@ -153,6 +153,7 @@ fun JoinDialog(prefill: String, onClose: () -> Unit, onJoined: (Machine) -> Unit
     var err by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
         onDismissRequest = onClose,
         title = { Txt("Join a shared chat", T.h2) },
         text = {
@@ -184,6 +185,7 @@ fun ShareDialog(m: Machine, sid: String, title: String, onClose: () -> Unit) {
     LaunchedEffect(sid) { load() }
     fun act(f: () -> Unit) { scope.launch { runCatching { withContext(Dispatchers.IO) { f() } }.onSuccess { load() }.onFailure { err = it.message } } }
     AlertDialog(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
         onDismissRequest = onClose,
         title = { Txt("Share “$title”", T.h2) },
         text = {
@@ -254,6 +256,7 @@ fun UsageDialog(info: GuestInfo?, guest: Boolean, shareKey: String, choice: Stri
     val rows = listOf(Triple("mine", "My own usage", if (guest) "Runs on your own Claude, on your own server. The answer shows up in this chat for everyone." else "Runs on your account, on this server, like any chat.")) +
         (info?.people.orEmpty().filter { it.id != info?.me }).map { p -> Triple(p.id, p.name + "'s usage", "${p.name} gets a notification first. They can change your prompt, then it runs on their account.") }
     AlertDialog(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
         onDismissRequest = onClose,
         title = { Txt("Whose usage do I use?", T.h2) },
         text = {
