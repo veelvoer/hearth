@@ -41,7 +41,7 @@ function allSessions() {
     }
   }
   for (const g of SS.guests || []) for (const x of SS.live[g.id] || []) out.set('guest:' + g.share, { ...x, mid: g.id, secure: !!g.secure, guest: true, guestHost: g.hostName || '' });   // shared chats of friends
-  return [...out.values()];
+  return [...out.values()].map((s) => { const p = chatTag(s.id); return p.name ? { ...s, title: p.name } : s; });
 }
 /** Which computer should answer in this chat right now? Re-checked on every send, so it follows you when your laptop comes online. */
 function machineFor(id, fallback) {
@@ -51,10 +51,31 @@ function machineFor(id, fallback) {
 const machineName = (mid) => (SS.machines.find((m) => m.id === mid) || {}).name || '';
 const multi = () => SS.machines.length > 1;
 
+/** Pinned chats stay on top and a chosen name replaces the title. Both are kept on this computer. */
+const chatTagsAll = () => { try { return JSON.parse(localStorage.getItem('cm.chattags') || '{}'); } catch { return {}; } };
+const chatTag = (id) => chatTagsAll()[id] || {};
+function setChatTag(id, patch) {
+  const o = chatTagsAll(); o[id] = { ...(o[id] || {}), ...patch }; if (!o[id].pin) delete o[id].pin; if (!o[id].name) delete o[id].name; if (!Object.keys(o[id]).length) delete o[id];
+  localStorage.setItem('cm.chattags', JSON.stringify(o));
+  if (SS.sel && SS.sel.id === id && 'name' in patch) { SS.sel.title = patch.name || SS.sel.title; drawPane(); }
+  drawSide();
+}
+function chatMenu(e, s) {
+  e.preventDefault(); document.querySelectorAll('.projpop').forEach((x) => x.remove());
+  const pop = h('div', { class: 'projpop', style: 'width:200px' }), pin = !!chatTag(s.id).pin;
+  const close = () => { pop.remove(); document.removeEventListener('mousedown', away, true); };
+  const away = (ev) => { if (!pop.contains(ev.target)) close(); };
+  pop.append(
+    h('button', { class: 'ghost sm', style: 'text-align:left', onclick: () => { close(); setChatTag(s.id, { pin: !pin }); } }, pin ? 'Unpin' : 'Pin to top'),
+    h('button', { class: 'ghost sm', style: 'text-align:left', onclick: async () => { close(); const n = await askText('Rename chat', 'Only changes the name on this computer. Leave it empty to use the original name.', { value: s.title, ok: 'Save' }); if (n !== null) setChatTag(s.id, { name: n.trim() }); } }, 'Rename…'));
+  document.body.append(pop);
+  pop.style.left = Math.min(e.clientX, innerWidth - 210) + 'px'; pop.style.top = Math.min(e.clientY, innerHeight - 110) + 'px';
+  setTimeout(() => document.addEventListener('mousedown', away, true), 0);
+}
 function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
-  return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s) },
-    h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, h('span', { class: 'ellip' }, s.title)),
+  return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s), oncontextmenu: (e) => chatMenu(e, s), title: 'Right-click to pin or rename' },
+    h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, chatTag(s.id).pin ? h('span', { class: 'ic', html: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>' }) : null, h('span', { class: 'ellip' }, s.title)),
     h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
@@ -81,7 +102,7 @@ function drawSide() {
   }
   side.innerHTML = '';
   side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
-  const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => b.mtime - a.mtime);
+  const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => (Number(!!chatTag(b.id).pin) - Number(!!chatTag(a.id).pin)) || b.mtime - a.mtime);
   list.forEach((s) => side.append(chatItem(s)));
   const own = !q && SS.projKey && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
   if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, own.length === 1 ? 'Delete this chat…' : 'Delete all ' + own.length + ' chats of this project…')));
@@ -826,7 +847,7 @@ function projectPicker(anchor, ordered) {
 /** A whole project (folder and chats) goes to the trash on the server for 30 days. You type its name first, so it never happens by accident. */
 async function deleteProject(key, own) {
   const name = folderName(key), mid = own[0].mid;
-  const t = prompt(`Delete the project "${name}" with its files and its ${own.length} chat${own.length === 1 ? '' : 's'}?\nIt stays in the trash on the server for 30 days.\nType the project name to confirm:`);
+  const t = await askText('Delete project “' + name + '”?', `This deletes the folder with its files and its ${own.length} chat${own.length === 1 ? '' : 's'}.\nIt stays in the trash on the server for 30 days.\nType the project name to confirm.`, { ok: 'Delete', placeholder: name });
   if (t === null) return; if (t.trim().toLowerCase() !== name.toLowerCase()) { toast('The name did not match. Nothing was deleted.'); return; }
   try {
     const r = await cm.relay(mid, 'POST', '/projects/delete', { cwd: key });
@@ -836,7 +857,7 @@ async function deleteProject(key, own) {
 }
 /** Deleting goes to a trash folder on the server first (30 days), and the toast offers Undo. A whole project needs its name typed, so it can never happen by accident. */
 async function deleteChats(list, label, many) {
-  if (many) { const t = prompt(`This deletes all ${list.length} chats of "${label}" (they stay in the trash for 30 days).\nType the project name to confirm:`); if (t === null) return; if (t.trim().toLowerCase() !== String(label).toLowerCase()) { toast('The name did not match. Nothing was deleted.'); return; } }
+  if (many) { const t = await askText('Delete all ' + list.length + ' chats?', `All chats of “${label}” go to the trash for 30 days.\nType the project name to confirm.`, { ok: 'Delete', placeholder: String(label) }); if (t === null) return; if (t.trim().toLowerCase() !== String(label).toLowerCase()) { toast('The name did not match. Nothing was deleted.'); return; } }
   else if (!confirm(`Delete "${list[0].title}"?\nIt stays in the trash for 30 days, so you can undo it.`)) return;
   const done = []; let bad = '';
   for (const x of list) { try { await cm.relay(x.mid, 'POST', `/sessions/${x.id}/delete`, {}); done.push(x); } catch (e) { bad = clean(e); } }

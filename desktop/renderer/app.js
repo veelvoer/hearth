@@ -29,6 +29,19 @@ function info(text) {
   } }, icon('info'));
   return b;
 }
+/** window.prompt() does not exist in Electron, so a line of text is asked for in the app's own dialog. Resolves to the text, or null on cancel. */
+function askText(title, message, opts = {}) {
+  return new Promise((resolve) => {
+    const input = h('input', { value: opts.value || '', placeholder: opts.placeholder || '', style: 'width:100%;box-sizing:border-box' });
+    const done = (v) => { over.remove(); resolve(v); };
+    const over = h('div', { class: 'overlay', onclick: (e) => { if (e.target === over) done(null); } },
+      h('div', { class: 'card', role: 'dialog', 'aria-label': title, style: 'width:min(440px,92vw);display:flex;flex-direction:column;gap:12px' },
+        h('h3', { style: 'margin:0' }, title), message ? h('div', { class: 'small muted', style: 'white-space:pre-wrap' }, message) : null, input,
+        h('div', { class: 'row', style: 'justify-content:flex-end;gap:8px' }, h('button', { class: 'ghost', onclick: () => done(null) }, 'Cancel'), h('button', { class: 'primary', onclick: () => done(input.value) }, opts.ok || 'OK'))));
+    input.onkeydown = (e) => { if (e.key === 'Enter') done(input.value); if (e.key === 'Escape') done(null); };
+    document.body.append(over); input.focus(); input.select();
+  });
+}
 const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label);
 const toggle = (on, fn) => h('button', { class: 'toggle' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(!!on), onclick: fn });
 

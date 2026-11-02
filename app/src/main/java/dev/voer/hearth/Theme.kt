@@ -153,10 +153,11 @@ fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
 /** Shrinks a little while pressed and springs back. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun Modifier.pressable(onLong: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
+    val hap = androidx.compose.ui.platform.LocalHapticFeedback.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed && Fx.motion) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
-    graphicsLayer { scaleX = s; scaleY = s }.let { m -> if (onLong == null) m.clickable(interactionSource = src, indication = null, onClick = onClick) else m.combinedClickable(interactionSource = src, indication = null, onClick = onClick, onLongClick = onLong) }
+    graphicsLayer { scaleX = s; scaleY = s }.let { m -> if (onLong == null) m.clickable(interactionSource = src, indication = null, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }) else m.combinedClickable(interactionSource = src, indication = null, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }, onLongClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLong() }) }
 }
 
 @Composable

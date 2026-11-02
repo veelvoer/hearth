@@ -102,6 +102,11 @@ object Store {
     /** Language the call is held in: "en" or "nl". Replies are still spoken in the language they are written in. */
     fun voiceLang(c: Context): String = sp(c).getString("vlang", null) ?: if (java.util.Locale.getDefault().language == "nl") "nl" else "en"
     fun setVoiceLang(c: Context, v: String) = sp(c).edit().putString("vlang", v).apply()
+    // Pinned chats stay on top of the list; a chosen name replaces the title. Both are kept on this phone.
+    fun pinned(c: Context, sid: String): Boolean = sp(c).getBoolean("pin_$sid", false)
+    fun setPinned(c: Context, sid: String, v: Boolean) { val e = sp(c).edit(); if (v) e.putBoolean("pin_$sid", true) else e.remove("pin_$sid"); e.apply() }
+    fun chatName(c: Context, sid: String): String = sp(c).getString("cname_$sid", null).orEmpty()
+    fun setChatName(c: Context, sid: String, v: String) { val e = sp(c).edit(); if (v.isBlank()) e.remove("cname_$sid") else e.putString("cname_$sid", v.trim()); e.apply() }
     // Mode, model and effort belong to a chat. The last choice also becomes the start for the next new chat.
     private fun chatKey(name: String, sid: String) = if (sid.isEmpty()) name else name + "_" + sid
     private fun chatGet(c: Context, name: String, sid: String): String = sp(c).getString(chatKey(name, sid), null) ?: sp(c).getString(name, "") ?: ""

@@ -75,6 +75,7 @@ object Ui {
     var chatOpen by mutableStateOf(false)
     var tab by mutableIntStateOf(0)
     var machinesRev by mutableIntStateOf(0)
+    var chatPrefsRev by mutableIntStateOf(0)
     var pendingOpen by mutableStateOf<PendingOpen?>(null)
     var shareRev by mutableIntStateOf(0)
     var sharedToast by mutableStateOf<String?>(null)

@@ -36,6 +36,8 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
             drawPath(PathParser().parsePathString(d).toPath(), color, style = if (fill) Fill else Stroke(1.8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         }
         when (name) {
+            "pin" -> svg("M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z")
+            "edit" -> svg("M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z")
             "chevd" -> svg("M6 9l6 6 6-6")
             "chevu" -> svg("M6 15l6-6 6 6")
             "chevr" -> svg("M9 6l6 6-6 6")
@@ -108,5 +110,5 @@ fun IconAction(glyph: String, desc: String, onClick: () -> Unit) =
 /** The familiar icon that goes with a one-word button. */
 val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
     "Check for updates" to "sync", "Check again" to "sync", "Test call" to "phone", "Cancel" to "x", "Close" to "x", "Not now" to "x", "Got it" to "check", "Back" to "back", "Tour" to "tour",
-    "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
+    "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Pin to top" to "pin", "Unpin" to "pin", "Rename" to "edit", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
     "Make invite link" to "share", "Share link" to "share", "Stop sharing" to "trash", "Join" to "people", "Enter the address myself" to "link", "What changed" to "history", "Restart" to "sync", "Delete" to "trash", "Delete this chat…" to "trash", "Revoke" to "x", "Look again" to "sync", "Show all" to "plus", "Remove step" to "trash", "Open folder" to "folder", "Set up a workflow" to "sliders", "Add to tasks" to "check", "Fix with Claude" to "tour", "Save" to "check", "Install" to "download", "Continue" to "play", "Setup" to "play", "Background access" to "clock", "Full-screen calls" to "phone")

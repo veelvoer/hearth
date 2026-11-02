@@ -195,6 +195,9 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     var onlyShared by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var delChat by remember { mutableStateOf<Pair<Machine, Sess>?>(null) }
+    var actChat by remember { mutableStateOf<Pair<Machine, Sess>?>(null) }
+    var renChat by remember { mutableStateOf<Sess?>(null) }
+    val prefsRev = Ui.chatPrefsRev
     var delErr by remember { mutableStateOf<String?>(null) }   // shared chats are kept apart: not in the normal list, but under their own chip
     Box(Modifier.fillMaxSize()) {
     Screen {
@@ -220,6 +223,25 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             return@Screen
         }
         Field(query, { query = it }, "Search chats")
+        actChat?.let { (mm, sx) ->
+            val own = !(mm.guest || sx.shared > 0); val isPinned = Store.pinned(c, sx.id)
+            androidx.compose.material3.AlertDialog(onDismissRequest = { actChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                title = { androidx.compose.foundation.text.selection.DisableSelection { Text(Store.chatName(c, sx.id).ifBlank { sx.title }, style = T.h2, maxLines = 2, overflow = TextOverflow.Ellipsis) } },
+                text = { androidx.compose.foundation.text.selection.DisableSelection { Column {
+                    TextAction(if (isPinned) "Unpin" else "Pin to top") { Store.setPinned(c, sx.id, !isPinned); Ui.chatPrefsRev++; actChat = null }
+                    TextAction("Rename") { renChat = sx; actChat = null }
+                    if (own) TextAction("Delete") { delChat = mm to sx; actChat = null }
+                } } },
+                confirmButton = { TextAction("Close") { actChat = null } })
+        }
+        renChat?.let { sx ->
+            var nm by remember(sx.id) { mutableStateOf(Store.chatName(c, sx.id).ifBlank { sx.title }) }
+            androidx.compose.material3.AlertDialog(onDismissRequest = { renChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                title = { Txt("Rename chat", T.h2) },
+                text = { Column { Field(nm, { nm = it }, "Name"); Spacer(Modifier.height(6.dp)); Txt("Only changes the name on this phone. Leave it empty to use the original name.", T.small, muted = true) } },
+                confirmButton = { TextAction("Save") { Store.setChatName(c, sx.id, nm); Ui.chatPrefsRev++; renChat = null } },
+                dismissButton = { TextAction("Cancel") { renChat = null } })
+        }
         delChat?.let { (mm, sx) -> androidx.compose.material3.AlertDialog(onDismissRequest = { delChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
             title = { Txt("Delete this chat?", T.h2) }, text = { androidx.compose.foundation.text.selection.DisableSelection { Txt("\"${sx.title}\" goes to the trash on the server for 30 days.", T.body) } },
             confirmButton = { TextAction("Delete") { delChat = null; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(mm, "/sessions/${sx.id}/delete", JSONObject()) } }.onSuccess { val k = mm.host + "|" + mm.token.take(8); lists[k] = lists[k]?.filter { it.id != sx.id } }.onFailure { delErr = it.message ?: "Couldn't delete it" } } } },
@@ -235,16 +257,17 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
         val all = (machines + guests).flatMap { mm -> (lists[key(mm)] ?: emptyList()).map { mm to it } }
             .groupBy { (mm, s) -> if (mm.guest) mm.share + ":" + s.id else s.id }.values.map { g ->
                 g.firstOrNull { (mm, _) -> mm === hub } ?: g.reduce { a, b -> if (a.second.running != b.second.running) (if (a.second.running) a else b) else if (b.second.mtime > a.second.mtime + 2500) b else a }
-            }.sortedByDescending { (_, s) -> if (s.running) Long.MAX_VALUE else s.mtime }.take(60)
+            }.sortedByDescending { (_, s) -> if (prefsRev >= 0 && Store.pinned(c, s.id)) Long.MAX_VALUE else if (s.running) Long.MAX_VALUE - 1 else s.mtime }.take(60)
+            .map { (mm, s) -> mm to (Store.chatName(c, s.id).takeIf { it.isNotBlank() }?.let { n -> s.copy(title = n) } ?: s) }
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt(if (onlyWorking) "Nothing is running right now." else if (onlyShared) "No shared chats yet." else "No chats yet. Tap + to start one.", T.small, muted = true)
-        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = if (mm.guest || s.shared > 0) null else ({ delChat = mm to s })) { open(mm, s) } } }
+        all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } }
     }
     }
 }
 
 @Composable
-private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
+private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Unit)? = null, pinned: Boolean = false, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val working = s.running || s.busy
     val dark = cs.background.luminance() < .5f
@@ -256,7 +279,10 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(s.title, style = T.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (pinned) { Glyph("pin", 14.dp, cs.primary); Spacer(Modifier.width(5.dp)) }
+                Text(s.title, style = T.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
                 Txt(listOfNotNull(if (working) "Working" else null, name, machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
