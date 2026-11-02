@@ -817,7 +817,16 @@ app.whenReady().then(async () => {
   upd = updater.create({
     root: path.join(__dirname, '..'), desktopDir: __dirname, getState: () => S, save, send: (ch, data) => broadcast(ch, data),
     serverBusy: () => anyRunning(machines().find((m) => m.secure)), localBusy: () => anyRunning(machines().find((m) => m.local)),
-    relaunch: (execPath) => { quitting = true; if (execPath) app.relaunch({ execPath, args: process.argv.slice(1).filter((a) => a === '--hidden') }); else app.relaunch(); app.quit(); },
+    relaunch: (execPath) => {
+      quitting = true;
+      if (execPath && process.platform === 'linux') {   // the new copy starts only after this one has really exited, or its single-instance check finds this one still there and it quits at once
+        try {
+          const args = process.argv.slice(1).filter((a) => a === '--hidden'), env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+          require('child_process').spawn('/bin/sh', ['-c', 'n=0; while kill -0 "$0" 2>/dev/null && [ $n -lt 100 ]; do sleep 0.3; n=$((n+1)); done; sleep 0.5; exec "$@"', String(process.pid), execPath, ...args], { detached: true, stdio: 'ignore', env }).unref();
+        } catch { app.relaunch({ execPath, args: process.argv.slice(1).filter((a) => a === '--hidden') }); }
+      } else if (execPath) app.relaunch({ execPath, args: process.argv.slice(1).filter((a) => a === '--hidden') }); else app.relaunch();
+      app.quit();
+    },
     relayBuild: async (which) => { const m = which === 'server' ? machines().find((x) => x.secure) : machines().find((x) => x.local); if (!m) return undefined; try { const st = await relayJson(m, 'GET', '/status'); return typeof st.build === 'string' ? st.build : ''; } catch { return null; } },
     version: () => app.getVersion(),
     relayStatus: async (which) => { const m = which === 'server' ? machines().find((x) => x.secure) : machines().find((x) => x.local); if (!m) return undefined; try { return await relayJson(m, 'GET', '/status'); } catch { return null; } },
