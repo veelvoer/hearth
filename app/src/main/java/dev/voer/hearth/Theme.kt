@@ -285,8 +285,18 @@ fun TextAction(text: String, onClick: () -> Unit) {
         Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = text).semantics { contentDescription = text }, contentAlignment = LocalIconAlign.current) { Glyph(ic, 24.dp, col) }
         return
     }
-    Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (ic != null) { Glyph(ic, 16.dp, col); Spacer(Modifier.width(5.dp)) }
+        Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), color = col, maxLines = 1, softWrap = false)
+    }
+}
+
+/** "‹ Settings" style link back to where you came from: the arrow is a drawn icon, flush with the left edge. */
+@Composable
+fun BackLink(text: String, onClick: () -> Unit) {
+    val col = MaterialTheme.colorScheme.primary
+    Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Glyph("back", 20.dp, col); Spacer(Modifier.width(4.dp))
         Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), color = col, maxLines = 1, softWrap = false)
     }
 }

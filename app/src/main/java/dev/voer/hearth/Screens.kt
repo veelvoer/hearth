@@ -924,7 +924,7 @@ fun SettingsScreen() {
     if (sub == "widgets") {
         BackHandler { sub = null }
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.padding(start = 20.dp, top = 16.dp)) { TextAction("‹ Settings") { sub = null } }
+            Row(Modifier.padding(start = 20.dp, top = 16.dp)) { BackLink("Settings") { sub = null } }
             Box(Modifier.weight(1f)) { WidgetsScreen() }
         }
         return

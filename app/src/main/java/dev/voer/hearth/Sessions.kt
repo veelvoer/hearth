@@ -745,7 +745,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val working = sending || serverBusy
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
         Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconAction("back", "Back", Alignment.CenterStart, 44.dp, back)
+            IconAction("back", "Back", Alignment.CenterStart, 40.dp, back)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(sess.title, style = T.h2.copy(fontSize = 17.sp), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -754,10 +754,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Txt(listOf(if (guest) "Shared by ${m.label}" else if (sess.kind == "talk") "Talk" else folder(sess.cwd), if (guest) null else m.name, if (sess.root) "root" else null, if (call != "off") "will call you" else null, if (working) "working" else null).filterNotNull().joinToString(" · "), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.weight(1f, fill = false), maxLines = 1)
                 }
             }
-            if (sess.id.isNotEmpty() && sharedChat) { IconAction("people", "Shared chat settings", Alignment.CenterEnd, 44.dp) { optionsOpen = true } }
-            if (sess.id.isNotEmpty() && !guest) { IconAction("share", "Share", Alignment.CenterEnd, 44.dp) { shareOpen = true } }
-            if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk", Alignment.CenterEnd, 44.dp) { voice = true } }
-            if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options", Alignment.CenterEnd, 44.dp) { options = !options } }
+            if (sess.id.isNotEmpty() && sharedChat) { IconAction("people", "Shared chat settings", Alignment.CenterEnd, 40.dp) { optionsOpen = true } }
+            if (sess.id.isNotEmpty() && !guest) { IconAction("share", "Share", Alignment.CenterEnd, 40.dp) { shareOpen = true } }
+            if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk", Alignment.CenterEnd, 40.dp) { voice = true } }
+            if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options", Alignment.CenterEnd, 40.dp) { options = !options } }
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.65f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than two thirds of the screen, so the typing bar always stays
             Label("Permissions")

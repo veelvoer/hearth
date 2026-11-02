@@ -170,7 +170,7 @@ private fun SupportNew(email: String, back: () -> Unit, sent: (String) -> Unit) 
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     Screen {
-        TextAction("‹ Back", back)
+        BackLink("Back", back)
         Txt("What is it about?", T.small, muted = true)
         ChipRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { CATS.forEach { (k, l, _) -> Chip(l, cat == k) { cat = k } } }
         Field(title, { title = it.take(120) }, "A few words, e.g. “The app closes when I open it”")
@@ -222,7 +222,7 @@ private fun SupportThread(id: String, back: () -> Unit) {
     }
     LaunchedEffect(id) { while (true) { load(); delay(15_000) } }
     Screen {
-        TextAction("‹ All requests", back)
+        BackLink("All requests", back)
         Txt(title, T.h2)
         Txt(id, T.small, muted = true)
         if (theirs.isNotEmpty()) { Txt("From $theirs. You see everything here and cannot change it. Answer by replying to the email.", T.small, muted = true); SupportActions(id, title, "other", theirs, msgs.joinToString("\n\n") { (if (it.from == "support") "Support" else theirs) + ": " + it.text }) }
