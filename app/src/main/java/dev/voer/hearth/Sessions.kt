@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -42,11 +43,18 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 @Composable
-fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier, bare: Boolean = false) {
+fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier, bare: Boolean = false, selectAll: Boolean = false) {
     val cs = MaterialTheme.colorScheme
     Box(if (bare) modifier.fillMaxWidth().padding(vertical = 10.dp) else modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceVariant)
         .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp)).padding(14.dp)) {
         if (value.isEmpty()) Txt(hint, T.body, muted = true)
+        if (selectAll) {   // opens with the whole text selected and the keyboard up, so typing replaces it
+            var tv by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(0, value.length))) }
+            val fr = remember { androidx.compose.ui.focus.FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+            BasicTextField(tv, { tv = it; onChange(it.text) }, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
+                textStyle = T.body.copy(color = cs.onSurface), modifier = Modifier.fillMaxWidth().focusRequester(fr))
+        } else
         BasicTextField(value, onChange, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
             keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text),
             textStyle = T.body.copy(color = cs.onSurface, fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default),
@@ -183,14 +191,28 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             delay(30_000)
         }
     }
-    LaunchedEffect(machines, guests) {
+    var refreshing by remember { mutableStateOf(false) }
+    var refreshTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(machines, guests, refreshTick) {
         while (true) {
             // every computer is asked at the same time and shows up as soon as it answers; a computer that is off must not hold the others back
             (machines + guests).map { mm -> launch { val k = mm.host + "|" + mm.token.take(8); lists[k] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.onSuccess { errs.remove(k) }.onFailure { errs[k] = it.message ?: it.javaClass.simpleName }.getOrNull() } }.forEach { it.join() }
+            (machines.firstOrNull { it.secure } ?: machines.firstOrNull())?.let { hm ->   // pins and names live on the server, so the phone and the computer agree
+                runCatching { withContext(Dispatchers.IO) {
+                    val t = Relay.chatTags(hm)
+                    if (!Store.tagsSynced(c)) { Store.localTags(c).forEach { (id, v) -> if (!t.has(id)) Relay.setChatTag(hm, id, v.first.takeIf { it }, v.second.takeIf { it.isNotBlank() }) }; Store.markTagsSynced(c); Relay.chatTags(hm) } else t
+                } }.onSuccess { t -> if (Store.replaceTags(c, t)) Ui.chatPrefsRev++ }
+            }
             delay(6_000)
         }
     }
     var query by remember { mutableStateOf("") }
+    var hits by remember { mutableStateOf<List<Triple<Machine, Sess, String>>>(emptyList()) }
+    LaunchedEffect(query) {   // words inside the chats are looked for a moment after you stop typing
+        hits = emptyList()
+        val q = query.trim()
+        if (q.length >= 2) { delay(450); hits = machines.flatMap { mm -> runCatching { withContext(Dispatchers.IO) { Relay.search(mm, q) } }.getOrDefault(emptyList()).map { Triple(mm, it.first, it.second) } }.distinctBy { it.second.id }.take(20) }
+    }
     var onlyWorking by remember { mutableStateOf(false) }
     var onlyShared by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -198,8 +220,11 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     var actChat by remember { mutableStateOf<Pair<Machine, Sess>?>(null) }
     var renChat by remember { mutableStateOf<Sess?>(null) }
     val prefsRev = Ui.chatPrefsRev
+    fun pushTag(id: String, pin: Boolean?, name: String?) { (machines.firstOrNull { it.secure } ?: machines.firstOrNull())?.let { hm -> scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.setChatTag(hm, id, pin, name) } } } } }
     var delErr by remember { mutableStateOf<String?>(null) }   // shared chats are kept apart: not in the normal list, but under their own chip
     Box(Modifier.fillMaxSize()) {
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshTick++; refreshing = true; scope.launch { delay(900); refreshing = false } }, modifier = Modifier.fillMaxSize()) {
     Screen {
         Header("Chats") {
             if (machines.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -228,7 +253,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             androidx.compose.material3.AlertDialog(onDismissRequest = { actChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 title = { androidx.compose.foundation.text.selection.DisableSelection { Text(Store.chatName(c, sx.id).ifBlank { sx.title }, style = T.h2, maxLines = 2, overflow = TextOverflow.Ellipsis) } },
                 text = { androidx.compose.foundation.text.selection.DisableSelection { Column {
-                    TextAction(if (isPinned) "Unpin" else "Pin to top") { Store.setPinned(c, sx.id, !isPinned); Ui.chatPrefsRev++; actChat = null }
+                    TextAction(if (isPinned) "Unpin" else "Pin to top") { Store.setPinned(c, sx.id, !isPinned); pushTag(sx.id, !isPinned, null); Ui.chatPrefsRev++; actChat = null }
                     TextAction("Rename") { renChat = sx; actChat = null }
                     if (own) TextAction("Delete") { delChat = mm to sx; actChat = null }
                 } } },
@@ -238,8 +263,8 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             var nm by remember(sx.id) { mutableStateOf(Store.chatName(c, sx.id).ifBlank { sx.title }) }
             androidx.compose.material3.AlertDialog(onDismissRequest = { renChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 title = { Txt("Rename chat", T.h2) },
-                text = { Column { Field(nm, { nm = it }, "Name"); Spacer(Modifier.height(6.dp)); Txt("Only changes the name on this phone. Leave it empty to use the original name.", T.small, muted = true) } },
-                confirmButton = { TextAction("Save") { Store.setChatName(c, sx.id, nm); Ui.chatPrefsRev++; renChat = null } },
+                text = { Column { Field(nm, { nm = it }, "Name", selectAll = true); Spacer(Modifier.height(6.dp)); Txt("Only changes the name on this phone. Leave it empty to use the original name.", T.small, muted = true) } },
+                confirmButton = { TextAction("Save") { Store.setChatName(c, sx.id, nm); pushTag(sx.id, null, nm); Ui.chatPrefsRev++; renChat = null } },
                 dismissButton = { TextAction("Cancel") { renChat = null } })
         }
         delChat?.let { (mm, sx) -> androidx.compose.material3.AlertDialog(onDismissRequest = { delChat = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -261,7 +286,9 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             .map { (mm, s) -> mm to (Store.chatName(c, s.id).takeIf { it.isNotBlank() }?.let { n -> s.copy(title = n) } ?: s) }
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt(if (onlyWorking) "Nothing is running right now." else if (onlyShared) "No shared chats yet." else "No chats yet. Tap + to start one.", T.small, muted = true)
+        if (hits.isNotEmpty()) { Label("In messages"); hits.forEach { (mm, s, snip) -> Card(Modifier.pressable { open(mm, s) }) { androidx.compose.foundation.text.selection.DisableSelection { Txt(Store.chatName(c, s.id).ifBlank { s.title }, T.body.copy(fontWeight = FontWeight.SemiBold)); Spacer(Modifier.height(2.dp)); Txt(snip, T.small, muted = true) } } } }
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } }
+    }
     }
     }
 }
@@ -523,12 +550,19 @@ private fun clock(ms: Long): String {
 
 private fun sess0Shared(s: Sess) = s.shared >= 0
 
+/** The last few chats' messages stay in memory, so opening one again shows it at once while the fresh copy loads. */
+private object MsgCache {
+    private val m = object : LinkedHashMap<String, List<Msg>>(16, 0.75f, true) { override fun removeEldestEntry(e: MutableMap.MutableEntry<String, List<Msg>>) = size > 12 }
+    @Synchronized fun get(id: String): List<Msg>? = if (id.isEmpty()) null else m[id]
+    @Synchronized fun put(id: String, l: List<Msg>) { if (id.isNotEmpty()) m[id] = l }
+}
+
 @Composable
 private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () -> Unit = {}, back: () -> Unit) {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var sess by remember { mutableStateOf(s0) }
-    val msgs = remember { mutableStateListOf<Msg>() }
+    val msgs = remember { mutableStateListOf<Msg>().also { l -> MsgCache.get(s0.id)?.let { l.addAll(it) } } }   // a chat you looked at a moment ago opens at once, then catches up
     val settled = remember { mutableIntStateOf(-1) }   // how many messages were there when the chat opened: later ones glide in
     val unsent = remember { mutableStateListOf<Pair<String, Long>>() }   // sent, but not in the computer's copy of the chat yet: they stay visible until they show up
     val parts = remember { mutableStateListOf<Part>() }
@@ -600,6 +634,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 val seen = raw.filter { x -> x.role == "user" }.takeLast(40).map { x -> norm(x.text) }
                 unsent.removeAll { u -> val t = norm(u.first); System.currentTimeMillis() - u.second > 30 * 60_000 || seen.any { x -> x == t || (t.length > 24 && (x.contains(t) || (t.contains(x) && x.length > 24))) } }
                 val it = raw + unsent.map { u -> Msg("user", u.first) }
+                MsgCache.put(sess.id, raw)
                 if (it.size != msgs.size || it.lastOrNull()?.text != msgs.lastOrNull()?.text || it.lastOrNull()?.result != msgs.lastOrNull()?.result) { msgs.clear(); msgs.addAll(it) }; if (settled.intValue < 0) settled.intValue = msgs.size; err = null }
             .onFailure { err = it.message ?: "Can't reach ${m.name}" }
     }
@@ -773,7 +808,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                     }
                     "tool" -> ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
                     "meta" -> Txt(msg.text, T.small, muted = true)
-                    else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column { MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) }
+                    else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column {
+                        MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true)
+                        if (idx == msgs.indexOfLast { it.role == "assistant" } && !working) Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {   // the newest reply can be copied or sent on in one tap
+                            TextAction("Copy") { (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Claude", msg.text)); Toast.makeText(c, "Copied", Toast.LENGTH_SHORT).show() }
+                            TextAction("Share") { c.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, msg.text), null)) }
+                        }
+                    }
                 }
               }
             }

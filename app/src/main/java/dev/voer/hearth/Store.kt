@@ -107,6 +107,17 @@ object Store {
     fun setPinned(c: Context, sid: String, v: Boolean) { val e = sp(c).edit(); if (v) e.putBoolean("pin_$sid", true) else e.remove("pin_$sid"); e.apply() }
     fun chatName(c: Context, sid: String): String = sp(c).getString("cname_$sid", null).orEmpty()
     fun setChatName(c: Context, sid: String, v: String) { val e = sp(c).edit(); if (v.isBlank()) e.remove("cname_$sid") else e.putString("cname_$sid", v.trim()); e.apply() }
+    fun localTags(c: Context): Map<String, Pair<Boolean, String>> { val all = sp(c).all; return all.keys.filter { it.startsWith("pin_") || it.startsWith("cname_") }.map { it.substringAfter('_') }.toSet().associateWith { id -> ((all["pin_$id"] as? Boolean) ?: false) to ((all["cname_$id"] as? String) ?: "") } }
+    fun tagsSynced(c: Context): Boolean = sp(c).getBoolean("tags_synced", false)
+    fun markTagsSynced(c: Context) = sp(c).edit().putBoolean("tags_synced", true).apply()
+    /** The server's pins and names replace the ones kept here. True when something changed. */
+    fun replaceTags(c: Context, t: org.json.JSONObject): Boolean {
+        val before = localTags(c); val e = sp(c).edit()
+        before.keys.forEach { e.remove("pin_$it"); e.remove("cname_$it") }
+        val keys = t.keys()
+        while (keys.hasNext()) { val id = keys.next(); val o = t.optJSONObject(id) ?: continue; if (o.optBoolean("pin")) e.putBoolean("pin_$id", true); val n = o.optString("name"); if (n.isNotBlank()) e.putString("cname_$id", n) }
+        e.apply(); return localTags(c) != before
+    }
     // Mode, model and effort belong to a chat. The last choice also becomes the start for the next new chat.
     private fun chatKey(name: String, sid: String) = if (sid.isEmpty()) name else name + "_" + sid
     private fun chatGet(c: Context, name: String, sid: String): String = sp(c).getString(chatKey(name, sid), null) ?: sp(c).getString(name, "") ?: ""

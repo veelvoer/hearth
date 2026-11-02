@@ -176,6 +176,27 @@ function sessions(active, keep, limit = 300, quiet = new Set()) {   // [quiet]: 
   return out;
 }
 
+/** Looks for words inside the chats themselves (what you and Claude wrote), newest chats first. */
+function search(q, limit = 25) {
+  const needle = String(q || '').trim().toLowerCase(); if (needle.length < 2) return [];
+  const t0 = Date.now(), out = [], budget = { left: 64 * 1024 * 1024 }, CAP = 8 * 1024 * 1024;
+  for (const f of listFiles().sort((a, b) => b.mtime - a.mtime)) {
+    if (Date.now() - t0 > 4000 || out.length >= limit) break;
+    let text; try { text = f.size > CAP ? readChunk(f.file, f.size - CAP, f.size).toString('utf8') : fs.readFileSync(f.file, 'utf8'); } catch { continue; }
+    if (!text.toLowerCase().includes(needle)) continue;   // quick skip before anything is parsed
+    let hit = null, n = 0;
+    for (const line of text.split('\n')) {
+      if (!line || !line.toLowerCase().includes(needle)) continue;
+      const o = parseLine(line); if (!o || (o.type !== 'user' && o.type !== 'assistant')) continue;
+      const body = textOf(o.message && o.message.content), i = body.toLowerCase().indexOf(needle); if (i < 0) continue;
+      n++; if (!hit) hit = (i > 40 ? '…' : '') + body.slice(Math.max(0, i - 40), i + needle.length + 60).replace(/\s+/g, ' ');
+    }
+    if (!hit) continue;
+    let s = {}; try { s = summarize(f, budget); } catch { /* the hit still counts */ }
+    out.push({ id: f.id, title: s.title || f.id, cwd: s.cwd || '', mtime: Math.floor(f.mtime), snippet: hit, count: n });
+  }
+  return out;
+}
 function toolInput(name, arg) {
   arg = arg || {};
   if (name === 'Edit' || name === 'NotebookEdit') return { file_path: arg.file_path || '', old_string: clip(arg.old_string, 1500), new_string: clip(arg.new_string, 1500) };
@@ -364,4 +385,4 @@ function warm() {
   setTimeout(step, 500).unref();
 }
 
-module.exports = { warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };
+module.exports = { search, warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };

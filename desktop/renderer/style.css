@@ -765,3 +765,4 @@ button.sm { min-height: 32px; }
 .pane.isnew, .pane.isnew .chatmain { min-height: 0; } .pane.isnew .chatmain { justify-content: flex-start; overflow-y: auto; } .pane.isnew .msgs { flex: none; }
 @media (max-height: 820px) { .pane.isnew .intro h2 { font-size: 32px; } .pane.isnew .intro svg, .pane.isnew .intro .logo { transform: scale(.8); margin: -8px 0; } }
 .pane.isnew .intro { padding-top: 0; } .pane.isnew .msgs { padding-top: 6px; }
+.md { position: relative; } .copyrep { position: absolute; top: -8px; right: 0; opacity: 0; transition: opacity .15s; } .md:hover .copyrep, .copyrep:focus-visible { opacity: 1; }

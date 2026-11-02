@@ -1034,6 +1034,8 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
+        if (parts[0] === 'search' && parts.length === 1) return json(res, 200, { results: core.search(u.searchParams.get('q') || '') });   // words inside the chats
+        if (parts[0] === 'chat-tags' && parts.length === 1) return json(res, 200, { tags: readCfg().chatTags || {} });   // pins and names of chats, shared by the phone and the computer
         if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
           const want = String(u.searchParams.get('path') || '') || root || os.homedir();
@@ -1252,6 +1254,15 @@ function start(opts) {
         }
         const b = await bodyJson(req);
         if (parts[0] === 'usage' && parts[1] === 'refresh') return json(res, 200, await checkUsage());
+        if (parts[0] === 'chat-tags' && parts.length === 1) {
+          const id = String(b.id || ''); if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return json(res, 400, { error: 'bad id' });
+          const tags = { ...(readCfg().chatTags || {}) }, cur = { ...(tags[id] || {}) };
+          if (b.pin !== undefined) { if (b.pin) cur.pin = true; else delete cur.pin; }
+          if (b.name !== undefined) { const n = String(b.name).trim().slice(0, 120); if (n) cur.name = n; else delete cur.name; }
+          if (cur.pin || cur.name) { cur.t = Date.now(); tags[id] = cur; } else delete tags[id];
+          if (Object.keys(tags).length > 2000) return json(res, 400, { error: 'too many' });
+          writeCfg({ chatTags: tags }); return json(res, 200, { tags });
+        }
         if (parts[0] === 'admin' && parts[1] === 'options') {   // switches for the server owner
           if (b.outside !== undefined) writeCfg({ outside: !!b.outside });
           if (b.bypass !== undefined) writeCfg({ bypass: !!b.bypass });

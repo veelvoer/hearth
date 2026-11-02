@@ -105,6 +105,14 @@ object Relay {
         return found.values.toList()
     }
 
+    /** Words inside the chats (what was written), newest first; each hit comes with the piece of text around the match. */
+    fun search(m: Machine, q: String): List<Pair<Sess, String>> {
+        val a = JSONObject(getJson(m, "/search?q=" + java.net.URLEncoder.encode(q, "UTF-8"))).optJSONArray("results") ?: return emptyList()
+        return (0 until a.length()).map { val o = a.getJSONObject(it); Sess(o.getString("id"), o.optString("title"), o.optString("cwd"), o.optLong("mtime"), false) to o.optString("snippet") }
+    }
+    fun chatTags(m: Machine): JSONObject = JSONObject(getJson(m, "/chat-tags")).optJSONObject("tags") ?: JSONObject()
+    fun setChatTag(m: Machine, id: String, pin: Boolean?, name: String?) { val b = JSONObject().put("id", id); if (pin != null) b.put("pin", pin); if (name != null) b.put("name", name); postJson(m, "/chat-tags", b) }
+
     fun sessions(m: Machine): List<Sess> {
         val a = JSONArray(getJson(m, "/sessions"))
         return List(a.length()) {

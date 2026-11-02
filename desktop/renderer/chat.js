@@ -57,6 +57,7 @@ const chatTag = (id) => chatTagsAll()[id] || {};
 function setChatTag(id, patch) {
   const o = chatTagsAll(); o[id] = { ...(o[id] || {}), ...patch }; if (!o[id].pin) delete o[id].pin; if (!o[id].name) delete o[id].name; if (!Object.keys(o[id]).length) delete o[id];
   localStorage.setItem('cm.chattags', JSON.stringify(o));
+  const hub = SS.machines.find((x) => x.secure) || SS.machines[0]; if (hub) cm.relay(hub.id, 'POST', '/chat-tags', { id, ...patch }).catch(() => {});
   if (SS.sel && SS.sel.id === id && 'name' in patch) { SS.sel.title = patch.name || SS.sel.title; drawPane(); }
   drawSide();
 }
@@ -71,6 +72,32 @@ function chatMenu(e, s) {
   document.body.append(pop);
   pop.style.left = Math.min(e.clientX, innerWidth - 210) + 'px'; pop.style.top = Math.min(e.clientY, innerHeight - 110) + 'px';
   setTimeout(() => document.addEventListener('mousedown', away, true), 0);
+}
+/** Words inside the chats are looked for a moment after you stop typing, on every computer, and shown under the matching titles. */
+let SEARCH_T = null;
+function scheduleContentSearch() {
+  clearTimeout(SEARCH_T); const q = SS.search.trim(); SS.hits = []; SS.hitsQ = '';
+  if (q.length < 2) return;
+  SEARCH_T = setTimeout(async () => {
+    const res = [];
+    await Promise.all(SS.machines.map(async (m) => { try { for (const r of (await cm.relay(m.id, 'GET', '/search?q=' + encodeURIComponent(q))).results || []) res.push({ ...r, mid: m.id }); } catch { /* that computer is off */ } }));
+    if (SS.search.trim() !== q) return;
+    const seen = new Set(); SS.hits = res.filter((r) => !seen.has(r.id) && seen.add(r.id)).slice(0, 20); SS.hitsQ = q; if (tab === 'sessions') drawSide();
+  }, 450);
+}
+/** Pins and names are kept on the server, so the phone and this computer show the same. What was set here before goes up once. */
+let TAGSYNC = false;
+async function syncTags() {
+  const m = SS.machines.find((x) => x.secure) || SS.machines[0]; if (!m) return;
+  try {
+    let t = (await cm.relay(m.id, 'GET', '/chat-tags')).tags || {};
+    if (!TAGSYNC && !localStorage.getItem('cm.tagsSynced')) {
+      for (const [id, v] of Object.entries(chatTagsAll())) if (!t[id]) await cm.relay(m.id, 'POST', '/chat-tags', { id, pin: v.pin ? true : undefined, name: v.name });
+      localStorage.setItem('cm.tagsSynced', '1'); t = (await cm.relay(m.id, 'GET', '/chat-tags')).tags || {};
+    }
+    TAGSYNC = true;
+    if (JSON.stringify(t) !== JSON.stringify(chatTagsAll())) { localStorage.setItem('cm.chattags', JSON.stringify(t)); if (tab === 'sessions') drawSide(); }
+  } catch { /* offline: keep what is here */ }
 }
 function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
@@ -101,12 +128,17 @@ function drawSide() {
     SS.tabsEl.append(h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'), h('button', { class: 'ptab add', title: 'Open a chat a friend shared with you', onclick: shJoinDialog }, 'Join a shared chat'));
   }
   side.innerHTML = '';
-  side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; drawSide(); } }));
+  side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; scheduleContentSearch(); drawSide(); } }));
   const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => (Number(!!chatTag(b.id).pin) - Number(!!chatTag(a.id).pin)) || b.mtime - a.mtime);
   list.forEach((s) => side.append(chatItem(s)));
+  const hits = q && SS.hitsQ === SS.search.trim() ? (SS.hits || []) : [];
+  if (hits.length) {
+    side.append(h('div', { class: 'small muted', style: 'margin:12px 4px 4px;text-transform:uppercase;letter-spacing:.06em' }, 'In messages'));
+    hits.forEach((r) => side.append(h('div', { class: 'item', onclick: () => openSession({ id: r.id, title: (chatTag(r.id).name || r.title), cwd: r.cwd, mid: r.mid, mtime: r.mtime, live: false }) }, h('div', { class: 'ititle' }, h('span', { class: 'ellip' }, chatTag(r.id).name || r.title)), h('div', { class: 'small muted', style: 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden' }, r.snippet))));
+  }
   const own = !q && SS.projKey && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
   if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, own.length === 1 ? 'Delete this chat…' : 'Delete all ' + own.length + ' chats of this project…')));
-  if (!list.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
+  if (!list.length && !hits.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
   if (SS.err) { const sv = SS.machines.find((m) => m.secure), box = h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small err' }, SS.err), h('div', { class: 'small muted' }, 'A stuck server restarts itself within a couple of minutes.'));
     if (sv) { const note = h('span', { class: 'small muted' }); box.append(h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: async () => { note.textContent = 'Restarting…'; try { await cm.relay(sv.id, 'POST', '/admin/restart', { force: true }); note.textContent = 'Restarting. It is back in a few seconds.'; setTimeout(() => { pollLive(); }, 8000); } catch (e) { note.textContent = clean(e); } } }, 'Restart ' + (sv.name || 'server')), note)); }
     side.append(box); }
@@ -131,6 +163,7 @@ async function pollLive() {
     if (tab === 'sessions') drawSide();
   }));
   if (tab === 'sessions') drawSide();
+  syncTags();
 }
 /** Messages you sent that the computer's copy of the chat does not show yet (still travelling, or queued for a laptop that is off). They stay visible until they show up. */
 function withUnsent(list, sel) {
@@ -251,6 +284,12 @@ function newChat() {
   const t = $('#composer-text'); if (t) t.focus();
 }
 document.addEventListener('keydown', (e) => { if (tab === 'sessions' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); } });
+/** Ctrl/⌘ K jumps to the search box; Ctrl/⌘ 1 to 4 switch between Chats, Home, History and Settings. */
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  if (e.key.toLowerCase() === 'k') { e.preventDefault(); if (tab !== 'sessions') setTab('sessions'); setTimeout(() => { const i = $('#chat-search'); if (i) { i.focus(); i.select(); } }, 60); }
+  else if (/^[1-4]$/.test(e.key) && TABS[Number(e.key) - 1]) { e.preventDefault(); setTab(TABS[Number(e.key) - 1][0]); }
+});
 
 // ───────── pane ─────────
 SS.rightOff = localStorage.getItem('cm.rightOff') === '1';
@@ -542,7 +581,11 @@ function toolCard(t, key) {
   d.append(h('summary', {}, h('span', { class: 'tname' }, t.name || 'Tool'), h('span', { class: 'tsum ellip' }, toolSummary(t)), tsEl(t.ts), status), toolBody(t));
   return d;
 }
-const assistantEl = (text) => { const d = h('div', { class: 'md' }); d.append(md(text)); return d; };
+const assistantEl = (text) => {
+  const d = h('div', { class: 'md' }); d.append(md(text));
+  d.append(h('button', { class: 'ghost sm copyrep', title: 'Copy this reply', 'aria-label': 'Copy this reply', onclick: async (e) => { const b = e.currentTarget; try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1200); } catch { toast('Could not copy.'); } } }, 'Copy'));
+  return d;
+};
 
 function renderMsgs() {
   const col = $('#col');
