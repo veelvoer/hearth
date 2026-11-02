@@ -394,7 +394,7 @@ fun ComputersCard() {
                 if (r != null) { if (machines.isEmpty()) Store.setCallMe(c, true); commit(machines.filter { it.host != r.host } + r); Toast.makeText(c, "Connected to ${r.name}", Toast.LENGTH_SHORT).show(); adding = false }
                 manual = false
             } else Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) { TextAction("Enter the address myself") { manual = true }; TextAction("Cancel") { adding = false } }
-        } else TextAction("Add a computer or server") { adding = true }
+        } else TextAction("Add") { adding = true }
     }
 }
 
