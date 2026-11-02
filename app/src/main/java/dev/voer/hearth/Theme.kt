@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.role
@@ -232,10 +233,10 @@ fun Chip(text: String, selected: Boolean, icon: String? = null, onClick: () -> U
     val solid by androidx.compose.animation.animateColorAsState(if (selected && group == null) cs.primary else Color.Transparent, androidx.compose.animation.core.tween(220), label = "chipbg")
     Box(
         Modifier.pressable(onClick = onClick).onGloballyPositioned { c -> if (selected && group != null) group.select(c, c.size.width.toFloat(), c.size.height.toFloat()) }
-            .heightIn(min = 48.dp).semantics(mergeDescendants = true) { role = androidx.compose.ui.semantics.Role.Button; this.selected = selected }
+            .heightIn(min = 48.dp).semantics(mergeDescendants = true) { role = androidx.compose.ui.semantics.Role.Button; this.selected = selected; if (icon != null) contentDescription = text }
             .clip(shape).background(solid).border(1.dp, line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
-    ) { Row(verticalAlignment = Alignment.CenterVertically) { if (icon != null) { Glyph(icon, 15.dp, ink); Spacer(Modifier.width(6.dp)) }; Txt(text, T.small, color = ink) } }
+    ) { Row(verticalAlignment = Alignment.CenterVertically) { if (icon != null) { Glyph(icon, if (selected) 15.dp else 20.dp, ink); if (selected) Spacer(Modifier.width(6.dp)) }; if (icon == null || selected) Txt(text, T.small, color = ink) } }
 }
 
 /** The selected chip's highlight is one shape that glides to the next chip; the chips themselves never move. */
@@ -279,8 +280,12 @@ fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-fun TextAction(text: String, onClick: () -> Unit) {
+fun TextAction(text: String, showText: Boolean = false, onClick: () -> Unit) {
     val ic = ACTION_ICONS[text]; val col = MaterialTheme.colorScheme.primary
+    if (ic != null && text in ICON_ONLY && !showText) {   // icon only: the words are for the screen reader
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = text).semantics { contentDescription = text }, contentAlignment = Alignment.Center) { Glyph(ic, 24.dp, col) }
+        return
+    }
     Row(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (ic != null) { Glyph(ic, 16.dp, col); Spacer(Modifier.width(5.dp)) }
         Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), color = col, maxLines = 1, softWrap = false)
