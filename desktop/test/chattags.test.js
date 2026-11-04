@@ -25,6 +25,8 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   ok('10 search says nothing for words that are not there, or too short', ((await req('GET', '/search?q=zzzzqq', tok)).j.results || []).length === 0 && ((await req('GET', '/search?q=p', tok)).j.results || []).length === 0);
   ok('11 search matches what you wrote too', ((await req('GET', '/search?q=poem', tok)).j.results || []).map((x) => x.id).join() === 'two');
   ok('12 a guest key cannot search', (await req('GET', '/search?q=poem', 'share.abcd.abcdefghijklmnop')).code === 401);
+  for (let i = 0; i < 9; i++) await req('GET', '/chat-tags', 'wrong' + i);
+  ok('13 after many wrong tokens, a wrong one is locked out but the right one still gets in', (await req('GET', '/chat-tags', 'wrong-again')).code === 429 && (await req('GET', '/chat-tags', tok)).code === 200);
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

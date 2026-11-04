@@ -430,8 +430,20 @@ async function main() {
     banner(); const up = await tcpUp(); (up ? ok : bad)(up ? 'Hearth is running at ' + meta.url : 'Hearth is not answering.');
     say(dim(meta.mode === 'docker' ? `Docker folder: ${INSTALL_DIR}` : `Logs: sudo journalctl -u ${INSTANCE} -n 30`)); return undefined;
   }
-  if (cmd === 'update') {
-    banner(); say('To update, run the installer again from the newest version:'); gap(); say('curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash'); return undefined;
+  if (cmd === 'restart' || cmd === 'stop' || cmd === 'start') {   // the same three words as for any service; no setup is asked again
+    banner();
+    if (meta.mode === 'docker') await must(cmd[0].toUpperCase() + cmd.slice(1) + ' Hearth', 'docker', ['compose', cmd], { sudo: true, cwd: INSTALL_DIR });
+    else await must(cmd[0].toUpperCase() + cmd.slice(1) + ' Hearth', 'systemctl', [cmd, INSTANCE], { sudo: true });
+    if (cmd !== 'stop') { for (let i = 0; i < 20 && !(await tcpUp()); i++) await new Promise((r) => setTimeout(r, 1000)); const up = await tcpUp(); (up ? ok : bad)(up ? 'Hearth is running at ' + meta.url : 'Hearth did not answer yet. Look at the logs with: hearth-server logs'); }
+    else ok('Hearth is stopped. Start it again with: hearth-server start');
+    return undefined;
+  }
+  if (cmd === 'logs') { banner(); await run('Last lines of the log', 'sh', ['-c', meta.mode === 'docker' ? `cd '${INSTALL_DIR}' && docker compose logs --tail 60` : `journalctl -u ${INSTANCE} -n 60 --no-pager`], { sudo: true }); return undefined; }
+  if (cmd === 'update') {   // gets the newest installer and runs it, which keeps the address, the code and your projects as they are
+    banner(); say('Updating to the newest version…'); gap();
+    const r = require('child_process').spawnSync('sh', ['-c', 'curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash'], { stdio: 'inherit' });   // the installer may ask a question, so it gets the keyboard
+    if (r.status !== 0) { bad('The update did not finish. Try again, or run:  curl -fsSL https://raw.githubusercontent.com/veelvoer/hearth/main/install.sh | bash'); process.exit(1); }
+    return undefined;
   }
   if (cmd === 'uninstall') {
     banner(); say('This removes the Hearth server program. Your projects and chats stay where they are.'); if (!(await confirm('Remove Hearth from this server?', false))) return undefined;
@@ -440,6 +452,6 @@ async function main() {
     await run('Remove the program files', 'sh', ['-c', `rm -rf '${INSTALL_DIR}/relay' '${INSTALL_DIR}/installer' '${INSTALL_DIR}/install.json' /usr/local/bin/${binOf(INSTANCE)} /etc/caddy/${INSTANCE}.d`], { sudo: true });
     ok('Hearth is removed.'); return undefined;
   }
-  say('Commands:  code (address, code and link for a new device) · status · update · uninstall'); return undefined;
+  say('Commands:  code (address, code and link for a new device) · status · restart · stop · start · logs · update · uninstall'); return undefined;
 }
 main().then(() => process.exit(0), (e) => { bad(e.message); process.exit(1); });

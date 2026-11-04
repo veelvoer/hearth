@@ -25,8 +25,8 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
   const limited = (key, max, ms) => { const t = now(), a = (hits.get(key) || []).filter((x) => t - x < ms); if (a.length >= max) { hits.set(key, a); return true; } a.push(t); hits.set(key, a); return false; };
 
   // ── mail ──
-  async function send(m, to) {
-    const msg = { from: `Hearth Support <${from}>`, to, subject: m.subject, html: m.html, text: m.text, replyTo: m.replyTo, headers: { 'X-Hearth-Mail': '1' } };
+  async function send(m, to, attachments) {
+    const msg = { from: `Hearth Support <${from}>`, to, subject: m.subject, html: m.html, text: m.text, replyTo: m.replyTo, headers: { 'X-Hearth-Mail': '1' }, ...(attachments && attachments.length ? { attachments } : {}) };
     try { await transport.sendMail(msg); return true; } catch (e) { db.outbox.push({ msg, at: now(), tries: 1, last: String(e.message).slice(0, 120) }); save(); return false; }
   }
   async function flushOutbox() {
@@ -57,6 +57,23 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
   }
   const who = (token) => { const s = db.sessions[sha(token || '')]; return s && now() < s.exp ? s.email : null; };
 
+  // ── attachments: up to 3 small files per message, kept on disk next to the request, and mailed to the owner ──
+  const MAX_FILES = 3, MAX_FILE = 1.5 * 1024 * 1024;
+  function takeFiles(id, files) {
+    const out = [];
+    for (const f of (Array.isArray(files) ? files : []).slice(0, MAX_FILES)) {
+      const name = String(f && f.name || 'file').replace(/[^\w.\- ()]/g, '_').replace(/\.{2,}/g, '.').slice(-80) || 'file';
+      let buf; try { buf = Buffer.from(String(f && f.data || ''), 'base64'); } catch { continue; }
+      if (!buf.length) continue; if (buf.length > MAX_FILE) throw Object.assign(new Error('"' + name + '" is bigger than 1.5 MB.'), { code: 400 });
+      const dir = path.join(dataDir, 'files', id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const stored = path.join(dir, now() + '-' + out.length + '-' + name); fs.writeFileSync(stored, buf, { mode: 0o600 });
+      out.push({ name, size: buf.length, type: String(f.type || 'application/octet-stream').slice(0, 80), path: stored });
+    }
+    return out;
+  }
+  const mailFiles = (files) => (files || []).map((f) => ({ filename: f.name, path: f.path, contentType: f.type }));
+  const publicFiles = (files) => (files || []).map((f) => ({ name: f.name, size: f.size }));
+
   // ── requests ──
   const brief = (t) => ({ id: t.id, title: t.title, category: t.category, status: t.status, createdAt: t.createdAt, updatedAt: t.updatedAt, last: t.messages[t.messages.length - 1].text.slice(0, 120), from: t.messages[t.messages.length - 1].from, count: t.messages.length });
   async function create(email, b) {
@@ -67,16 +84,17 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
     if (limited('new:' + email, 6, 86400e3)) return { code: 429, error: 'You sent a lot of requests today. Please wait until tomorrow, or reply to an earlier one.' };
     let id; do { id = 'HRT-' + crypto.randomInt(10000, 100000); } while (db.tickets[id]);
     const m = b.meta || {};
-    const t = { id, email, category, title, status: 'open', createdAt: now(), updatedAt: now(), meta: { app: String(m.app || '').slice(0, 30), version: String(m.version || '').slice(0, 20), platform: String(m.platform || '').slice(0, 80) }, messages: [{ from: 'user', text, at: now() }] };
+    let files; try { files = takeFiles(id, b.files); } catch (e) { return { code: 400, error: e.message }; }
+    const t = { id, email, category, title, status: 'open', createdAt: now(), updatedAt: now(), meta: { app: String(m.app || '').slice(0, 30), version: String(m.version || '').slice(0, 20), platform: String(m.platform || '').slice(0, 80) }, messages: [{ from: 'user', text, at: now(), ...(files.length ? { files } : {}) }] };
     db.tickets[id] = t; save();
-    const sent = await Promise.all([send(mail.confirmation(t, plus(id)), email), send(mail.notifyOwner(t, plus(id)), ownerTo)]);
+    const sent = await Promise.all([send(mail.confirmation(t, plus(id)), email), send(mail.notifyOwner(t, plus(id)), ownerTo, mailFiles(files))]);
     Promise.resolve(onOwnerMail({ kind: 'new', id, title, category, from: email, text })).catch(() => {});   // tells the owner's Hearth, which asks what to do with it
     return { code: 200, body: { id, mailed: sent.every(Boolean) } };
   }
-  async function addUserMessage(t, text) {
-    t.messages.push({ from: 'user', text, at: now() }); t.updatedAt = now(); t.status = 'open'; save();
+  async function addUserMessage(t, text, files = []) {
+    t.messages.push({ from: 'user', text, at: now(), ...(files.length ? { files } : {}) }); t.updatedAt = now(); t.status = 'open'; save();
     Promise.resolve(onOwnerMail({ kind: 'follow-up', id: t.id, title: t.title, category: t.category, from: t.email, text })).catch(() => {});
-    return send(mail.followUpOwner(t, text, plus(t.id)), ownerTo);
+    return send(mail.followUpOwner(t, text, plus(t.id)), ownerTo, mailFiles(files));
   }
   async function addSupportMessage(t, text) {
     t.messages.push({ from: 'support', text, at: now() }); t.updatedAt = now(); t.status = 'answered'; save();
@@ -101,7 +119,8 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
   }
 
   // ── HTTP ──
-  const readJson = (req) => new Promise((res) => { let b = ''; req.on('data', (d) => { b += d; if (b.length > 40000) req.destroy(); }); req.on('end', () => { try { res(JSON.parse(b || '{}')); } catch { res({}); } }); });
+  const BIG = 7 * 1024 * 1024;   // a request with up to three files
+  const readJson = (req, cap = 40000) => new Promise((res) => { let b = ''; req.on('data', (d) => { b += d; if (b.length > cap) req.destroy(); }); req.on('end', () => { try { res(JSON.parse(b || '{}')); } catch { res({}); } }); });
   async function handle(req, res) {
     const send = (code, obj) => { const b = Buffer.from(JSON.stringify(obj)); res.writeHead(code, { 'Content-Type': 'application/json', 'Content-Length': b.length, 'Cache-Control': 'no-store' }); res.end(b); };
     const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
@@ -123,7 +142,7 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
         const text = b.event === 'listed'
           ? `Thank you for your message about "${t.title}". We read it and added it to our list. You will get another email when it is done.`
           : `Good news: what you told us about "${t.title}" is done.${note ? `\n\nWhat we did: ${note}` : ''}\n\nUpdate Hearth to the newest version to get it. If something is still wrong, just reply to this email.`;
-        await addSupportMessage(t, text); return send(200, { ok: true });
+        await addSupportMessage(t, text); t.status = b.event === 'fixed' ? 'fixed' : 'listed'; save(); return send(200, { ok: true });
       }
       const token = String(req.headers.authorization || '').replace(/^Bearer /, ''), email = who(token);
       if (!email) return send(401, { error: 'Please sign in again.' });
@@ -132,15 +151,16 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
       if (parts[0] === 'tickets') {
         const owner = ownerSet.has(String(email).toLowerCase());   // signed in as an owner: every request of everybody, read only (answers go by email)
         if (req.method === 'GET' && !parts[1]) return send(200, Object.values(db.tickets).filter((t) => owner || t.email === email).sort((a, b) => b.updatedAt - a.updatedAt).map((t) => (owner ? { ...brief(t), email: t.email, owner: true, theirs: t.email !== email, thread: t.messages.map((m) => (m.from === 'support' ? 'Support' : t.email) + ': ' + m.text).join('\n\n').slice(0, 5000), category: t.category } : brief(t))));
-        if (req.method === 'POST' && !parts[1]) return out(await create(email, await readJson(req)));
+        if (req.method === 'POST' && !parts[1]) return out(await create(email, await readJson(req, BIG)));
         const t = db.tickets[parts[1]]; if (!t || (t.email !== email && !owner)) return send(404, { error: 'No such request.' });
-        if (req.method === 'GET' && !parts[2]) return send(200, { ...brief(t), messages: t.messages, ...(owner ? { email: t.email, owner: true, theirs: t.email !== email } : {}) });
+        if (req.method === 'GET' && !parts[2]) return send(200, { ...brief(t), messages: t.messages.map((m) => ({ ...m, files: publicFiles(m.files) })), ...(owner ? { email: t.email, owner: true, theirs: t.email !== email } : {}) });
         if (req.method === 'POST' && parts[2] === 'messages' && t.email !== email) return send(403, { error: 'This is somebody else\'s request. Answer it by replying to its email, so nothing is sent or changed by accident.' });
         if (req.method === 'POST' && parts[2] === 'messages') {
-          const text = String((await readJson(req)).text || '').trim().slice(0, 5000);
+          const body = await readJson(req, BIG), text = String(body.text || '').trim().slice(0, 5000);
           if (text.length < 2) return send(400, { error: 'Write a message first.' });
           if (limited('msg:' + email, 30, 86400e3)) return send(429, { error: 'Too many messages today.' });
-          await addUserMessage(t, text); return send(200, { ok: true });
+          let files; try { files = takeFiles(t.id, body.files); } catch (e) { return send(400, { error: e.message }); }
+          await addUserMessage(t, text, files); return send(200, { ok: true });
         }
       }
       return send(404, { error: 'unknown' });

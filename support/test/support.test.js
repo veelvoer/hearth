@@ -67,6 +67,17 @@ srv.listen(0, '127.0.0.1', async () => {
   ok('28 "listed" mails the person from the support address', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'listed' })).code === 200 && /added it to our list/.test((lastTo('asker@example.com') || {}).text || ''));
   const n1 = sent.length; ok('29 it is sent only once', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'listed' })).j.already === true && sent.length === n1);
   ok('30 "fixed" mails again, with what was done', (await c2('/owner/notify', 'secret-token-123', { id: 'HRT-90001', event: 'fixed', note: 'Chats load fast now.' })).code === 200 && /is done/.test((lastTo('asker@example.com') || {}).text || '') && /Chats load fast now/.test((lastTo('asker@example.com') || {}).text || ''));
+  ok('31 a fixed request shows the status "fixed"', rel.db().tickets['HRT-90001'].status === 'fixed');
+  // attachments
+  const b64 = (x) => Buffer.from(x).toString('base64');
+  const crypto2 = require('crypto'); app.db().sessions[crypto2.createHash('sha256').update('filetok').digest('hex')] = { email: 'filer@example.com', exp: Date.now() + 1e6 }; const ftok = 'filetok';
+  const withFile = await call('POST', '/tickets', ftok, { category: 'bug', title: 'With a picture', text: 'See the attached file please.', files: [{ name: 'shot one.png', type: 'image/png', data: b64('PNGDATA') }, { name: '../../evil.sh', type: 'text/plain', data: b64('echo') }] });
+  const mailed = lastTo('support@example.com') || sent.slice().reverse().find((m) => m.attachments && m.attachments.length);
+  const got = (await call('GET', '/tickets/' + withFile.j.id, ftok)).j.messages[0].files || [];
+  ok('32 a request can carry files, which are listed by name and size', withFile.code === 200 && got.length === 2 && got[0].name === 'shot one.png' && got[0].size === 7 && !/\.\./.test(got[1].name) && !('path' in got[0]));
+  ok('33 the files go along in the mail to the owner', !!mailed && mailed.attachments.length === 2 && mailed.attachments[0].filename === 'shot one.png');
+  ok('34 a file over 1.5 MB is refused with a clear message', (await call('POST', '/tickets', ftok, { category: 'bug', title: 'Too big', text: 'This file is much too big.', files: [{ name: 'big.bin', data: b64(Buffer.alloc(1.6 * 1024 * 1024)) }] })).code === 400);
+  ok('35 a reply can carry files too', (await call('POST', '/tickets/' + withFile.j.id + '/messages', ftok, { text: 'And one more', files: [{ name: 'log.txt', data: b64('log') }] })).code === 200 && ((await call('GET', '/tickets/' + withFile.j.id, ftok)).j.messages[1].files || []).length === 1);
   srv2.close();
   srv.close(); fs.rmSync(dir, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

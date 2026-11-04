@@ -385,9 +385,9 @@ function start(opts) {
     const ip = clientIp(req);
     if (!publicMode && !reach(ip)) { json(res, 403, { error: 'local network only' }); return false; }
     const f = failures.get(ip);
-    if (f && f.until > Date.now()) { json(res, 429, { error: 'too many failed attempts, try again later' }); return false; }
     const got = Buffer.from(req.headers.authorization || ''), want = Buffer.from('Bearer ' + token);
-    if (got.length === want.length && crypto.timingSafeEqual(got, want)) { failures.delete(ip); return true; }
+    if (got.length === want.length && crypto.timingSafeEqual(got, want)) { failures.delete(ip); return true; }   // the right token always gets in: the lock is only for guessing, so an old phone with a stale token cannot lock the owner out
+    if (f && f.until > Date.now()) { json(res, 429, { error: 'too many failed attempts, try again later' }); return false; }
     const n = ((f && f.n) || 0) + 1;
     failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 });
     if (n >= 8) onLog(`blocked ${ip} after ${n} bad tokens`);

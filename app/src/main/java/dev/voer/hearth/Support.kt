@@ -23,6 +23,8 @@ const val SUPPORT_URL = "https://cm.vpswb.store/support"
 
 /** Talks to the support desk. Every call returns the JSON answer or throws a message a person can read. */
 object SupportApi {
+    /** Set when the desk says the sign-in is over, so the screen can show the sign-in page again. */
+    var expired by mutableStateOf(false)
     fun call(c: android.content.Context, method: String, path: String, body: JSONObject? = null, auth: Boolean = true): String {
         val con = URL(SUPPORT_URL + path).openConnection() as HttpURLConnection
         con.connectTimeout = 10_000; con.readTimeout = 20_000; con.requestMethod = method
@@ -32,7 +34,7 @@ object SupportApi {
             if (body != null) { con.doOutput = true; con.outputStream.use { it.write(body.toString().toByteArray()) } }
             val code = con.responseCode
             val text = (if (code in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.readText() ?: ""
-            if (code == 401 && auth) Store.setSupport(c, null, null)
+            if (code == 401 && auth) { Store.setSupport(c, null, null); expired = true }
             if (code !in 200..299) throw ApiException(code, runCatching { JSONObject(text).optString("error") }.getOrNull()?.ifBlank { null } ?: "Support said $code")
             return text
         } catch (e: ApiException) { throw e } catch (e: Exception) { throw ApiException(0, "Could not reach support. Check your internet connection and try again.") } finally { con.disconnect() }
@@ -46,7 +48,34 @@ private val CATS = listOf(
     Triple("other", "Other", "Tell us what is on your mind."),
 )
 private data class Ticket(val id: String, val title: String, val status: String, val last: String, val from: String, val updatedAt: Long, val email: String = "", val theirs: Boolean = false, val category: String = "other", val thread: String = "")
-private data class TMsg(val from: String, val text: String, val at: Long)
+private data class TMsg(val from: String, val text: String, val at: Long, val files: List<String> = emptyList())
+/** open / listed / answered / fixed, from what the desk says and, for older desks that do not say it, from the wording of the last automatic mail. */
+private fun statusOf(status: String, from: String, last: String): String = when {
+    status == "fixed" || (from == "support" && last.startsWith("Good news: what you told us about")) -> "fixed"
+    status == "listed" || (from == "support" && last.startsWith("Thank you for your message about") && last.contains("added it to our list")) -> "listed"
+    status == "answered" -> "answered"
+    else -> "open"
+}
+private fun statusLabel(s: String) = when (s) { "fixed" -> "Fixed"; "listed" -> "On the list"; "answered" -> "Answered"; else -> "Open" }
+
+/** Up to three small files that go with a message. */
+@Composable
+private fun Attachments(files: androidx.compose.runtime.snapshots.SnapshotStateList<Triple<String, String, String>>, onError: (String) -> Unit) {
+    val c = LocalContext.current
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) runCatching {
+            if (files.size >= 3) throw ApiException(0, "You can attach up to 3 files.")
+            val name = c.contentResolver.query(uri, null, null, null, null)?.use { cur -> val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if (cur.moveToFirst() && i >= 0) cur.getString(i) else null } ?: "file"
+            val bytes = c.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw ApiException(0, "Could not read that file.")
+            if (bytes.size > 1_500_000) throw ApiException(0, "\"$name\" is bigger than 1.5 MB. Send a smaller file, or a screenshot.")
+            files.add(Triple(name, c.contentResolver.getType(uri) ?: "application/octet-stream", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)))
+        }.onFailure { onError(it.message ?: "Could not attach that file.") }
+    }
+    files.forEach { f -> Row(verticalAlignment = Alignment.CenterVertically) { Glyph("clip", 18.dp); Spacer(Modifier.width(8.dp)); Txt(f.first, T.small, modifier = Modifier.weight(1f), maxLines = 1); IconAction("x", "Remove ${f.first}", Alignment.CenterEnd, 40.dp) { files.remove(f) } } }
+    if (files.size < 3) TextAction("Attach") { pick.launch("*/*") }
+}
+private fun filesJson(files: List<Triple<String, String, String>>) = org.json.JSONArray().also { a -> files.forEach { a.put(JSONObject().put("name", it.first).put("type", it.second).put("data", it.third)) } }
+
 private fun ago(t: Long): String { val s = (System.currentTimeMillis() - t) / 1000; return when { s < 60 -> "just now"; s < 3600 -> "${s / 60} min ago"; s < 86400 -> "${s / 3600} h ago"; else -> "${s / 86400} d ago" } }
 
 /** Settings → Support. Sign in with an emailed code, send a request, read the answers. */
@@ -56,10 +85,12 @@ fun SupportScreen(close: () -> Unit) {
     val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf(Store.supportEmail(c) ?: "") }
     var view by remember { mutableStateOf(if (Store.supportToken(c) != null) "home" else "login") }
+    var notice by remember { mutableStateOf("") }
     var open by remember { mutableStateOf("") }
     var sentId by remember { mutableStateOf("") }
     BackHandler { if (view == "home" || view == "login") close() else view = "home" }
-    Column(Modifier.fillMaxSize()) {
+    LaunchedEffect(SupportApi.expired) { if (SupportApi.expired) { SupportApi.expired = false; if (view != "login") { view = "login"; notice = "You were signed out. Sign in again with a code by email." } } }
+    Column(Modifier.fillMaxSize().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Txt("Support", T.title) }
             if (Store.supportToken(c) != null) { TextAction("Sign out") { scope.launch(Dispatchers.IO) { runCatching { SupportApi.call(c, "POST", "/auth/logout", JSONObject()) }; Store.setSupport(c, null, null) }; view = "login" }; Spacer(Modifier.width(16.dp)) }
@@ -67,7 +98,7 @@ fun SupportScreen(close: () -> Unit) {
         }
         AnimatedContent(view, Modifier.weight(1f), label = "support") { v ->
             when (v) {
-                "login" -> SupportLogin(email, { email = it }) { view = "home" }
+                "login" -> SupportLogin(email, notice, { email = it }) { notice = ""; view = "home" }
                 "home" -> SupportHome(email, { view = "new" }) { open = it; view = "thread" }
                 "new" -> SupportNew(email, { view = "home" }) { sentId = it; view = "sent" }
                 "sent" -> SupportSent(sentId, email) { view = "home" }
@@ -78,7 +109,7 @@ fun SupportScreen(close: () -> Unit) {
 }
 
 @Composable
-private fun SupportLogin(email: String, setEmail: (String) -> Unit, done: () -> Unit) {
+private fun SupportLogin(email: String, notice: String, setEmail: (String) -> Unit, done: () -> Unit) {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var step by remember { mutableStateOf("email") }
@@ -86,6 +117,7 @@ private fun SupportLogin(email: String, setEmail: (String) -> Unit, done: () -> 
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     Screen {
+        if (notice.isNotBlank()) Txt(notice, T.small, color = MaterialTheme.colorScheme.primary)
         Txt("Something not working, or an idea? Write to us here. We answer by email.", T.body, muted = true)
         Card {
             if (step == "email") {
@@ -143,16 +175,27 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
         when {
             tickets == null && err.isBlank() -> Txt("Loading…", T.small, muted = true)
             tickets.isNullOrEmpty() -> Card { Txt("No requests yet", T.h2); Spacer(Modifier.height(4.dp)); Txt("Press “New request” and tell us what is going on. We answer by email, and you can read the answer here too.", T.small, muted = true) }
-            else -> tickets!!.forEach { t ->
-                Card(Modifier.pressable { openTicket(t.id) }) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Txt(t.title, T.h2, modifier = Modifier.weight(1f))
-                        Txt(if (t.status == "answered") "Answered" else "Open", T.small, color = MaterialTheme.colorScheme.primary)
+            else -> {
+                val order = listOf("open", "listed", "answered", "fixed")
+                val groups = tickets!!.groupBy { statusOf(it.status, it.from, it.last) }
+                if (tickets!!.any { it.theirs }) Txt(order.filter { groups[it] != null }.joinToString("  ·  ") { statusLabel(it) + " " + groups[it]!!.size }, T.small, muted = true)
+                order.forEach { st ->
+                    val list = groups[st] ?: return@forEach
+                    if (tickets!!.any { it.theirs } || groups.size > 1) Label(statusLabel(st))
+                    list.forEach { t ->
+                        Card(Modifier.pressable { openTicket(t.id) }) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Txt(t.title, T.h2, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(8.dp))
+                                if (st == "fixed") { Glyph("check", 16.dp, MaterialTheme.colorScheme.primary); Spacer(Modifier.width(4.dp)) }
+                                Txt(statusLabel(st), T.small, color = if (st == "fixed" || st == "answered") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Txt((if (t.theirs) t.email + " · " else "") + (if (t.from == "support") "Hearth Support: " else if (t.theirs) "They: " else "You: ") + t.last, T.small, muted = true, maxLines = 3)
+                            Txt("${t.id} · ${ago(t.updatedAt)}", T.small, muted = true)
+                            if (t.theirs && st != "fixed") SupportActions(t.id, t.title, t.category, t.email, t.thread.ifEmpty { t.last })
+                        }
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Txt((if (t.theirs) t.email + " · " else "") + (if (t.from == "support") "Hearth Support: " else if (t.theirs) "They: " else "You: ") + t.last, T.small, muted = true)
-                    Txt("${t.id} · ${ago(t.updatedAt)}", T.small, muted = true)
-                    if (t.theirs) SupportActions(t.id, t.title, t.category, t.email, t.thread.ifEmpty { t.last })
                 }
             }
         }
@@ -169,12 +212,14 @@ private fun SupportNew(email: String, back: () -> Unit, sent: (String) -> Unit) 
     var info by remember { mutableStateOf(true) }
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    val files = remember { androidx.compose.runtime.mutableStateListOf<Triple<String, String, String>>() }
     Screen {
         BackLink("Back", back)
         Txt("What is it about?", T.small, muted = true)
         ChipRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { CATS.forEach { (k, l, _) -> Chip(l, cat == k) { cat = k } } }
         Field(title, { title = it.take(120) }, "A few words, e.g. “The app closes when I open it”")
         Field(text, { text = it.take(5000) }, CATS.first { it.first == cat }.third, singleLine = false, modifier = Modifier.heightIn(min = 140.dp))
+        Attachments(files) { msg = it }
         Row(verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.Checkbox(info, { info = it })
             Txt("Include app info (version and system), so we can find the problem faster", T.small, modifier = Modifier.weight(1f))
@@ -185,7 +230,7 @@ private fun SupportNew(email: String, back: () -> Unit, sent: (String) -> Unit) 
             busy = true; msg = ""
             val meta = JSONObject().apply { if (info) put("app", "Phone").put("version", Updates.current(c)).put("platform", "Android ${Build.VERSION.RELEASE} · ${Build.MANUFACTURER} ${Build.MODEL}") }
             scope.launch {
-                runCatching { withContext(Dispatchers.IO) { JSONObject(SupportApi.call(c, "POST", "/tickets", JSONObject().put("category", cat).put("title", title).put("text", text).put("meta", meta))) } }
+                runCatching { withContext(Dispatchers.IO) { JSONObject(SupportApi.call(c, "POST", "/tickets", JSONObject().put("category", cat).put("title", title).put("text", text).put("meta", meta).put("files", filesJson(files)))) } }
                     .onSuccess { sent(it.getString("id")) }.onFailure { msg = it.message ?: "Something went wrong" }
                 busy = false
             }
@@ -214,29 +259,33 @@ private fun SupportThread(id: String, back: () -> Unit) {
     var msgs by remember { mutableStateOf<List<TMsg>>(emptyList()) }
     var reply by remember { mutableStateOf("") }
     var err by remember { mutableStateOf("") }
+    val rfiles = remember { androidx.compose.runtime.mutableStateListOf<Triple<String, String, String>>() }
+    var status by remember { mutableStateOf("") }
     var theirs by remember { mutableStateOf("") }   // the sender, when this is somebody else's request that you see as owner
     suspend fun load() {
         runCatching { withContext(Dispatchers.IO) { JSONObject(SupportApi.call(c, "GET", "/tickets/$id")) } }
-            .onSuccess { o -> title = o.getString("title"); theirs = if (o.optBoolean("theirs")) o.optString("email") else ""; val a = o.getJSONArray("messages"); msgs = (0 until a.length()).map { a.getJSONObject(it) }.map { TMsg(it.getString("from"), it.getString("text"), it.optLong("at")) }; err = "" }
+            .onSuccess { o -> title = o.getString("title"); theirs = if (o.optBoolean("theirs")) o.optString("email") else ""; val a = o.getJSONArray("messages"); msgs = (0 until a.length()).map { a.getJSONObject(it) }.map { TMsg(it.getString("from"), it.getString("text"), it.optLong("at"), it.optJSONArray("files")?.let { f -> (0 until f.length()).map { i -> f.getJSONObject(i).optString("name") } } ?: emptyList()) }; status = o.optString("status"); err = "" }
             .onFailure { err = it.message ?: "" }
     }
     LaunchedEffect(id) { while (true) { load(); delay(15_000) } }
     Screen {
         BackLink("All requests", back)
         Txt(title, T.h2)
-        Txt(id, T.small, muted = true)
+        Txt(id + (msgs.lastOrNull()?.let { " · " + statusLabel(statusOf(status, it.from, it.text)) } ?: ""), T.small, muted = true)
         if (theirs.isNotEmpty()) { Txt("From $theirs. You see everything here and cannot change it. Answer by replying to the email.", T.small, muted = true); SupportActions(id, title, "other", theirs, msgs.joinToString("\n\n") { (if (it.from == "support") "Support" else theirs) + ": " + it.text }) }
         msgs.forEach { m ->
             Card {
                 Txt((if (m.from == "support") "Hearth Support" else if (theirs.isNotEmpty()) theirs else "You") + " · " + ago(m.at), T.small, muted = true)
                 Spacer(Modifier.height(4.dp))
                 Txt(m.text, T.body, color = if (m.from == "support") MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                m.files.forEach { n -> Row(verticalAlignment = Alignment.CenterVertically) { Glyph("clip", 16.dp); Spacer(Modifier.width(6.dp)); Txt(n, T.small, muted = true) } }
             }
         }
         if (theirs.isEmpty()) Field(reply, { reply = it.take(5000) }, "Write a reply…", singleLine = false, modifier = Modifier.heightIn(min = 90.dp))
+        if (theirs.isEmpty()) Attachments(rfiles) { err = it }
         if (theirs.isEmpty()) Button("Send", Modifier.fillMaxWidth()) {
             if (reply.isBlank()) return@Button
-            scope.launch { runCatching { withContext(Dispatchers.IO) { SupportApi.call(c, "POST", "/tickets/$id/messages", JSONObject().put("text", reply)) } }.onSuccess { reply = ""; load() }.onFailure { err = it.message ?: "" } }
+            scope.launch { runCatching { withContext(Dispatchers.IO) { SupportApi.call(c, "POST", "/tickets/$id/messages", JSONObject().put("text", reply).put("files", filesJson(rfiles))) } }.onSuccess { reply = ""; rfiles.clear(); load() }.onFailure { err = it.message ?: "" } }
         }
         if (err.isNotBlank()) Txt(err, T.small, color = MaterialTheme.colorScheme.primary)
     }
