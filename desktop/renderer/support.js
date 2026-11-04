@@ -68,14 +68,43 @@ function spAttach() {
   return { el: h('div', { class: 'stack', style: 'gap:6px' }, list, h('div', { class: 'row' }, btn, input), note), files };
 }
 
+/** The owner's checklist of what people reported. Tick it when it is done; done ones go below and can be removed. */
+let SP_DONE_OPEN = false;
+async function spChecklist(box, hub, body) {
+  const draw = (items) => {
+    box.innerHTML = '';
+    const todo = items.filter((x) => !x.done), done = items.filter((x) => x.done);
+    box.append(h('div', { class: 'small muted', style: 'margin:6px 4px 2px;text-transform:uppercase;letter-spacing:.06em' }, 'To do · ' + todo.length));
+    if (!todo.length) box.append(h('div', { class: 'obnote' }, h('b', {}, 'Nothing left to do'), h('div', { class: 'small muted' }, 'Every report is done. New ones show up here by themselves.')));
+    const row = (x) => h('div', { class: 'spwrap' }, h('div', { class: 'row', style: 'align-items:flex-start;gap:10px' },
+      h('input', { type: 'checkbox', checked: x.done, 'aria-label': (x.done ? 'Mark not done: ' : 'Mark done: ') + x.title, style: 'margin-top:4px;width:18px;height:18px', onchange: (e) => act({ id: x.id, done: e.target.checked }) }),
+      h('button', { class: 'spitem grow', style: 'text-align:left', onclick: () => { SP.open = x.id; SP.view = 'thread'; drawSupport(); } }, h('b', { class: 'ellip', style: x.done ? 'text-decoration:line-through;opacity:.6' : '' }, x.title), h('div', { class: 'small muted ellip' }, x.from + ' · ' + x.id + ' · ' + spAgo(x.at))),
+      x.done ? null : h('button', { class: 'ghost sm', title: 'Let Claude look into this', onclick: async (e) => { e.currentTarget.disabled = true; try { await cm.relay(hub.id, 'POST', '/support/act', { id: x.id, title: x.title, from: x.from, text: x.text, action: 'claude' }); toast('Claude is looking into it.'); } catch (er) { toast(clean(er)); } } }, 'Fix with Claude')));
+    todo.forEach((x) => box.append(row(x)));
+    if (done.length) {
+      box.append(h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'link grow', style: 'text-align:left', onclick: () => { SP_DONE_OPEN = !SP_DONE_OPEN; draw(items); } }, (SP_DONE_OPEN ? '⌃ ' : '⌄ ') + 'Done · ' + done.length), SP_DONE_OPEN ? h('button', { class: 'ghost sm', onclick: () => act({ remove: 'done' }) }, 'Remove done') : null));
+      if (SP_DONE_OPEN) done.forEach((x) => box.append(row(x)));
+    }
+  };
+  const act = async (b) => { try { draw((await cm.relay(hub.id, 'POST', '/support/checklist', b)).items || []); } catch (e) { box.innerHTML = ''; box.append(h('p', { class: 'err small' }, clean(e))); } };
+  await act(body);
+}
+
 async function viewHome(body) {
   body.append(h('div', { class: 'row' }, h('div', { class: 'grow small muted' }, 'Signed in as ' + SP.email), h('button', { class: 'primary sm', onclick: () => { SP.view = 'new'; drawSupport(); } }, 'New request')), h('div', { class: 'flist', id: 'sp-list' }, h('p', { class: 'muted small' }, 'Loading…')));
   const load = async () => {
     let list; try { list = await cm.support('GET', '/tickets'); } catch (e) { if (!SP.signedIn || !SP.el) return; if (/sign in again/i.test(clean(e))) { SP.signedIn = false; SP.view = 'login'; SP.notice = 'You were signed out. Sign in again with a code by email.'; drawSupport(); return; } const l = $('#sp-list'); if (l) { l.innerHTML = ''; l.append(h('p', { class: 'err small' }, clean(e))); } return; }
     SP.tickets = list; const box = $('#sp-list'); if (!box) return; box.innerHTML = '';
     if (!list.length) box.append(h('div', { class: 'obnote' }, h('b', {}, 'No requests yet'), h('div', { class: 'small muted' }, 'Press “New request” and tell us what is going on. We will answer by email, and you can read the answer here too.')));
-    const groups = {}; list.forEach((t) => { (groups[spStatus(t)] = groups[spStatus(t)] || []).push(t); });
-    const heads = list.some((t) => t.theirs) || Object.keys(groups).length > 1;
+    const owner = list.some((t) => t.theirs), hub = owner && typeof SS !== 'undefined' ? (SS.machines.find((m) => m.secure) || SS.machines[0]) : null;
+    if (owner && hub) {
+      const ck = h('div', { class: 'stack', id: 'sp-check' }); box.append(ck);
+      spChecklist(ck, hub, { sync: list.filter((t) => t.theirs).map((t) => ({ id: t.id, title: t.title, email: t.email, last: t.last, text: t.thread || t.last, updatedAt: t.updatedAt, from: t.from, fixed: spStatus(t) === 'fixed' })) });
+    }
+    const mine = hub ? list.filter((t) => !t.theirs) : list;
+    if (hub && mine.length) box.append(h('div', { class: 'small muted', style: 'margin:14px 4px 2px;text-transform:uppercase;letter-spacing:.06em' }, 'Your own requests'));
+    const groups = {}; mine.forEach((t) => { (groups[spStatus(t)] = groups[spStatus(t)] || []).push(t); });
+    const heads = Object.keys(groups).length > 1;
     ['open', 'listed', 'answered', 'fixed'].forEach((st) => {
       if (!groups[st]) return;
       if (heads) box.append(h('div', { class: 'small muted', style: 'margin:10px 4px 2px;text-transform:uppercase;letter-spacing:.06em' }, SP_LABEL[st] + ' · ' + groups[st].length));

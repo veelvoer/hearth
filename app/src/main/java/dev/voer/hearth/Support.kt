@@ -3,6 +3,9 @@ package dev.voer.hearth
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -160,6 +163,15 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
     val c = LocalContext.current
     var tickets by remember { mutableStateOf<List<Ticket>?>(null) }
     var err by remember { mutableStateOf("") }
+    var items by remember { mutableStateOf<List<CheckItem>?>(null) }   // the owner's checklist of what people reported
+    var doneOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val hub = remember { Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } }
+    fun checklist(body: JSONObject) { if (hub != null) scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(hub, "/support/checklist", body) } }.onSuccess { items = parseItems(it) } } }
+    LaunchedEffect(tickets) {   // looks at every report: the open ones are listed, the ones that are fixed are ticked, and the list is kept in step as long as this screen is open
+        val t = tickets ?: return@LaunchedEffect
+        if (hub != null && t.any { it.theirs }) checklist(JSONObject().put("sync", JSONArray().also { a -> t.filter { it.theirs }.forEach { x -> a.put(JSONObject().put("id", x.id).put("title", x.title).put("email", x.email).put("last", x.last).put("text", x.thread.ifEmpty { x.last }).put("updatedAt", x.updatedAt).put("from", x.from).put("fixed", statusOf(x.status, x.from, x.last) == "fixed")) } }))
+    }
     LaunchedEffect(Unit) {
         while (true) {
             runCatching { withContext(Dispatchers.IO) { JSONArray(SupportApi.call(c, "GET", "/tickets")) } }
@@ -177,11 +189,14 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
             tickets.isNullOrEmpty() -> Card { Txt("No requests yet", T.h2); Spacer(Modifier.height(4.dp)); Txt("Press “New request” and tell us what is going on. We answer by email, and you can read the answer here too.", T.small, muted = true) }
             else -> {
                 val order = listOf("open", "listed", "answered", "fixed")
-                val groups = tickets!!.groupBy { statusOf(it.status, it.from, it.last) }
-                if (tickets!!.any { it.theirs }) Txt(order.filter { groups[it] != null }.joinToString("  ·  ") { statusLabel(it) + " " + groups[it]!!.size }, T.small, muted = true)
+                val isOwner = tickets!!.any { it.theirs } && hub != null
+                if (isOwner) OwnerChecklist(items, doneOpen, { doneOpen = !doneOpen }, { id, d -> checklist(JSONObject().put("id", id).put("done", d)) }, { checklist(JSONObject().put("remove", "done")) }, { id -> openTicket(id) }, hub!!)
+                val mine = tickets!!.filter { !(isOwner && it.theirs) }
+                val groups = mine.groupBy { statusOf(it.status, it.from, it.last) }
+                if (isOwner && mine.isNotEmpty()) Label("Your own requests")
                 order.forEach { st ->
                     val list = groups[st] ?: return@forEach
-                    if (tickets!!.any { it.theirs } || groups.size > 1) Label(statusLabel(st))
+                    if (groups.size > 1) Label(statusLabel(st))
                     list.forEach { t ->
                         Card(Modifier.pressable { openTicket(t.id) }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -291,14 +306,55 @@ private fun SupportThread(id: String, back: () -> Unit) {
     }
 }
 
+private data class CheckItem(val id: String, val title: String, val from: String, val text: String, val at: Long, val done: Boolean)
+private fun parseItems(o: JSONObject): List<CheckItem> = o.optJSONArray("items")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map { CheckItem(it.getString("id"), it.optString("title"), it.optString("from"), it.optString("text"), it.optLong("at"), it.optBoolean("done")) } } ?: emptyList()
+
+/** What people reported, as a checklist: tick it when it is done; done ones go to the bottom and can be removed. */
+@Composable
+private fun OwnerChecklist(items: List<CheckItem>?, doneOpen: Boolean, toggleDone: () -> Unit, tick: (String, Boolean) -> Unit, removeDone: () -> Unit, open: (String) -> Unit, hub: Machine) {
+    val cs = MaterialTheme.colorScheme
+    val todo = items?.filter { !it.done }.orEmpty(); val done = items?.filter { it.done }.orEmpty()
+    Label("To do · ${todo.size}")
+    if (items == null) Txt("Loading…", T.small, muted = true)
+    else if (todo.isEmpty()) Card { Txt("Nothing left to do", T.h2); Txt("Every report is done. New ones show up here by themselves.", T.small, muted = true) }
+    else Card {
+        todo.forEachIndexed { i, x ->
+            if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(cs.outline))
+            CheckRow(x, tick, open)
+            SupportActions(x.id, x.title, "other", x.from, x.text, hub)
+        }
+    }
+    if (done.isNotEmpty()) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = toggleDone, role = androidx.compose.ui.semantics.Role.Button).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Label("Done · ${done.size}", Modifier.weight(1f)); Glyph(if (doneOpen) "chevu" else "chevd", 20.dp)
+        }
+        if (doneOpen) Card {
+            done.forEach { x -> CheckRow(x, tick, open) }
+            androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { TextAction("Remove done") { removeDone() } }
+        }
+    }
+}
+
+@Composable
+private fun CheckRow(x: CheckItem, tick: (String, Boolean) -> Unit, open: (String) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.Checkbox(x.done, { tick(x.id, it) })
+        Column(Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button) { open(x.id) }.padding(vertical = 8.dp)) {
+            Text(x.title, style = T.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, textDecoration = if (x.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null), color = if (x.done) cs.onSurfaceVariant else cs.onSurface, maxLines = 2)
+            Txt(x.from + " · " + x.id + " · " + ago(x.at), T.small, muted = true, maxLines = 1)
+        }
+    }
+}
+
 /** For an owner: what to do with somebody's request. The same choices as the notification. */
 @Composable
-private fun SupportActions(id: String, title: String, category: String, from: String, text: String) {
+private fun SupportActions(id: String, title: String, category: String, from: String, text: String, hub: Machine? = null) {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var msg by remember(id) { mutableStateOf("") }
     fun act(action: String, label: String) {
-        val m = Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() }
+        val m = hub ?: Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() }
         if (m == null) { msg = "Connect your server first."; return }
         msg = "$label…"
         scope.launch {
@@ -308,7 +364,7 @@ private fun SupportActions(id: String, title: String, category: String, from: St
     }
     Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextAction("Add to tasks") { act("list", "Adding") }
+        if (hub == null) TextAction("Add to tasks") { act("list", "Adding") }
         TextAction("Fix with Claude") { act("claude", "Starting Claude") }
     }
     if (msg.isNotEmpty()) Txt(msg, T.small, muted = true)

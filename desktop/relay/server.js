@@ -1415,6 +1415,30 @@ function start(opts) {
           if (r.error) return json(res, r.error, { error: r.message });
           return json(res, 200, { ok: true, cwd: dirp, name });
         }
+        if (parts[0] === 'support' && parts[1] === 'checklist' && req.method === 'POST') {   // the owner's checklist of what people reported: tick off, remove what is done, and keep it in step with the support desk
+          let all = readList(); const save = () => { try { fs.writeFileSync(listFile, JSON.stringify(all.slice(0, 300)), { mode: 0o600 }); } catch { /* best effort */ } };
+          if (Array.isArray(b.sync)) {   // [{id, title, from, last, fixed}]: what the desk has now. New open ones are added; ones the desk says are fixed are ticked
+            for (const t of b.sync.slice(0, 300)) {
+              const id = String(t && t.id || '').slice(0, 20); if (!id) continue;
+              const have = all.find((x) => x.id === id);
+              if (have) { if (t.fixed && !have.done) { have.done = true; have.doneAt = Date.now(); } else if (!t.fixed && have.done && have.reopen !== false && Number(t.updatedAt) > (have.doneAt || 0) + 1000 && t.from !== 'support') { have.done = false; delete have.doneAt; } }
+              else if (!t.fixed) all.unshift({ id, title: String(t.title || '').slice(0, 120), from: String(t.email || t.from || '').slice(0, 120), text: String(t.text || t.last || '').slice(0, 5000), at: Number(t.updatedAt) || Date.now() });
+            }
+            save();
+          }
+          const id = String(b.id || '');
+          if (id && typeof b.done === 'boolean') {
+            const it = all.find((x) => x.id === id);
+            if (it) {
+              if (b.done) { it.done = true; it.doneAt = Date.now(); if (b.notify === true) supportNotify(it.id, 'fixed', String(b.note || '').slice(0, 500)); const task = (await gtOpen()).find((t) => String(t.title || '').includes('Support ' + it.id)); if (task) await gtComplete(task.id); }
+              else { it.done = false; delete it.doneAt; }
+              save();
+            }
+          }
+          if (b.remove === 'done') { all = all.filter((x) => !x.done); save(); }
+          else if (typeof b.remove === 'string' && b.remove) { all = all.filter((x) => x.id !== b.remove); save(); }
+          return json(res, 200, { items: [...all.filter((x) => !x.done).sort((a, c) => c.at - a.at), ...all.filter((x) => x.done).sort((a, c) => (c.doneAt || 0) - (a.doneAt || 0))].map((x) => ({ id: x.id, title: x.title, from: x.from, text: x.text, at: x.at, done: !!x.done, doneAt: x.doneAt || 0, note: x.note || '' })) });
+        }
         if (parts[0] === 'support' && parts[1] === 'act' && req.method === 'POST') {   // from the support desk screen of the app: the same three choices as the notification
           const t = { kind: 'new', id: String(b.id || '').slice(0, 20), title: String(b.title || '').slice(0, 120), category: String(b.category || 'other').slice(0, 20), from: String(b.from || '').slice(0, 120), text: String(b.text || '').slice(0, 5000) };
           if (!t.id || !['claude', 'list', 'ignore'].includes(b.action)) return json(res, 400, { error: 'id and action (claude, list or ignore) are needed' });

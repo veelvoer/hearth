@@ -103,7 +103,7 @@ function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
   return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s), oncontextmenu: (e) => chatMenu(e, s), title: 'Right-click to pin or rename' },
     h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, chatTag(s.id).pin ? h('span', { class: 'ic', html: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>' }) : null, h('span', { class: 'ellip' }, s.title)),
-    h('div', { class: 'small muted' }, ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
+    h('div', { class: 'small muted' }, (SS.projKey === '__all' && !s.guest ? (s.talk ? 'Talk' : folderName(s.cwd || 'Other')) + ' · ' : '') + ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
 const groupKey = (s) => (s.guest || s.shared > 0 ? 'Shared' : s.talk ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
@@ -117,26 +117,26 @@ function drawSide() {
   const groups = new Map();
   for (const s of all) { const k = groupKey(s); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); }
   const ordered = [...groups.entries()].sort((a, b) => Math.max(...b[1].map((x) => x.mtime)) - Math.max(...a[1].map((x) => x.mtime)));
-  if (SS.sel && !SS.sel.isNew && SS.sel.cwd && groups.has(SS.sel.cwd) && SS.projFor !== SS.sel) { SS.projKey = SS.sel.cwd; SS.projFor = SS.sel; }   // opening a chat shows its project
-  if (!groups.has(SS.projKey)) SS.projKey = ordered[0] ? ordered[0][0] : null;
-  if (SS.tabsEl) {   // a few recent projects as tabs, all the others behind one button with a search: a long row of tabs was unreadable with many projects
+  if (SS.projKey !== '__all' && SS.sel && !SS.sel.isNew && SS.sel.cwd && groups.has(SS.sel.cwd) && SS.projFor !== SS.sel) { SS.projKey = SS.sel.cwd; SS.projFor = SS.sel; }   // opening a chat shows its project
+  if (SS.projKey !== '__all' && !groups.has(SS.projKey)) SS.projKey = '__all';
+  if (SS.tabsEl) {   // one project filter instead of a row of tabs: "All chats" or one project, and the rest of the actions behind a small menu
     SS.tabsEl.innerHTML = '';
-    const SHOW = 4, tabs = ordered.slice(0, SHOW).map((x) => x[0]); if (SS.projKey && !tabs.includes(SS.projKey)) tabs.push(SS.projKey);
-    const tabBtn = (key, items) => h('button', { class: 'ptab' + (key === SS.projKey ? ' on' : ''), title: key, onclick: () => { SS.projKey = key; SS.search = ''; drawSide(); } }, folderName(key), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null);
-    for (const key of tabs) SS.tabsEl.append(tabBtn(key, groups.get(key) || []));
-    if (ordered.length > tabs.length) SS.tabsEl.append(h('button', { class: 'ptab add', title: 'All projects', onclick: (e) => projectPicker(e.currentTarget, ordered) }, `All ${ordered.length} projects ▾`));
-    SS.tabsEl.append(h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'), h('button', { class: 'ptab add', title: 'Open a chat a friend shared with you', onclick: shJoinDialog }, 'Join a shared chat'));
+    const label = SS.projKey === '__all' ? 'All chats' : folderName(SS.projKey), busy = SS.projKey === '__all' ? all.some((x) => x.running || x.busy) : (groups.get(SS.projKey) || []).some((x) => x.running || x.busy);
+    SS.tabsEl.append(h('button', { class: 'ptab on', title: 'Show the chats of one project, or all of them', onclick: (e) => projectPicker(e.currentTarget, ordered) }, h('span', { class: 'ellip', style: 'max-width:240px' }, label), busy ? h('i', { class: 'pdot' }) : null, h('span', { style: 'opacity:.6' }, '▾')),
+      h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'), h('button', { class: 'ptab add', title: 'Open a chat a friend shared with you', onclick: shJoinDialog }, 'Join a shared chat'));
   }
   side.innerHTML = '';
   side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; scheduleContentSearch(); drawSide(); } }));
-  const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (groups.get(SS.projKey) || [])).sort((a, b) => (Number(!!chatTag(b.id).pin) - Number(!!chatTag(a.id).pin)) || b.mtime - a.mtime);
-  list.forEach((s) => side.append(chatItem(s)));
+  const list = (q ? all.filter((s) => s.title.toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q)) : (SS.projKey === '__all' ? all : (groups.get(SS.projKey) || []))).sort((a, b) => (Number(!!chatTag(b.id).pin) - Number(!!chatTag(a.id).pin)) || ((b.running || b.busy) - (a.running || a.busy)) || b.mtime - a.mtime);
+  const dayHead = (s) => { if (chatTag(s.id).pin) return 'Pinned'; const d = new Date(s.mtime), n = new Date(), a0 = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime(), t = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), days = Math.round((a0 - t) / 86400000); return (s.running || s.busy) ? 'Working now' : days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 8 ? 'Previous 7 days' : days < 31 ? 'Previous 30 days' : d.toLocaleString(undefined, { month: 'long', year: 'numeric' }); };
+  let lastHead = '';
+  list.forEach((s) => { const hd = q ? '' : dayHead(s); if (hd && hd !== lastHead) { lastHead = hd; side.append(h('div', { class: 'small muted', style: 'margin:12px 6px 4px;text-transform:uppercase;letter-spacing:.06em;font-size:11px' }, hd)); } side.append(chatItem(s)); });
   const hits = q && SS.hitsQ === SS.search.trim() ? (SS.hits || []) : [];
   if (hits.length) {
     side.append(h('div', { class: 'small muted', style: 'margin:12px 4px 4px;text-transform:uppercase;letter-spacing:.06em' }, 'In messages'));
     hits.forEach((r) => side.append(h('div', { class: 'item', onclick: () => openSession({ id: r.id, title: (chatTag(r.id).name || r.title), cwd: r.cwd, mid: r.mid, mtime: r.mtime, live: false }) }, h('div', { class: 'ititle' }, h('span', { class: 'ellip' }, chatTag(r.id).name || r.title)), h('div', { class: 'small muted', style: 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden' }, r.snippet))));
   }
-  const own = !q && SS.projKey && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
+  const own = !q && SS.projKey && SS.projKey !== '__all' && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
   if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, own.length === 1 ? 'Delete this chat…' : 'Delete all ' + own.length + ' chats of this project…')));
   if (!list.length && !hits.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
   if (SS.err) { const sv = SS.machines.find((m) => m.secure), box = h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small err' }, SS.err), h('div', { class: 'small muted' }, 'A stuck server restarts itself within a couple of minutes.'));
@@ -292,7 +292,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ───────── pane ─────────
-SS.rightOff = localStorage.getItem('cm.rightOff') === '1';
+SS.rightOff = localStorage.getItem('cm.rightOff') !== '0';   // the side panel is closed until you ask for it: the chat is what you came for
 const SUGGEST = ['Explain how this project is organized', 'Find and fix bugs in the recent changes', 'Write tests for the most important code', 'Review my uncommitted changes'];
 
 function drawPane() {
@@ -318,7 +318,7 @@ function drawPane() {
     s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
-    s.id ? ibtn('panel', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : ''); drawPane(); }, 'ghost sm') : null));
+    s.id ? ibtn('panel', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : '0'); drawPane(); }, 'ghost sm') : null));
   main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
   if (guest || me.shared >= 0) main.append(h('div', { id: 'shin', class: 'shin' }), h('div', { id: 'shstatus', class: 'shstatus' }));
   main.append(h('div', { id: 'perms', class: 'perms' }));
@@ -866,6 +866,7 @@ function projectPicker(anchor, ordered) {
   const away = (e) => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
   const draw = () => {
     list.innerHTML = ''; const w = q.value.trim().toLowerCase();
+    if (!w) list.append(h('div', { class: 'projrow' + (SS.projKey === '__all' ? ' on' : '') }, h('button', { class: 'projpick', onclick: () => { SS.projKey = '__all'; SS.search = ''; close(); drawSide(); } }, h('span', { class: 'grow ellip' }, 'All chats'))));
     ordered.filter(([k]) => !w || folderName(k).toLowerCase().includes(w) || k.toLowerCase().includes(w)).forEach(([k, items]) => {
       const own = items.filter((x) => !x.guest && x.mid), canDelete = k !== 'Shared' && k !== 'Talks' && own.length && SS.machines.some((m) => m.id === own[0].mid);
       list.append(h('div', { class: 'projrow' + (k === SS.projKey ? ' on' : '') }, h('button', { class: 'projpick', onclick: () => { SS.projKey = k; SS.search = ''; close(); drawSide(); } }, h('span', { class: 'grow ellip' }, folderName(k)), items.some((x) => x.running || x.busy) ? h('i', { class: 'pdot' }) : null, h('span', { class: 'small muted' }, String(items.length))),

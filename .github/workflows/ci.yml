@@ -33,6 +33,8 @@ jobs:
         run: node desktop/test/globals.test.js
       - name: MCP kit test
         run: node desktop/test/mcpkit.test.js
+      - name: Checklist test
+        run: node desktop/test/checklist.test.js
       - name: Delete chats test
         run: node desktop/test/delete-chats.test.js
       - name: Login error test
