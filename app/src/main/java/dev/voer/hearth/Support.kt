@@ -165,9 +165,10 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
     var err by remember { mutableStateOf("") }
     var items by remember { mutableStateOf<List<CheckItem>?>(null) }   // the owner's checklist of what people reported
     var doneOpen by remember { mutableStateOf(false) }
+    var checkErr by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val hub = remember { Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } }
-    fun checklist(body: JSONObject) { if (hub != null) scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(hub, "/support/checklist", body) } }.onSuccess { items = parseItems(it) } } }
+    fun checklist(body: JSONObject) { if (hub != null) scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(hub, "/support/checklist", body) } }.onSuccess { items = parseItems(it); checkErr = "" }.onFailure { checkErr = if ((it.message ?: "").let { m -> m.contains("unknown", true) || m.contains("404") || m.contains("not found", true) }) "Your server does not know the checklist yet. Update it in Settings, Updates, and this fills in by itself." else (it.message ?: "The checklist could not be loaded.") } } }
     LaunchedEffect(tickets) {   // looks at every report: the open ones are listed, the ones that are fixed are ticked, and the list is kept in step as long as this screen is open
         val t = tickets ?: return@LaunchedEffect
         if (hub != null && t.any { it.theirs }) checklist(JSONObject().put("sync", JSONArray().also { a -> t.filter { it.theirs }.forEach { x -> a.put(JSONObject().put("id", x.id).put("title", x.title).put("email", x.email).put("last", x.last).put("text", x.thread.ifEmpty { x.last }).put("updatedAt", x.updatedAt).put("from", x.from).put("fixed", statusOf(x.status, x.from, x.last) == "fixed")) } }))
@@ -190,7 +191,7 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
             else -> {
                 val order = listOf("open", "listed", "answered", "fixed")
                 val isOwner = tickets!!.any { it.theirs } && hub != null
-                if (isOwner) OwnerChecklist(items, doneOpen, { doneOpen = !doneOpen }, { id, d -> checklist(JSONObject().put("id", id).put("done", d)) }, { checklist(JSONObject().put("remove", "done")) }, { id -> openTicket(id) }, hub!!)
+                if (isOwner) OwnerChecklist(items, checkErr, tickets!!.filter { it.theirs && statusOf(it.status, it.from, it.last) != "fixed" }, doneOpen, { doneOpen = !doneOpen }, { id, d -> checklist(JSONObject().put("id", id).put("done", d)) }, { checklist(JSONObject().put("remove", "done")) }, { id -> openTicket(id) }, hub!!)
                 val mine = tickets!!.filter { !(isOwner && it.theirs) }
                 val groups = mine.groupBy { statusOf(it.status, it.from, it.last) }
                 if (isOwner && mine.isNotEmpty()) Label("Your own requests")
@@ -311,11 +312,15 @@ private fun parseItems(o: JSONObject): List<CheckItem> = o.optJSONArray("items")
 
 /** What people reported, as a checklist: tick it when it is done; done ones go to the bottom and can be removed. */
 @Composable
-private fun OwnerChecklist(items: List<CheckItem>?, doneOpen: Boolean, toggleDone: () -> Unit, tick: (String, Boolean) -> Unit, removeDone: () -> Unit, open: (String) -> Unit, hub: Machine) {
+private fun OwnerChecklist(items: List<CheckItem>?, checkErr: String, fallback: List<Ticket>, doneOpen: Boolean, toggleDone: () -> Unit, tick: (String, Boolean) -> Unit, removeDone: () -> Unit, open: (String) -> Unit, hub: Machine) {
     val cs = MaterialTheme.colorScheme
     val todo = items?.filter { !it.done }.orEmpty(); val done = items?.filter { it.done }.orEmpty()
     Label("To do · ${todo.size}")
-    if (items == null) Txt("Loading…", T.small, muted = true)
+    if (items == null && checkErr.isNotEmpty()) {   // the server could not give the checklist: say why, and still show the open reports so nothing is hidden
+        Card { Txt(checkErr, T.small, color = cs.primary) }
+        fallback.forEach { t -> Card(Modifier.pressable { open(t.id) }) { Txt(t.title, T.h2); Txt(t.email + " · " + t.id + " · " + ago(t.updatedAt), T.small, muted = true); SupportActions(t.id, t.title, t.category, t.email, t.thread.ifEmpty { t.last }, hub) } }
+    }
+    else if (items == null) Txt("Loading…", T.small, muted = true)
     else if (todo.isEmpty()) Card { Txt("Nothing left to do", T.h2); Txt("Every report is done. New ones show up here by themselves.", T.small, muted = true) }
     else Card {
         todo.forEachIndexed { i, x ->

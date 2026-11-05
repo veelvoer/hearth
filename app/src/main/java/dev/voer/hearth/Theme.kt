@@ -194,7 +194,8 @@ val LocalFoldOpen = androidx.compose.runtime.compositionLocalOf { false }
 /** A card that is closed until you tap its title, so a long page of settings reads as a short list. The (i) keeps the explanation. */
 @Composable
 fun Fold(icon: String, title: String, tip: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    var open by remember { mutableStateOf(LocalFoldOpen.current) }
+    val startOpen = LocalFoldOpen.current
+    var open by remember { mutableStateOf(startOpen) }
     val shape = RoundedCornerShape(20.dp)
     Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
