@@ -21,6 +21,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -172,10 +174,16 @@ fun SessionsScreen() {
     }
     val v = view
     BackHandler(v !is View.Home) { view = View.Home }
+    androidx.compose.animation.AnimatedContent(v, label = "screen", transitionSpec = {   // a screen slides in from the side when you go deeper and back out when you return
+        if (!Fx.motion) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+        else if (targetState !is View.Home) (androidx.compose.animation.slideInHorizontally(tween(280)) { it / 5 } + androidx.compose.animation.fadeIn(tween(280))) togetherWith (androidx.compose.animation.slideOutHorizontally(tween(280)) { -it / 8 } + androidx.compose.animation.fadeOut(tween(200)))
+        else (androidx.compose.animation.slideInHorizontally(tween(280)) { -it / 8 } + androidx.compose.animation.fadeIn(tween(280))) togetherWith (androidx.compose.animation.slideOutHorizontally(tween(280)) { it / 5 } + androidx.compose.animation.fadeOut(tween(200)))
+    }) { v ->
     when (v) {
         is View.Home -> Home(machines, guests, { machines = it; Store.saveMachines(c, it); CallService.sync(c) }, { view = View.New }, { m -> view = View.Chat(m, Sess("", "New talk", "", 0, false, kind = "talk")) }, { joinOpen = true }) { m, s -> view = View.Chat(m, s) }
         is View.New -> NewSession(machines, { view = View.Home }) { m, path, kind, asRoot -> view = View.Chat(m, Sess("", if (kind == "talk") "New talk" else "New session", path, 0, false, kind = kind, root = asRoot)) }
         is View.Chat -> Chat(v.m, v.s, v.voice, onClear = { view = View.Chat(v.m, Sess("", "New session", v.s.cwd, 0, false, kind = v.s.kind, root = v.s.root)) }) { view = View.Home }
+    }
     }
 }
 
