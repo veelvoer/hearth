@@ -792,3 +792,13 @@ button.sm { min-height: 32px; }
 .linkrow > .ic:last-child { transform: scaleX(-1); opacity: .6; }
 .funtile { padding: 4px 2px; } .funval { font-family: var(--serif, Georgia, serif); font-size: 24px; }
 @media (max-width: 860px) { .page.sx { flex-direction: column; gap: 14px; } .snavwrap { position: static; width: 100%; } .snav { flex-direction: row; flex-wrap: wrap; } .sgroup { display: none; } .sfind { flex: 1 1 100%; } .spane { max-width: none; width: 100%; } }
+.ember { position: relative; width: 84px; height: 84px; display: grid; place-items: center; background: none; border-radius: 50%; }
+.ember.hop svg { animation: emberhop .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes emberhop { 0% { transform: translateY(0); } 30% { transform: translateY(-22px) scaleY(1.08); } 100% { transform: translateY(0); } }
+.ember .spark { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #D9A441; animation: emberspark .7s ease-out forwards; }
+@keyframes emberspark { to { transform: rotate(var(--a)) translateX(46px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ember.hop svg, .ember .spark { animation: none; } }
+.ftile { width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center; background: var(--active); color: var(--clay); flex: none; }
+.snavitem.on .ftile { background: var(--clay); color: #fff; }
+.inforow .ftile { margin-right: 12px; }
+.sx-tip { display: none; }

@@ -629,6 +629,7 @@ function renderLive() {
 }
 
 function sendMsg(text) {
+  if (toyOn('sounds')) toySound('send');
   const s = SS.sel, sid = rand();
   if (s.id) { const mid = machineFor(s.id, s.mid); if (mid !== s.mid) { s.mid = mid; SS.mid = mid; } }
   if (s.isNew && s.kind !== 'talk' && !s.cwd) { SS.chatErr = 'Choose a project folder first.'; renderMsgs(); return; }
@@ -649,6 +650,7 @@ function sendMsg(text) {
     if (busy) { qOf(s).unshift(text); unqueue(); }   // Claude is working on this chat from somewhere else: wait for it, then send
     if (viewing()) {
       SS.sending = false; SS.parts = [];
+      toyDone();
       await loadMsgs(false);
       SS.perms = SS.perms.filter((p) => p.ev.session !== s.id);
       drawPane(); renderMsgs();

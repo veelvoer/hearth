@@ -1,0 +1,47 @@
+'use strict';
+/* The small, unnecessary, fun extras of the beta page (switched on in Settings > Beta features). */
+const toyOn = (id) => !!(S.settings && S.settings.betaUnlocked && (S.settings.betaOn || {})[id]);
+const TOY_PEP = ['You are doing great. The tests are the ones that are wrong.', 'Small steps still compile.', 'Today’s forecast: 100% chance of green checkmarks.', 'Every bug you fix makes a future you smile.',
+  'Take a sip of water. The code will wait.', 'Ship it. Or at least commit it.', 'You asked a computer to write code for you. That is already magic.', 'Even the best programmers search for the answer sometimes.',
+  'Breathe. It is only a semicolon.', 'Your future self says thank you for those comments.', 'Plan, build, learn, repeat. You are on step two.', 'A short walk fixes at least one bug.'];
+const TOY_HELLO = ['Hallo', 'Hola', 'Bonjour', 'Ciao', 'Olá', 'Hej', 'Salut', 'Moi', 'Ahoj', 'Namaste', 'Konnichiwa', 'Merhaba', 'Hei', 'Servus', 'Aloha', 'Shalom'];
+const TOY_EMBER = ['Warm in here, isn’t it?', 'I only eat good ideas.', 'Poke me again. I dare you.', 'Fire safety tip: save your files.', 'I’m not hot, I’m just glowing.', 'Hearth, sweet hearth.', 'Did somebody say s’mores?', 'Crackle crackle.'];
+const toyDaily = (list) => list[Math.floor(Date.now() / 864e5) % list.length];
+
+let toyCtx = null;
+function toySound(kind) {
+  try {
+    toyCtx = toyCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = toyCtx.createOscillator(), g = toyCtx.createGain(), t = toyCtx.currentTime, notes = kind === 'done' ? [660, 880] : [520];
+    o.type = 'sine'; o.connect(g); g.connect(toyCtx.destination); g.gain.setValueAtTime(0.0001, t);
+    notes.forEach((f, i) => { o.frequency.setValueAtTime(f, t + i * 0.11); g.gain.exponentialRampToValueAtTime(0.12, t + i * 0.11 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.11 + 0.16); });
+    o.start(t); o.stop(t + notes.length * 0.11 + 0.2);
+  } catch { /* no audio */ }
+}
+
+function toyConfetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = h('canvas', { style: 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:200', 'aria-hidden': 'true' });
+  cv.width = innerWidth; cv.height = innerHeight; document.body.append(cv);
+  const cx = cv.getContext('2d'), cols = ['#F0643C', '#D9A441', '#6A9BCC', '#4CAF7D', '#B04D2A'];
+  const ps = Array.from({ length: 120 }, () => ({ x: Math.random() * cv.width, y: -20 - Math.random() * cv.height * .3, vx: (Math.random() - .5) * 4, vy: 2 + Math.random() * 4, a: Math.random() * 6.3, va: (Math.random() - .5) * .3, c: cols[Math.floor(Math.random() * cols.length)] }));
+  const t0 = performance.now();
+  const frame = (now) => {
+    const t = (now - t0) / 2600; cx.clearRect(0, 0, cv.width, cv.height);
+    for (const p of ps) { p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.a += p.va; cx.save(); cx.globalAlpha = Math.max(0, 1 - t); cx.translate(p.x, p.y); cx.rotate(p.a); cx.fillStyle = p.c; cx.fillRect(-5, -3, 10, 6); cx.restore(); }
+    if (t < 1) requestAnimationFrame(frame); else cv.remove();
+  };
+  requestAnimationFrame(frame);
+}
+/** Claude finished a chat you are looking at. */
+function toyDone() { if (toyOn('confetti')) toyConfetti(); if (toyOn('sounds')) toySound('done'); }
+
+/** Ember, the little flame of Hearth: poke it and it hops and says something. */
+function toyEmber() {
+  const say = h('div', {}, toyDaily(TOY_EMBER)), flame = h('button', { class: 'ember', 'aria-label': 'Poke Ember', html: sparkSVG(56) });
+  flame.onclick = () => {
+    flame.classList.remove('hop'); void flame.offsetWidth; flame.classList.add('hop'); say.textContent = TOY_EMBER[Math.floor(Math.random() * TOY_EMBER.length)];
+    for (let i = 0; i < 8; i++) { const sp = h('i', { class: 'spark' }); sp.style.setProperty('--a', (i / 8 * 360 + Math.random() * 30) + 'deg'); flame.append(sp); setTimeout(() => sp.remove(), 700); }
+  };
+  return h('div', { class: 'card row', style: 'align-items:center;gap:16px' }, flame, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Ember'), say));
+}

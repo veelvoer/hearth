@@ -246,7 +246,7 @@ function dashboardView() {
     h('span', { class: 'pill ' + (D.voice && D.voice.stt && D.voice.tts ? 'ok' : '') }, h('i'), D.voice && D.voice.stt && D.voice.tts ? 'Voice ready' : 'Voice not installed'),
     h('span', { class: 'pill ' + (S.settings.callMe ? 'ok' : '') }, h('i'), S.settings.callMe ? 'Calls on' : 'Calls off'),
     u ? h('span', { class: 'small muted', 'data-ago': u.at }, 'Usage updated ' + ago(u.at, now)) : null);
-  root.append(h('div', { class: 'hero' }, h('div', { class: 'grow' }, h('h1', {}, greeting() + (S.profile && S.profile.email ? '' : '.')),
+  root.append(h('div', { class: 'hero' }, h('div', { class: 'grow' }, h('h1', {}, (toyOn('hello') ? toyDaily(TOY_HELLO) + '!' : greeting()) + (toyOn('hello') || (S.profile && S.profile.email) ? '' : '.')),
     h('div', { class: 'muted' }, new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }) + (S.profile && S.profile.plan ? '  ·  Claude ' + S.profile.plan : ''))),
     h('div', { class: 'row' }, ibtn('refresh', 'Refresh the numbers now', async () => { S = await cm.refresh(); loadDashboard(); render(); }),
       D.live[0] ? ibtn('mic', 'Talk to Claude', () => openSession(D.live[0], true), 'primary') : null)));
@@ -274,6 +274,8 @@ function dashboardView() {
     kpi('Messages today', String(today.msgs), `${wk.reduce((a, d) => a + d.msgs, 0)} this week`, yday.msgs ? (today.msgs - yday.msgs) / yday.msgs * 100 : null),
     kpi('Sessions today', String(today.sessions), `${D.live.length} open right now`),
     kpi('Cache hit rate', cr + fresh ? Math.round(cr / (cr + fresh) * 100) + '%' : '–', 'Last 7 days, higher is cheaper')));
+  if (toyOn('pep')) root.append(h('div', { class: 'muted' }, toyDaily(TOY_PEP)));
+  if (toyOn('ember')) root.append(toyEmber());
   const funBox = h('div', { id: 'funbox' }); root.append(funBox); funFacts(funBox);
 
   const shown = days.slice(-D.range);
