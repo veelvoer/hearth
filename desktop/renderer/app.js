@@ -280,11 +280,7 @@ function settingsView(only) {
   /** A setting changed: swap only the cards that show settings. The rest of the page (and the scroll position) is not touched. */
   const set = async (patch) => {
     S.settings = await cm.setSettings(patch); applyPerf(); if ('palette' in patch || 'customAccent' in patch) await applyPalette();
-    const page0 = content.querySelector('.page');
-    if (!page0 || tab !== 'settings') return render();
-    const np = settingsView(true);
-    const oldKids = [...page0.querySelectorAll(':scope > [data-live]')], newKids = [...np.querySelectorAll(':scope > [data-live]')];
-    for (const n of newKids) { const o = oldKids.find((x) => x.dataset.live === n.dataset.live); if (o) o.replaceWith(n); }
+    const top = content.scrollTop; await render(); content.scrollTop = top;   // the page is rebuilt, and you stay where you were
     lastSig = sigOf();
   };
   const p = page(head('Settings'));
@@ -335,21 +331,94 @@ function settingsView(only) {
   if (only) return p;
   return withSettingsMenu(p);
 }
-/** The list on the left of Settings: one entry per card, a tap scrolls to it and the one being read is lit. */
+/** Settings as pages: a list of groups on the left, the cards of the chosen group on the right, and About last. */
+const SX = { tab: 'connection', find: '', taps: 0, last: 0, ver: '' };
+const SX_TABS = [
+  ['connection', 'devices', 'Computers and devices', 'Connection', /your devices|computers and servers|^sync|connect your phone/i],
+  ['updates', 'sync', 'Updates', 'Connection', /^updates/i],
+  ['notifications', 'bell', 'Notifications and calls', 'App', /alerts|call me|notifications|calls from claude/i],
+  ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
+  ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out/i],
+  ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions/i],
+  ['help', 'support', 'Help and support', 'Help', /help|support/i],
+];
+function sxTabOf(name) { const t = SX_TABS.find((x) => x[4].test(name)); return t ? t[0] : 'help'; }
+const FUN_FEATURES = [
+  ['water', 'Water used', 'A rough guess of the water that cooling the data centres took for what Claude wrote.'],
+  ['energy', 'Energy used', 'The electricity behind your replies, shown as phone charges.'],
+  ['coffee', 'Coffee money', 'What your Claude work would have cost at API prices, counted in cups of coffee.'],
+  ['words', 'Words written', 'How much Claude wrote for you, in words and book pages.'],
+  ['streak', 'Streak', 'How many days in a row you used Claude Code.'],
+  ['favorite', 'Favourite model', 'The model that did most of your work.'],
+  ['busiest', 'Busiest day', 'The day you used Claude the most.'],
+  ['weekend', 'Weekend share', 'How much of your work happens on a Saturday or Sunday.'],
+  ['longest', 'Longest chat', 'Your longest session in one go.'],
+  ['cache', 'Cache savings', 'What caching saved you, at API prices.'],
+];
+const fmtBig = (v) => (v >= 1e9 ? (v / 1e9).toFixed(1) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(Math.round(v)));
+/** What a beta feature says about the last 30 days: [value, small line], or null when there is nothing to say yet. */
+function funLine(id, o) {
+  const t = o && o.totals; if (!t) return null; const out = t.out || 0, days = o.days || [];
+  if (id === 'water') return out > 0 ? ['≈ ' + (out / 1000 * 2 < 1000 ? Math.round(out / 1000 * 2) + ' ml' : (out / 1000 * 2 / 1000).toFixed(1) + ' L'), 'A rough guess: about 2 ml per 1,000 tokens written'] : null;
+  if (id === 'energy') { const wh = out / 1000 * 0.3; return out > 0 ? ['≈ ' + (wh < 1000 ? Math.round(wh) + ' Wh' : (wh / 1000).toFixed(1) + ' kWh'), 'About ' + (wh / 15).toFixed(1) + ' phone charges'] : null; }
+  if (id === 'coffee') return t.cost > 0 ? ['≈ ' + Math.round(t.cost / 4) + ' cups', 'At API prices of $' + Math.round(t.cost).toLocaleString() + ', a coffee at $4'] : null;
+  if (id === 'words') return out > 0 ? ['≈ ' + fmtBig(out * 0.75) + ' words', 'About ' + Math.round(out * 0.75 / 300).toLocaleString() + ' book pages'] : null;
+  if (id === 'streak') return [(t.currentStreak || 0) + ' day' + (t.currentStreak === 1 ? '' : 's'), 'Best streak: ' + (t.longestStreak || 0) + ' days'];
+  if (id === 'favorite') return o.favorite ? [o.favorite, 'Did most of your work'] : null;
+  if (id === 'busiest') { const d = days.reduce((m, x) => (x.tokens > (m ? m.tokens : 0) ? x : m), null); return d ? [new Date(d.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }), fmtBig(d.tokens) + ' tokens that day'] : null; }
+  if (id === 'weekend') { let we = 0, all = 0; days.forEach((x) => { all += x.tokens; const dw = new Date(x.date + 'T12:00:00').getDay(); if (dw === 0 || dw === 6) we += x.tokens; }); return all > 0 ? [Math.round(we / all * 100) + '%', 'Of your work is on a Saturday or Sunday'] : null; }
+  if (id === 'longest') { const m = Math.round((t.longestSessionMs || 0) / 60000); return m > 0 ? [m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm', 'Your longest session in one go'] : null; }
+  if (id === 'cache') return t.cacheSaved > 0 ? ['$' + Math.round(t.cacheSaved).toLocaleString(), 'Saved by caching, at API prices'] : null;
+  return null;
+}
 function withSettingsMenu(p) {
-  const ap = p.querySelector(':scope > .appearance'); if (ap && p.children[1] !== ap) p.insertBefore(ap, p.children[1] || null);   // Appearance first, as in the design
+  if (!SX.ver) cm.version().then((v) => { SX.ver = v; if (tab === 'settings') render(); });
+  const st = S.settings, set = async (patch) => { S.settings = await cm.setSettings(patch); render(); };
   const cards = [...p.children].filter((c) => c.querySelector && c.querySelector('.chead .label'));
-  const menu = h('div', { class: 'submenu' });
-  const items = cards.map((c) => { const name = c.querySelector('.chead .label').textContent; const b = h('button', { class: 'subitem', onclick: () => { c.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('noanim') ? 'auto' : 'smooth', block: 'start' }); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 2200); } }, name); menu.append(b); return [b, c]; });
-  const spy = () => {
-    let cur = 0; items.forEach(([, c], i) => { if (c.isConnected && c.getBoundingClientRect().top < 140) cur = i; });
-    items.forEach(([b], i) => b.classList.toggle('on', i === cur));
+  const head = p.querySelector(':scope > .head');
+  const pane = h('div', { class: 'spane' }), nav = h('nav', { class: 'snav', 'aria-label': 'Settings' });
+  const beta = !!st.betaUnlocked;
+  const tabs = [...SX_TABS.map((t) => ({ id: t[0], ic: t[1], label: t[2], group: t[3] })), ...(beta ? [{ id: 'beta', ic: 'tour', label: 'Beta features', group: 'About' }] : []), { id: 'about', ic: 'info', label: 'About', group: 'About' }];
+  if (!tabs.some((t) => t.id === SX.tab)) SX.tab = 'connection';
+  const aboutCard = () => {
+    const logo = h('button', { class: 'about-logo', 'aria-label': 'Hearth logo', onclick: () => {
+      const now = Date.now(); SX.taps = now - SX.last > 2500 ? 1 : SX.taps + 1; SX.last = now;
+      if (SX.taps >= 10) { SX.taps = 0; if (st.betaUnlocked) toast('Beta features are already on.'); else { set({ betaUnlocked: true }).then(() => { SX.tab = 'beta'; render(); toast('Beta features unlocked. Find them in Settings.'); }); } }
+      else if (SX.taps >= 5 && !st.betaUnlocked) toast((10 - SX.taps) + ' more taps…');
+    }, html: sparkSVG(72) });
+    const info = (label, val) => h('div', { class: 'row inforow' }, h('div', { class: 'grow' }, label), h('div', { class: 'small muted' }, val));
+    const link = (ic, t, sub, url) => h('button', { class: 'row linkrow', onclick: () => cm.openExternal(url) }, icon(ic), h('div', { class: 'grow', style: 'text-align:left' }, t, h('div', { class: 'small muted' }, sub)), icon('back'));
+    return h('div', { class: 'stack', style: 'gap:14px' },
+      h('div', { class: 'card about' }, logo, h('h2', { style: 'margin:6px 0 0' }, 'Hearth'), h('div', { class: 'small muted' }, 'Version ' + (SX.ver)), h('div', { class: 'muted', style: 'max-width:380px' }, 'Claude Code, on your phone and your computer.')),
+      h('div', { class: 'card stack', style: 'gap:0' }, info('Version', SX.ver), info('System', navigator.platform + ' · Electron ' + (navigator.userAgent.match(/Electron\/([\d.]+)/) || [])[1]), info('Made by', 'Warre and Claude')),
+      h('div', { class: 'card stack', style: 'gap:0' }, link('support', 'Source code', 'github.com/veelvoer/hearth', 'https://github.com/veelvoer/hearth'), link('tour', 'Release notes', 'What changed in every version', 'https://github.com/veelvoer/hearth/releases'), link('support', 'Contact', 'hearth.support1@gmail.com', 'mailto:hearth.support1@gmail.com')),
+      h('div', { class: 'small muted' }, 'Hearth is an independent app, not made by or affiliated with Anthropic. Your usage limits come from what Claude Code reports on your own computer or server; Hearth never sees your Claude login.'));
   };
-  if (content._spy) content.removeEventListener('scroll', content._spy);
-  content._spy = spy; content.addEventListener('scroll', spy, { passive: true });
-  setTimeout(spy, 0);
-  p.classList.add('settingsgrid'); p.insertBefore(menu, p.children[1] || null);
-  return h('div', { class: 'settingsrow' }, p);
+  const betaCard = () => {
+    const on = st.betaOn || {};
+    return h('div', { class: 'stack', style: 'gap:14px' }, h('div', { class: 'small muted' }, 'Small extras that are still being tried out. Switch on what you like: each one adds a line to Home.'),
+      h('div', { class: 'card stack', style: 'gap:0' }, ...FUN_FEATURES.map(([id, title, about]) => h('div', { class: 'row inforow' }, h('div', { class: 'grow' }, title, h('div', { class: 'small muted' }, about)), toggle(!!on[id], () => set({ betaOn: { ...on, [id]: !on[id] } })))) ),
+      h('div', {}, h('button', { class: 'ghost sm', onclick: () => { SX.tab = 'about'; set({ betaUnlocked: false, betaOn: {} }); } }, 'Hide beta features')));
+  };
+  const draw = () => {
+    nav.innerHTML = ''; pane.innerHTML = '';
+    const q = SX.find.trim().toLowerCase();
+    nav.append(h('input', { class: 'sfind', type: 'search', placeholder: 'Find a setting', 'aria-label': 'Find a setting', value: SX.find, oninput: (e) => { SX.find = e.target.value; draw(); const i = nav.querySelector('.sfind'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }));
+    let lastGroup = '';
+    for (const t of tabs) {
+      if (q && !(t.label + ' ' + cards.filter((c) => sxTabOf(c.querySelector('.chead .label').textContent) === t.id).map((c) => c.textContent).join(' ')).toLowerCase().includes(q)) continue;
+      if (t.group !== lastGroup && !q) { lastGroup = t.group; nav.append(h('div', { class: 'sgroup' }, t.group)); }
+      nav.append(h('button', { class: 'snavitem' + (t.id === SX.tab && !q ? ' on' : ''), onclick: () => { SX.tab = t.id; SX.find = ''; draw(); content.scrollTop = 0; } }, icon(t.ic), h('span', {}, t.label)));
+    }
+    const title = q ? 'Search results' : (tabs.find((t) => t.id === SX.tab) || tabs[0]).label;
+    pane.append(h('h2', { class: 'spane-title' }, title));
+    if (q) { const hit = cards.filter((c) => c.textContent.toLowerCase().includes(q)); hit.forEach((c) => pane.append(c)); if (!hit.length) pane.append(h('div', { class: 'muted' }, 'Nothing matches “' + SX.find + '”.')); return; }
+    if (SX.tab === 'about') pane.append(aboutCard());
+    else if (SX.tab === 'beta') pane.append(betaCard());
+    else cards.filter((c) => sxTabOf(c.querySelector('.chead .label').textContent) === SX.tab).forEach((c) => pane.append(c));
+  };
+  draw();
+  return h('div', { class: 'page sx' }, h('div', { class: 'snavwrap' }, h('h1', { class: 'sx-title' }, 'Settings'), nav), pane);
 }
 
 /** Which computers and servers this app talks to. Chats pick from these; the first own computer is the default. */

@@ -86,7 +86,14 @@ async function spChecklist(box, hub, body) {
       if (SP_DONE_OPEN) done.forEach((x) => box.append(row(x)));
     }
   };
-  const act = async (b) => { try { draw((await cm.relay(hub.id, 'POST', '/support/checklist', b)).items || []); } catch (e) { box.innerHTML = ''; box.append(h('p', { class: 'err small' }, clean(e))); } };
+  const act = async (b) => {
+    try { draw((await cm.relay(hub.id, 'POST', '/support/checklist', b)).items || []); }
+    catch (e) {   // the server could not give the checklist: say why, and still show the open reports so nothing is hidden
+      box.innerHTML = ''; const m = clean(e);
+      box.append(h('div', { class: 'obnote' }, h('div', { class: 'small err' }, /unknown|404|not found/i.test(m) ? 'Your server does not know the checklist yet. Update it in Settings, Updates, and this fills in by itself.' : m)));
+      (body.sync || []).filter((x) => !x.fixed).forEach((x) => box.append(h('div', { class: 'spwrap' }, h('button', { class: 'spitem', onclick: () => { SP.open = x.id; SP.view = 'thread'; drawSupport(); } }, h('b', { class: 'ellip' }, x.title), h('div', { class: 'small muted ellip' }, x.email + ' · ' + x.id + ' · ' + spAgo(x.updatedAt))))));
+    }
+  };
   await act(body);
 }
 
