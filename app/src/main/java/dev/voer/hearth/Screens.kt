@@ -402,6 +402,19 @@ fun NowScreen() {
             Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f).fillMaxHeight())
             Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f).fillMaxHeight())
         }
+        cost?.takeIf { it.outTokens > 0 }?.let { cc ->   // a rough estimate of the water the data centres used: about 2 ml for every 1,000 tokens Claude wrote
+            val ml = cc.outTokens / 1000 * 2
+            Card {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Glyph("drop", 22.dp, MaterialTheme.colorScheme.primary); Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Txt("Water used · last 30 days", T.small, muted = true)
+                        Txt("≈ " + (if (ml < 1000) "${ml.toInt()} ml" else "%.1f L".format(ml / 1000)), T.title.copy(fontSize = 26.sp))
+                    }
+                    InfoDot("Water estimate", "A rough guess of the water that cooling the data centres took for what Claude wrote: about 2 ml for every 1,000 tokens. The real number differs a lot between data centres, so read it as 'about'.")
+                }
+            }
+        }
         WeekPlanCard()
         cost?.takeIf { it.days.isNotEmpty() && it.total > 0 }?.let { cc ->
             Card {

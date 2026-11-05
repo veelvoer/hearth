@@ -208,7 +208,7 @@ object Relay {
         val o = JSONObject(getJson(m, "/usage-report?days=30"))
         val a = o.optJSONArray("days") ?: return null
         val all = List(a.length()) { a.getJSONObject(it).optDouble("cost", 0.0) }
-        return ApiCost(o.optJSONObject("totals")?.optDouble("cost", 0.0) ?: all.sum(), all.takeLast(days))
+        return ApiCost(o.optJSONObject("totals")?.optDouble("cost", 0.0) ?: all.sum(), all.takeLast(days), o.optJSONObject("totals")?.optDouble("out", 0.0) ?: 0.0)
     }
 
     /** Asks that computer to read the limits again with one tiny request. Only when you press Refresh. */

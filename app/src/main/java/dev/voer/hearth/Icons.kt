@@ -40,6 +40,7 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
             "edit" -> svg("M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z")
             "send" -> svg("M12 19V5 M5 12l7-7 7 7")
             "stop" -> drawRoundRect(color, Offset(7 * u, 7 * u), Size(10 * u, 10 * u), CornerRadius(2f * u))
+            "drop" -> svg("M12 2.7s6 6.1 6 10.8a6 6 0 0 1-12 0C6 8.8 12 2.7 12 2.7z")
             "chevd" -> svg("M6 9l6 6 6-6")
             "chevu" -> svg("M6 15l6-6 6 6")
             "chevr" -> svg("M9 6l6 6-6 6")

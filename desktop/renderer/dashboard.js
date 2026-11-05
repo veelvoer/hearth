@@ -269,10 +269,13 @@ function dashboardView() {
   const days = D.stats.days, today = days[days.length - 1], yday = days[days.length - 2] || { in: 0, out: 0, cw: 0, cr: 0, msgs: 0 };
   const wk = days.slice(-7), cr = wk.reduce((a, d) => a + d.cr, 0), fresh = wk.reduce((a, d) => a + d.in + d.cw, 0);
   const tT = work(today), yT = work(yday);
+  // Rough estimate of the water that cooling the data centres took: about 2 ml for every 1,000 tokens Claude wrote. Real numbers differ a lot between data centres, so it is shown as "about".
+  const waterMl = (out) => out / 1000 * 2, fmtW = (ml) => (ml < 1 ? '0 ml' : ml < 1000 ? Math.round(ml) + ' ml' : (ml / 1000).toFixed(ml < 10000 ? 1 : 0) + ' L');
+  const waterAll = days.reduce((a, d) => a + d.out, 0);
   root.append(h('div', { class: 'g4' },
     kpi('Tokens today', fmtN(tT), `${fmtN(today.out)} written · ${fmtN(today.cr)} cached reads`, yT ? (tT - yT) / yT * 100 : null),
-    kpi('Messages today', String(today.msgs), `${wk.reduce((a, d) => a + d.msgs, 0)} this week`, yday.msgs ? (today.msgs - yday.msgs) / yday.msgs * 100 : null),
-    kpi('Sessions today', String(today.sessions), `${D.live.length} open right now`),
+    kpi('Messages today', String(today.msgs), `${wk.reduce((a, d) => a + d.msgs, 0)} this week · ${today.sessions} session${today.sessions === 1 ? '' : 's'}`, yday.msgs ? (today.msgs - yday.msgs) / yday.msgs * 100 : null),
+    kpi('Water used today', '≈ ' + fmtW(waterMl(today.out)), `≈ ${fmtW(waterMl(waterAll))} in ${days.length} days · rough estimate`),
     kpi('Cache hit rate', cr + fresh ? Math.round(cr / (cr + fresh) * 100) + '%' : '–', 'Last 7 days, higher is cheaper')));
 
   const shown = days.slice(-D.range);
