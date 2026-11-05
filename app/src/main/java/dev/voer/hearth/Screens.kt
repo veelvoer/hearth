@@ -402,20 +402,8 @@ fun NowScreen() {
             Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f).fillMaxHeight())
             Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f).fillMaxHeight())
         }
-        cost?.takeIf { it.outTokens > 0 }?.let { cc ->   // a rough estimate of the water the data centres used: about 2 ml for every 1,000 tokens Claude wrote
-            val ml = cc.outTokens / 1000 * 2
-            Card {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Glyph("drop", 22.dp, MaterialTheme.colorScheme.primary); Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Txt("Water used · last 30 days", T.small, muted = true)
-                        Txt("≈ " + (if (ml < 1000) "${ml.toInt()} ml" else "%.1f L".format(ml / 1000)), T.title.copy(fontSize = 26.sp))
-                    }
-                    InfoDot("Water estimate", "A rough guess of the water that cooling the data centres took for what Claude wrote: about 2 ml for every 1,000 tokens. The real number differs a lot between data centres, so read it as 'about'.")
-                }
-            }
-        }
         WeekPlanCard()
+        FunFactsCard(cost?.raw)
         cost?.takeIf { it.days.isNotEmpty() && it.total > 0 }?.let { cc ->
             Card {
                 Txt("Cost per day", T.body.copy(fontWeight = FontWeight.SemiBold))
@@ -423,6 +411,7 @@ fun NowScreen() {
                 CostBars(cc.days)
             }
         }
+        if (Store.fullDashboard(c)) FullDashboard(cost?.raw)
         if (u?.opus != null || u?.sonnet != null) Card {
             Label("Weekly by model")
             listOf("Opus" to u.opus, "Sonnet" to u.sonnet).forEach { (n, l) ->
@@ -943,12 +932,18 @@ fun SettingsScreen() {
         }
         return
     }
+    var page by remember { mutableStateOf<String?>(null) }
+    BackHandler(page != null) { page = null }
     Screen {
-        Header("Settings")
-        SectionTitle("Connection", "link")
-        ComputersCard()
-        UpdatesCard()
-        Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
+        if (page == null) { SettingsMenu { page = it } }
+        else {
+            Row(Modifier.fillMaxWidth().padding(top = 0.dp), verticalAlignment = Alignment.CenterVertically) { BackLink("Settings") { page = null } }
+            Header(settingsTitle(page!!))
+            androidx.compose.runtime.CompositionLocalProvider(LocalFoldOpen provides (page == "notifications" || page == "look" || page == "server")) {
+            when (page) {
+                "computers" -> ComputersCard()
+                "updates" -> UpdatesCard()
+                "notifications" -> {
         Fold("bell", "Notifications and calls", "Messages when a session finishes or needs you, even when the app is closed. Calls only when you ask for one in a chat. Allow background activity so Android never puts the connection to sleep. Calls need the full-screen permission on Android 14 and newer.") {
             Spacer(Modifier.height(8.dp))
             var callMe by remember { mutableStateOf(Store.callMe(c)) }
@@ -977,7 +972,37 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(6.dp))
         }
-        SectionTitle("Look and feel", "contrast")
+        Fold("bell", "Alerts") {
+            Spacer(Modifier.height(10.dp))
+            Txt("Notify when usage crosses", T.body)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(50, 75, 90, 100).forEach { v ->
+                    Chip("$v%", v in thr) {
+                        thr = if (v in thr) thr - v else thr + v
+                        Store.setThresholds(c, thr); ask()
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row2("Session reset", "Tell me when a heavy session rolls over") {
+                Switch(nreset, { nreset = it; Store.setNotifyReset(c, it); ask() })
+            }
+            Row2("Live notification", "Pinned bar with session progress") {
+                Switch(live, { live = it; Store.setLive(c, it); ask(); Notifier.live(c, Ui.usage) })
+            }
+        }
+        Fold("clock", "Background refresh", "Android may delay background work to save battery. Opening the app always refreshes.") {
+            Spacer(Modifier.height(10.dp))
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(15, 30, 60).forEach { m ->
+                    Chip(if (m == 60) "1 h" else "$m min", interval == m) { interval = m; Store.setInterval(c, m); Sched.ensure(c, replace = true) }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+                }
+                "look" -> {
         Fold("contrast", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
@@ -997,30 +1022,11 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(8.dp))
         }
+        Card { Row2("Full dashboard on Home", "Show everything the computer dashboard shows: totals, models, projects, tools and more, below the Home cards.") { var on by remember { mutableStateOf(Store.fullDashboard(c)) }; Switch(on, { on = it; Store.setFullDashboard(c, it) }) } }
         Column(Modifier.appear().fillMaxWidth().panel(RoundedCornerShape(20.dp)).padding(horizontal = 18.dp, vertical = 6.dp)) {
             Row(Modifier.fillMaxWidth().clickable { sub = "widgets" }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {   // looks like the folding cards, but opens its own page
                 Glyph("widget", 18.dp); Spacer(Modifier.width(8.dp)); Label("Widgets", Modifier.weight(1f))
                 Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph("chevr", 22.dp) }
-            }
-        }
-        Fold("bell", "Alerts") {
-            Spacer(Modifier.height(10.dp))
-            Txt("Notify when usage crosses", T.body)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(50, 75, 90, 100).forEach { v ->
-                    Chip("$v%", v in thr) {
-                        thr = if (v in thr) thr - v else thr + v
-                        Store.setThresholds(c, thr); ask()
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row2("Session reset", "Tell me when a heavy session rolls over") {
-                Switch(nreset, { nreset = it; Store.setNotifyReset(c, it); ask() })
-            }
-            Row2("Live notification", "Pinned bar with session progress") {
-                Switch(live, { live = it; Store.setLive(c, it); ask(); Notifier.live(c, Ui.usage) })
             }
         }
         Fold("voice", "Voice", "Replies are spoken in the language they are written in; you can switch during a call too. Same as typing sends exactly what you say and reads Claude's full reply aloud (code is skipped). Brief asks Claude for short spoken answers. Auto uses your computer's local voices when available (better, slower) and falls back to Android's built-in speech.") {
@@ -1059,25 +1065,20 @@ fun SettingsScreen() {
             Spacer(Modifier.height(8.dp))
             Spacer(Modifier.height(10.dp))
         }
-        Fold("clock", "Background refresh", "Android may delay background work to save battery. Opening the app always refreshes.") {
-            Spacer(Modifier.height(10.dp))
-            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(15, 30, 60).forEach { m ->
-                    Chip(if (m == 60) "1 h" else "$m min", interval == m) { interval = m; Store.setInterval(c, m); Sched.ensure(c, replace = true) }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-        SectionTitle("Server", "server")
+                "server" -> {
         SyncCard()
         MemoryCard()
         LimitCard()
-        SectionTitle("Tools for Claude", "sliders")
+                }
+                "tools" -> {
         SkillsCard()
         McpBuildCard()
         ApiKeysCard()
         PermissionsCard()
-        SectionTitle("Help", "support")
+                }
+                "help" -> {
+        Card { Head("tour", "Help", "The tour lights up each part and explains it. Setup walks you through connecting a server or computer again.") { TextAction("Tour") { Tour.start() }; TextAction("Setup") { Store.setOnboarded(c, false); Ui.tourRev++ } } }
         Card {
             Head("support", "Support", "Found a bug, have a question or an idea? Write to us. We answer by email.") { Spacer(Modifier.width(6.dp)); Button("Contact", Modifier) { support = true } }
             Spacer(Modifier.height(10.dp))
@@ -1089,5 +1090,11 @@ fun SettingsScreen() {
             }
         }
         Txt("Hearth is an independent app, not made by or affiliated with Anthropic. Your usage limits come from what Claude Code reports on your own computer or server; Hearth never sees your Claude login.", T.small, muted = true)
+                }
+                "beta" -> BetaPage()
+                "about" -> AboutPage(onBeta = { page = "beta" })
+            }
+            }
+        }
     }
 }

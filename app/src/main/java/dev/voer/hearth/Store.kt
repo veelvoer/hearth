@@ -102,6 +102,13 @@ object Store {
     /** Language the call is held in: "en" or "nl". Replies are still spoken in the language they are written in. */
     fun voiceLang(c: Context): String = sp(c).getString("vlang", null) ?: if (java.util.Locale.getDefault().language == "nl") "nl" else "en"
     fun setVoiceLang(c: Context, v: String) = sp(c).edit().putString("vlang", v).apply()
+    // Extras: the Home dashboard in full, and the beta features that are unlocked in About.
+    fun fullDashboard(c: Context) = sp(c).getBoolean("fulldash", false)
+    fun setFullDashboard(c: Context, v: Boolean) = sp(c).edit().putBoolean("fulldash", v).apply()
+    fun betaUnlocked(c: Context) = sp(c).getBoolean("beta", false)
+    fun setBetaUnlocked(c: Context, v: Boolean) = sp(c).edit().putBoolean("beta", v).apply()
+    fun betaOn(c: Context, id: String) = sp(c).getBoolean("beta_$id", false)
+    fun setBetaOn(c: Context, id: String, v: Boolean) = sp(c).edit().putBoolean("beta_$id", v).apply()
     // Pinned chats stay on top of the list; a chosen name replaces the title. Both are kept on this phone.
     fun pinned(c: Context, sid: String): Boolean = sp(c).getBoolean("pin_$sid", false)
     fun setPinned(c: Context, sid: String, v: Boolean) { val e = sp(c).edit(); if (v) e.putBoolean("pin_$sid", true) else e.remove("pin_$sid"); e.apply() }

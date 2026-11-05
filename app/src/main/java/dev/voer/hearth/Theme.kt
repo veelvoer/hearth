@@ -188,10 +188,13 @@ fun Card(modifier: Modifier = Modifier, flat: Boolean = false, content: @Composa
 @Composable
 fun SectionTitle(text: String, icon: String? = null) { Row(Modifier.padding(top = 14.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) { if (icon != null) { Glyph(icon, 20.dp, MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp)) }; Txt(text, T.h2.copy(fontSize = 20.sp), color = MaterialTheme.colorScheme.primary) } }
 
+/** Folding cards start open on pages that hold only a few of them. */
+val LocalFoldOpen = androidx.compose.runtime.compositionLocalOf { false }
+
 /** A card that is closed until you tap its title, so a long page of settings reads as a short list. The (i) keeps the explanation. */
 @Composable
 fun Fold(icon: String, title: String, tip: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    var open by remember { mutableStateOf(false) }
+    var open by remember { mutableStateOf(LocalFoldOpen.current) }
     val shape = RoundedCornerShape(20.dp)
     Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
