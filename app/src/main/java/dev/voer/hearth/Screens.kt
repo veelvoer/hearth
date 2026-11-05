@@ -18,6 +18,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -374,13 +376,15 @@ fun NowScreen() {
     }
     Screen {
         val ldt = java.time.LocalDateTime.now()
-        Header(when { ldt.hour < 5 -> "Late night"; ldt.hour < 12 -> "Good morning"; ldt.hour < 18 -> "Good afternoon"; else -> "Good evening" },
+        Header(if (Store.betaOn(c, "hello")) Toys.daily(Toys.HELLO) + "!" else when { ldt.hour < 5 -> "Late night"; ldt.hour < 12 -> "Good morning"; ldt.hour < 18 -> "Good afternoon"; else -> "Good evening" },
             listOfNotNull(ldt.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), Ui.profile?.plan?.takeIf { it.isNotEmpty() }?.let { "Claude $it" }).joinToString(" · ")) {
             TextAction(if (Ui.busy) "Updating…" else "Refresh") { scope.launch { Ui.refresh(c, ask = true) } }
         }
         Ui.error?.let {
             Card { Txt(it, T.small, color = MaterialTheme.colorScheme.primary) }
         }
+        if (Store.betaOn(c, "pep")) Txt(Toys.daily(Toys.PEP), T.body, muted = true)
+        if (Store.betaOn(c, "ember")) Ember()
         val s = u?.session
         val shape = RoundedCornerShape(22.dp)
         Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.primary).padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -623,9 +627,26 @@ private fun pin(c: Context, s: Shape) {
 @Composable
 fun Row2(label: String, sub: String? = null, trailing: @Composable () -> Unit) =
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 6.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {   // the label and its switch are read together by TalkBack
-        Column(Modifier.weight(1f).padding(end = 12.dp)) { Txt(label, T.body); if (sub != null) Txt(sub, T.small, muted = true) }
+        Txt(label, T.body, modifier = Modifier.weight(1f).padding(end = 4.dp))
+        if (sub != null) InfoDot(label, sub)
         trailing()
     }
+
+/** A small picture of a look: the page, a card on it and the accent color, with its name underneath. */
+@Composable
+private fun ThemeTile(name: String, page: Color, card: Color, accent: Color, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Column(modifier.clip(RoundedCornerShape(18.dp)).border(if (selected) 2.dp else 1.dp, if (selected) cs.primary else cs.outlineVariant, RoundedCornerShape(18.dp)).clickable(role = androidx.compose.ui.semantics.Role.RadioButton, onClickLabel = name, onClick = onClick).padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxWidth().height(84.dp).clip(RoundedCornerShape(12.dp)).background(page).padding(10.dp)) {
+            Column(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(card).padding(8.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                Box(Modifier.width(36.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(accent.copy(alpha = .35f)))
+                Box(Modifier.align(Alignment.End).size(width = 30.dp, height = 14.dp).clip(RoundedCornerShape(7.dp)).background(accent))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) { if (selected) { Glyph("check", 16.dp, cs.primary); Spacer(Modifier.width(4.dp)) }; Txt(name, T.small.copy(fontWeight = FontWeight.SemiBold), color = if (selected) cs.primary else Color.Unspecified) }
+    }
+}
 
 @Composable
 fun UsageScreen() = Box(Modifier.fillMaxSize().tourTarget("usage")) { NowScreen() }
@@ -1006,20 +1027,17 @@ fun SettingsScreen() {
         Fold("contrast", "Appearance", if (Build.VERSION.SDK_INT >= 31) "System colors uses your phone's wallpaper colors for the whole app. Light and dark always follow your phone." else "Light and dark follow your phone.") {
             Spacer(Modifier.height(10.dp))
             val sys = ThemePrefs.system == true
-            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Claude", !sys) { ThemePrefs.system = false; Store.setThemeSystem(c, false) }
-                if (Build.VERSION.SDK_INT >= 31) Chip("System colors", sys) { ThemePrefs.system = true; Store.setThemeSystem(c, true) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val dark = androidx.compose.foundation.isSystemInDarkTheme()
+                ThemeTile("Claude", if (dark) Color(0xFF1B1A19) else Color(0xFFF4F1EA), if (dark) Color(0xFF252422) else Color(0xFFFBFAF6), if (dark) Clay else Crail, !sys, Modifier.weight(1f)) { ThemePrefs.system = false; Store.setThemeSystem(c, false) }
+                if (Build.VERSION.SDK_INT >= 31) {
+                    val d = if (dark) dynamicDarkColorScheme(c) else dynamicLightColorScheme(c)
+                    ThemeTile("System", d.surface, d.surfaceContainerLow, d.primary, sys, Modifier.weight(1f)) { ThemePrefs.system = true; Store.setThemeSystem(c, true) }
+                } else Spacer(Modifier.weight(1f))
             }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Txt("Frosted glass", T.body); Txt("See-through panels. Turn off if the app feels slow.", T.small, muted = true) }
-                Switch(Fx.glass, { Fx.glass = it; Store.setGlass(c, it) })
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Txt("Animations", T.body); Txt("Fades, slides and bounces. Off is the lightest.", T.small, muted = true) }
-                Switch(Fx.motion, { Fx.motion = it; Store.setMotion(c, it) })
-            }
+            Spacer(Modifier.height(6.dp))
+            Row2("Frosted glass", "See-through panels. Turn off if the app feels slow.") { Switch(Fx.glass, { Fx.glass = it; Store.setGlass(c, it) }) }
+            Row2("Animations", "Fades, slides and bounces. Off is the lightest.") { Switch(Fx.motion, { Fx.motion = it; Store.setMotion(c, it) }) }
             Spacer(Modifier.height(8.dp))
         }
         Card { Row2("Full dashboard on Home", "Show everything the computer dashboard shows: totals, models, projects, tools and more, below the Home cards.") { var on by remember { mutableStateOf(Store.fullDashboard(c)) }; Switch(on, { on = it; Store.setFullDashboard(c, it) }) } }

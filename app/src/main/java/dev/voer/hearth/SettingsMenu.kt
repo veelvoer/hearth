@@ -18,22 +18,24 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
 /** One entry of the settings menu: where it goes, what it looks like, and the words the search looks in. */
-private data class SPage(val id: String, val icon: String, val title: String, val sub: String, val words: String)
+private data class SPage(val id: String, val icon: String, val title: String, val sub: String, val words: String, val short: String = title)
 
 private val PAGES = listOf(
-    SPage("computers", "server", "Computers and servers", "Where your chats run", "connect add remove pair address token wifi"),
+    SPage("computers", "server", "Computers and servers", "Where your chats run", "connect add remove pair address token wifi", "Computers"),
     SPage("updates", "sync", "Updates", "Newest version, what changed", "update version download install release"),
-    SPage("notifications", "bell", "Notifications and alerts", "Calls, usage alerts, background", "notify call alert battery background threshold refresh sound status bar"),
-    SPage("look", "contrast", "Look and feel", "Colors, Home, widgets, voice", "theme dark light color system glass animation widget voice language dashboard home"),
+    SPage("notifications", "bell", "Notifications and alerts", "Calls, usage alerts, background", "notify call alert battery background threshold refresh sound status bar", "Alerts"),
+    SPage("look", "contrast", "Look and feel", "Colors, Home, widgets, voice", "theme dark light color system glass animation widget voice language dashboard home", "Look"),
     SPage("server", "chip", "Server", "Sync, memory, usage limit", "sync memory limit continue restart"),
-    SPage("tools", "sparkle", "Tools for Claude", "Skills, MCP, API keys, permissions", "skill mcp api key permission root"),
-    SPage("help", "support", "Help and support", "Tour, setup, contact us", "tour tutorial setup support email contact bug"),
+    SPage("tools", "sparkle", "Tools for Claude", "Skills, MCP, API keys, permissions", "skill mcp api key permission root", "Tools"),
+    SPage("help", "support", "Help and support", "Tour, setup, contact us", "tour tutorial setup support email contact bug", "Help"),
 )
 
 fun settingsTitle(id: String): String = PAGES.firstOrNull { it.id == id }?.title ?: if (id == "beta") "Beta features" else if (id == "about") "About" else "Settings"
@@ -54,14 +56,23 @@ fun SettingsMenu(open: (String) -> Unit) {
         else SettingsGroup { hits.forEachIndexed { i, p -> SettingsRow(p.icon, p.title, p.sub, i == hits.lastIndex) { open(p.id) } } }
         return
     }
-    fun row(id: String, last: Boolean) = PAGES.first { it.id == id }.let { p -> @Composable { SettingsRow(p.icon, p.title, p.sub, last) { open(p.id) } } }
-    SettingsGroup { row("computers", false)(); row("updates", true)() }
-    SettingsGroup { row("notifications", false)(); row("look", true)() }
-    SettingsGroup { row("server", false)(); row("tools", true)() }
-    SettingsGroup { row("help", true)() }
-    SettingsGroup {
-        if (beta) SettingsRow("flask", "Beta features", "Extras you can switch on", false) { open("beta") }
-        SettingsRow("info", "About", "Hearth ${Updates.current(c)}", true) { open("about") }
+    // big icon tiles, two to a row: you find a page by its picture
+    val tiles = PAGES.map { Triple(it.icon, it.short, it.id) } + listOfNotNull(if (beta) Triple("flask", "Beta", "beta") else null) + Triple("info", "About", "about")
+    tiles.chunked(2).forEach { pair ->
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            pair.forEach { (ic, label, id) -> SettingsTile(ic, label, Modifier.weight(1f).fillMaxHeight()) { open(id) } }
+            if (pair.size == 1) Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SettingsTile(icon: String, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier.appear().panel(RoundedCornerShape(22.dp)).clickable(role = Role.Button, onClickLabel = label, onClick = onClick).padding(vertical = 22.dp, horizontal = 12.dp).semantics { contentDescription = label },
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(softFill()), contentAlignment = Alignment.Center) { Glyph(icon, 34.dp, MaterialTheme.colorScheme.primary) }
+        Spacer(Modifier.height(12.dp))
+        Txt(label, T.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
     }
 }
 
@@ -153,26 +164,35 @@ val FUN = listOf(
     Fun("longest", "history", "Longest chat", "Your longest session in one go."),
     Fun("cache", "chip", "Cache savings", "What caching saved you, at API prices."),
 )
+/** Just for fun: nothing to learn here. */
+val TOYS = listOf(
+    Fun("confetti", "party", "Confetti", "A burst of confetti when Claude finishes."),
+    Fun("sounds", "volume", "Little sounds", "A tiny beep when you send and when Claude is done."),
+    Fun("pep", "heart", "Daily pep talk", "A kind line on Home, a new one every day."),
+    Fun("hello", "globe", "Hello, world", "Home greets you in another language each day."),
+    Fun("ember", "fire", "Ember", "A little flame on Home. Poke it."),
+)
 
 @Composable
 fun BetaPage() {
     val c = LocalContext.current
-    Txt("Small extras that are still being tried out. Switch on what you like: each one adds a line to Home.", T.small, muted = true)
-    SettingsGroup {
-        FUN.forEachIndexed { i, f ->
+    @Composable fun group(list: List<Fun>) = SettingsGroup {
+        list.forEachIndexed { i, f ->
             var on by remember { mutableStateOf(Store.betaOn(c, f.id)) }
-            Row(Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(softFill()), contentAlignment = Alignment.Center) { Glyph(f.icon, 22.dp, MaterialTheme.colorScheme.primary) }
                 Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f).padding(vertical = 10.dp)) { Txt(f.title, T.body.copy(fontWeight = FontWeight.SemiBold)); Txt(f.about, T.small, muted = true) }
-                Spacer(Modifier.width(8.dp))
+                Txt(f.title, T.body.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1f))
+                InfoDot(f.title, f.about)
                 Switch(on, { on = it; Store.setBetaOn(c, f.id, it) })
             }
-            if (i < FUN.lastIndex) Box(Modifier.fillMaxWidth().padding(start = 70.dp).height(1.dp).background(MaterialTheme.colorScheme.outline))
+            if (i < list.lastIndex) Box(Modifier.fillMaxWidth().padding(start = 70.dp).height(1.dp).background(MaterialTheme.colorScheme.outline))
         }
     }
+    Label("Numbers"); group(FUN)
+    Label("Just for fun"); group(TOYS)
     androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) {
-        TextAction("Hide beta features") { Store.setBetaUnlocked(c, false); FUN.forEach { Store.setBetaOn(c, it.id, false) }; Toast.makeText(c, "Beta features are hidden again.", Toast.LENGTH_SHORT).show() }
+        TextAction("Hide beta features") { Store.setBetaUnlocked(c, false); (FUN + TOYS).forEach { Store.setBetaOn(c, it.id, false) }; Toast.makeText(c, "Beta features are hidden again.", Toast.LENGTH_SHORT).show() }
     }
 }
 

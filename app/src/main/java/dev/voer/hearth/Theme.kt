@@ -200,9 +200,10 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
     Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
+            if (tip != null) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) { InfoDot(title, tip) }
             Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph(if (open) "chevu" else "chevd", 22.dp) }
         }
-        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { if (tip != null) { Txt(tip, T.small, muted = true); Spacer(Modifier.height(10.dp)) }; content() } }
+        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
     }
 }
 
