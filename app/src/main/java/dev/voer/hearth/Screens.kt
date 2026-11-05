@@ -960,7 +960,7 @@ fun SettingsScreen() {
         else {
             Row(Modifier.fillMaxWidth().padding(top = 0.dp), verticalAlignment = Alignment.CenterVertically) { BackLink("Settings") { page = null } }
             Header(settingsTitle(page!!))
-            androidx.compose.runtime.CompositionLocalProvider(LocalFoldOpen provides (page == "notifications" || page == "look" || page == "server")) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalFoldOpen provides (page == "notifications" || page == "look" || page == "server"), LocalCalm provides true) {
             when (page) {
                 "computers" -> ComputersCard()
                 "updates" -> UpdatesCard()

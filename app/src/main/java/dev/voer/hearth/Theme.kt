@@ -151,14 +151,18 @@ object T {
 
 @Composable
 fun Txt(s: String, style: TextStyle = T.body, muted: Boolean = false, color: Color = Color.Unspecified, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) =
-    Text(s, modifier, maxLines = maxLines, overflow = if (maxLines == Int.MAX_VALUE) androidx.compose.ui.text.style.TextOverflow.Clip else androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = style, color = if (color != Color.Unspecified) color else
+    Text(s, modifier, maxLines = if (LocalCalm.current && muted && s.length > 60 && maxLines == Int.MAX_VALUE) 1 else maxLines, overflow = if (maxLines == Int.MAX_VALUE && !(LocalCalm.current && muted && s.length > 60)) androidx.compose.ui.text.style.TextOverflow.Clip else androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = style, color = if (color != Color.Unspecified) color else
         if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
 
 @Composable
 fun Label(s: String, modifier: Modifier = Modifier) = Txt(s.uppercase(), T.label, muted = true, modifier = modifier)
 
 /** Slides up and fades in the first time it appears. */
+/** Inside Settings nothing slides, bounces or fades in: pages should just be there. */
+val LocalCalm = androidx.compose.runtime.compositionLocalOf { false }
+
 fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
+    if (LocalCalm.current) return@composed this
     val a = remember { Animatable(if (Fx.motion) 0f else 1f) }
     LaunchedEffect(Unit) { if (Fx.motion) { delay(delayMs.toLong()); a.animateTo(1f, tween(340, easing = FastOutSlowInEasing)) } }
     graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 28f }
@@ -170,7 +174,8 @@ fun Modifier.pressable(onLong: (() -> Unit)? = null, onClick: () -> Unit): Modif
     val hap = androidx.compose.ui.platform.LocalHapticFeedback.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    val s by animateFloatAsState(if (pressed && Fx.motion) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
+    val calm = LocalCalm.current
+    val s by animateFloatAsState(if (pressed && Fx.motion && !calm) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
     graphicsLayer { scaleX = s; scaleY = s }.let { m -> if (onLong == null) m.clickable(interactionSource = src, indication = null, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }) else m.combinedClickable(interactionSource = src, indication = null, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }, onLongClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLong() }) }
 }
 
@@ -203,7 +208,8 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
             if (tip != null) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) { InfoDot(title, tip) }
             Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph(if (open) "chevu" else "chevd", 22.dp) }
         }
-        androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
+        if (LocalCalm.current) { if (open) Column(Modifier.padding(bottom = 12.dp)) { content() } }
+        else androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
     }
 }
 

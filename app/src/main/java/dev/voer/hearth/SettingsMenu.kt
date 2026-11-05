@@ -56,23 +56,14 @@ fun SettingsMenu(open: (String) -> Unit) {
         else SettingsGroup { hits.forEachIndexed { i, p -> SettingsRow(p.icon, p.title, p.sub, i == hits.lastIndex) { open(p.id) } } }
         return
     }
-    // big icon tiles, two to a row: you find a page by its picture
-    val tiles = PAGES.map { Triple(it.icon, it.short, it.id) } + listOfNotNull(if (beta) Triple("flask", "Beta", "beta") else null) + Triple("info", "About", "about")
-    tiles.chunked(2).forEach { pair ->
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            pair.forEach { (ic, label, id) -> SettingsTile(ic, label, Modifier.weight(1f).fillMaxHeight()) { open(id) } }
-            if (pair.size == 1) Spacer(Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun SettingsTile(icon: String, label: String, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.appear().panel(RoundedCornerShape(22.dp)).clickable(role = Role.Button, onClickLabel = label, onClick = onClick).padding(vertical = 22.dp, horizontal = 12.dp).semantics { contentDescription = label },
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(softFill()), contentAlignment = Alignment.Center) { Glyph(icon, 34.dp, MaterialTheme.colorScheme.primary) }
-        Spacer(Modifier.height(12.dp))
-        Txt(label, T.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+    fun row(id: String, last: Boolean) = PAGES.first { it.id == id }.let { p -> @Composable { SettingsRow(p.icon, p.title, p.sub, last) { open(p.id) } } }
+    SettingsGroup { row("computers", false)(); row("updates", true)() }
+    SettingsGroup { row("notifications", false)(); row("look", true)() }
+    SettingsGroup { row("server", false)(); row("tools", true)() }
+    SettingsGroup { row("help", true)() }
+    SettingsGroup {
+        if (beta) SettingsRow("flask", "Beta features", "Extras you can switch on", false) { open("beta") }
+        SettingsRow("info", "About", "Hearth ${Updates.current(c)}", true) { open("about") }
     }
 }
 
