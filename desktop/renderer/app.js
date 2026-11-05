@@ -429,6 +429,7 @@ function withSettingsMenu(p) {
     if (SX.tab === 'about') pane.append(aboutCard());
     else if (SX.tab === 'beta') pane.append(betaCard());
     else cards.filter((c) => sxTabOf(c.querySelector('.chead .label').textContent) === SX.tab).forEach((c) => pane.append(c));
+    pane.querySelectorAll('.card > .small.muted, .card .stack > .small.muted').forEach((d) => { if (d.textContent.length > 70) { const card = d.closest('.card'); if (card && !card.title) card.title = d.textContent; d.classList.add('sx-tip'); } });
     pane.querySelectorAll('.card .row > .grow > .small.muted').forEach((d) => { const row = d.closest('.row'); if (row && d.textContent.length > 12 && !row.title) { row.title = d.textContent; d.classList.add('sx-tip'); } });   // the explaining words wait in a tooltip, so the page is the controls
   };
   draw();

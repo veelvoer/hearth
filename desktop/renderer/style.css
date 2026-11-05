@@ -802,3 +802,5 @@ button.sm { min-height: 32px; }
 .snavitem.on .ftile { background: var(--clay); color: #fff; }
 .inforow .ftile { margin-right: 12px; }
 .sx-tip { display: none; }
+.page.sx, .page.sx * { animation: none !important; transition: none !important; }
+.sx .card { box-shadow: none; }
