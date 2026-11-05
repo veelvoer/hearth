@@ -348,7 +348,7 @@ const SX_TABS = [
   ['help', 'support', 'Help and support', 'Help', /help|support/i],
 ];
 function sxTabOf(name) { const t = SX_TABS.find((x) => x[4].test(name)); return t ? t[0] : 'help'; }
-const FUN_ICONS = {"water": "drop", "energy": "bolt", "coffee": "cup", "words": "book", "streak": "fire", "favorite": "sparkle", "busiest": "now", "weekend": "dashboard", "longest": "history", "cache": "chip", "confetti": "party", "sounds": "volume", "pep": "heart", "hello": "globe", "ember": "fire"};
+const FUN_ICONS = {"verbs": "sparkle", "water": "drop", "energy": "bolt", "coffee": "cup", "words": "book", "streak": "fire", "favorite": "sparkle", "busiest": "now", "weekend": "dashboard", "longest": "history", "cache": "chip", "confetti": "party", "sounds": "volume", "pep": "heart", "hello": "globe", "ember": "fire"};
 const FUN_FEATURES = [
   ['water', 'Water used', 'A rough guess of the water that cooling the data centres took for what Claude wrote.'],
   ['energy', 'Energy used', 'The electricity behind your replies, shown as phone charges.'],
@@ -367,6 +367,7 @@ const FUN_TOYS = [
   ['pep', 'Daily pep talk', 'A kind line on Home, a new one every day.'],
   ['hello', 'Hello, world', 'Home greets you in another language each day.'],
   ['ember', 'Ember', 'A little flame on Home. Poke it.'],
+  ['verbs', 'Playful status words', 'Words like Pondering… and Flibbertigibbeting… while Claude is working.'],
 ];
 const fmtBig = (v) => (v >= 1e9 ? (v / 1e9).toFixed(1) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(Math.round(v)));
 /** What a beta feature says about the last 30 days: [value, small line], or null when there is nothing to say yet. */

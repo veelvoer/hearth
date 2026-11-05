@@ -38,6 +38,9 @@ object Toys {
         "You asked a computer to write code for you. That is already magic.", "Even the best programmers search for the answer sometimes.", "Breathe. It is only a semicolon.",
         "Your future self says thank you for those comments.", "Plan, build, learn, repeat. You are on step two.", "A short walk fixes at least one bug.",
     )
+    val VERBS = listOf("Pondering", "Flibbertigibbeting", "Percolating", "Simmering", "Noodling", "Conjuring", "Marinating", "Reticulating", "Cogitating", "Tinkering", "Wibbling", "Spelunking", "Moonwalking",
+        "Brewing", "Doodling", "Fermenting", "Herding bits", "Jiving", "Kneading", "Musing", "Puzzling", "Ruminating", "Shimmying", "Sprouting", "Stewing", "Transmuting", "Unfurling", "Vibing", "Whirring",
+        "Zigzagging", "Warming the hearth", "Poking the embers", "Toasting marshmallows", "Stoking the fire", "Counting sparks", "Sweeping the chimney")
     val HELLO = listOf("Hallo", "Hola", "Bonjour", "Ciao", "Olá", "Hej", "Salut", "Moi", "Ahoj", "Namaste", "Konnichiwa", "Merhaba", "Hei", "Servus", "Aloha", "Shalom")
     val EMBER = listOf("Warm in here, isn't it?", "I only eat good ideas.", "Poke me again. I dare you.", "Fire safety tip: save your files.", "I'm not hot, I'm just glowing.", "Hearth, sweet hearth.", "Did somebody say s'mores?", "Crackle crackle.")
 
@@ -122,5 +125,22 @@ fun Ember() {
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) { Label("Ember"); Txt(say, T.body) }
         }
+    }
+}
+
+/** "Claude is working": a flickering flame, and, when the beta words are on, a playful word that changes every few seconds. */
+@Composable
+fun WorkingIndicator() {
+    val c = LocalContext.current
+    val playful = Store.betaOn(c, "verbs")
+    var i by remember { mutableIntStateOf(Random.nextInt(Toys.VERBS.size)) }
+    LaunchedEffect(playful) { while (playful) { delay(2800); i = (i + 1 + Random.nextInt(Toys.VERBS.size - 1)) % Toys.VERBS.size } }
+    val tr = androidx.compose.animation.core.rememberInfiniteTransition(label = "flame")
+    val sc by tr.animateFloat(.9f, 1.1f, androidx.compose.animation.core.infiniteRepeatable(tween(650, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse), label = "s")
+    val al by tr.animateFloat(.7f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+        Box(Modifier.graphicsLayer { if (Fx.motion) { scaleX = sc; scaleY = sc; alpha = al } }) { Spark(22.dp) }
+        Spacer(Modifier.width(10.dp))
+        androidx.compose.animation.AnimatedContent(if (playful) Toys.VERBS[i] + "…" else "Claude is working…", transitionSpec = { androidx.compose.animation.fadeIn(tween(300)) togetherWith androidx.compose.animation.fadeOut(tween(300)) }, label = "verb") { Txt(it, T.small, muted = true) }
     }
 }

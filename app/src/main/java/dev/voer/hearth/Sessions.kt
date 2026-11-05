@@ -288,7 +288,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             }.sortedByDescending { (_, s) -> if (prefsRev >= 0 && Store.pinned(c, s.id)) Long.MAX_VALUE else if (s.running) Long.MAX_VALUE - 1 else s.mtime }.take(60)
             .map { (mm, s) -> mm to (Store.chatName(c, s.id).takeIf { it.isNotBlank() }?.let { n -> s.copy(title = n) } ?: s) }
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
-        if (all.isEmpty() && hits.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) Txt(if (query.isNotBlank()) "No chat matches." else if (onlyWorking) "Nothing is running right now." else if (onlyShared) "No shared chats yet." else "No chats yet. Tap + to start one.", T.small, muted = true)
+        if (all.isEmpty() && hits.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) EmptyState(if (query.isNotBlank()) "No chat matches" else if (onlyWorking) "Nothing is running" else if (onlyShared) "No shared chats yet" else "No chats yet", if (query.isNotBlank() || onlyWorking || onlyShared) null else "Tap the plus to start one.")
         if (hits.isNotEmpty()) { Label("In messages"); hits.forEach { (mm, s, snip) -> Card(Modifier.pressable { open(mm, s) }) { androidx.compose.foundation.text.selection.DisableSelection { Txt(Store.chatName(c, s.id).ifBlank { s.title }, T.body.copy(fontWeight = FontWeight.SemiBold)); Spacer(Modifier.height(2.dp)); Txt(snip, T.small, muted = true) } } } }
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } }
     }
@@ -304,8 +304,9 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
     val shape = RoundedCornerShape(20.dp)
     Row(Modifier.fillMaxWidth().pressable(onLong, onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { androidx.compose.foundation.text.selection.DisableSelection {   // a long press here is for deleting, not for selecting text
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(softFill()), contentAlignment = Alignment.Center) {
-            Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = cs.primary)
+        val tint = if (systemColors()) cs.primary else listOf(Color(0xFFB04D2A), Color(0xFF3A86E8), Color(0xFF2E9A4E), Color(0xFF8E3FA8), Color(0xFF5E7A92), Color(0xFFB8821F))[Math.floorMod(name.lowercase().hashCode(), 6)]   // every project has its own color, so the list reads at a glance
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(tint.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
+            Txt(name.take(1).uppercase(), T.title.copy(fontSize = 20.sp), color = tint)
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -827,7 +828,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             }
             itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err, p.at) else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
             queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
-            if (working && parts.isEmpty()) item { Txt("Claude is working…", T.small, muted = true) }
+            if (working) item { WorkingIndicator() }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip("Open a PR", false) { input = "Open a pull request with these changes."; send() }

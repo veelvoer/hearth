@@ -324,3 +324,14 @@ fun BackLink(text: String, onClick: () -> Unit) {
         Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), color = col, maxLines = 1, softWrap = false)
     }
 }
+
+/** A friendly empty page: the flame, a title and one line. */
+@Composable
+fun EmptyState(title: String, sub: String? = null) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(96.dp).clip(RoundedCornerShape(30.dp)).background(softFill()), contentAlignment = Alignment.Center) { Spark(56.dp) }
+        Spacer(Modifier.height(16.dp))
+        Txt(title, T.h2, modifier = Modifier.padding(horizontal = 24.dp))
+        if (sub != null) { Spacer(Modifier.height(4.dp)); Txt(sub, T.small, muted = true, modifier = Modifier.padding(horizontal = 32.dp)) }
+    }
+}

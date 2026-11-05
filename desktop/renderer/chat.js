@@ -138,7 +138,7 @@ function drawSide() {
   }
   const own = !q && SS.projKey && SS.projKey !== '__all' && SS.projKey !== 'Shared' && SS.projKey !== 'Talks' ? (groups.get(SS.projKey) || []).filter((x) => !x.guest && x.mid) : [];
   if (own.length) side.append(h('div', { class: 'small muted', style: 'margin-top:14px' }, h('button', { class: 'link', style: 'opacity:.7', onclick: () => deleteChats(own, folderName(SS.projKey), true) }, own.length === 1 ? 'Delete this chat…' : 'Delete all ' + own.length + ' chats of this project…')));
-  if (!list.length && !hits.length && !SS.err) side.append(h('p', { class: 'small muted' }, q ? 'No chat matches.' : SS.machines.length ? 'No chats yet. Start one with “New chat”.' : 'No computer connected yet. Add one in Settings.'));
+  if (!list.length && !hits.length && !SS.err) side.append(h('div', { class: 'emptyside' }, h('div', { class: 'emptyflame', html: sparkSVG(44) }), h('b', {}, q ? 'No chat matches' : SS.machines.length ? 'No chats yet' : 'No computer yet'), h('div', { class: 'small muted' }, q ? 'Try other words.' : SS.machines.length ? 'Start one with “New chat”.' : 'Add one in Settings.')));
   if (SS.err) { const sv = SS.machines.find((m) => m.secure), box = h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small err' }, SS.err), h('div', { class: 'small muted' }, 'A stuck server restarts itself within a couple of minutes.'));
     if (sv) { const note = h('span', { class: 'small muted' }); box.append(h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: async () => { note.textContent = 'Restarting…'; try { await cm.relay(sv.id, 'POST', '/admin/restart', { force: true }); note.textContent = 'Restarting. It is back in a few seconds.'; setTimeout(() => { pollLive(); }, 8000); } catch (e) { note.textContent = clean(e); } } }, 'Restart ' + (sv.name || 'server')), note)); }
     side.append(box); }
@@ -622,7 +622,7 @@ function renderLive() {
     if (p.type === 'tool') { if (!tools) { tools = h('div', { class: 'tools' }); live.append(tools); } tools.append(toolCard(p, 'l' + (p.id || i))); }
     else { tools = null; live.append(assistantEl(p.text)); }
   });
-  if ((SS.sending && !SS.parts.length) || remoteWorking()) live.append(h('div', { class: 'typing' }, h('i'), h('i'), h('i')));
+  if ((SS.sending && !SS.parts.length) || remoteWorking()) live.append(workingEl());
   for (const q of SS.queue) live.append(h('div', { class: 'msg user queued' }, q, h('div', { class: 'small muted' }, 'queued')));
   if (SS.chatErr) live.append(h('div', { class: 'small err' }, SS.chatErr));
   if (stick) box.scrollTop = box.scrollHeight;

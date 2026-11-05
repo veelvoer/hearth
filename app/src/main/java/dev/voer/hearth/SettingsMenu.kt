@@ -165,6 +165,7 @@ val TOYS = listOf(
     Fun("pep", "heart", "Daily pep talk", "A kind line on Home, a new one every day."),
     Fun("hello", "globe", "Hello, world", "Home greets you in another language each day."),
     Fun("ember", "fire", "Ember", "A little flame on Home. Poke it."),
+    Fun("verbs", "sparkle", "Playful status words", "Words like Pondering… and Flibbertigibbeting… while Claude is working."),
 )
 
 @Composable

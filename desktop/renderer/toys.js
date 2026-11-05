@@ -71,3 +71,13 @@ function toyEgg(text) {
   let taps = 0, last = 0;   // the logo in the top bar, five quick clicks
   document.addEventListener('click', (e) => { if (!e.target.closest || !e.target.closest('#nav .brand')) return; const n = Date.now(); taps = n - last > 1500 ? 1 : taps + 1; last = n; if (taps >= 5) { taps = 0; toyConfetti(); toast(TOY_EMBER[Math.floor(Math.random() * TOY_EMBER.length)]); } });
 })();
+
+const TOY_VERBS = ['Pondering', 'Flibbertigibbeting', 'Percolating', 'Simmering', 'Noodling', 'Conjuring', 'Marinating', 'Reticulating', 'Cogitating', 'Tinkering', 'Wibbling', 'Spelunking', 'Moonwalking', 'Brewing', 'Doodling', 'Fermenting',
+  'Herding bits', 'Jiving', 'Kneading', 'Musing', 'Puzzling', 'Ruminating', 'Shimmying', 'Sprouting', 'Stewing', 'Transmuting', 'Unfurling', 'Vibing', 'Whirring', 'Zigzagging', 'Warming the hearth', 'Poking the embers', 'Toasting marshmallows', 'Stoking the fire', 'Counting sparks', 'Sweeping the chimney'];
+/** "Claude is working": a flickering flame and, with the beta words on, a playful word that changes every few seconds. */
+function workingEl() {
+  const playful = toyOn('verbs'), word = h('span', { class: 'wword' }, playful ? TOY_VERBS[Math.floor(Math.random() * TOY_VERBS.length)] + '…' : 'Claude is working…');
+  const el = h('div', { class: 'working' }, h('span', { class: 'wflame', html: sparkSVG(20) }), word);
+  if (playful) { const t = setInterval(() => { if (!el.isConnected) return clearInterval(t); word.classList.add('out'); setTimeout(() => { word.textContent = TOY_VERBS[Math.floor(Math.random() * TOY_VERBS.length)] + '…'; word.classList.remove('out'); }, 260); }, 2800); }
+  return el;
+}
