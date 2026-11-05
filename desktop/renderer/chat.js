@@ -629,6 +629,7 @@ function renderLive() {
 }
 
 function sendMsg(text) {
+  if (toyEgg(text)) return;
   if (toyOn('sounds')) toySound('send');
   const s = SS.sel, sid = rand();
   if (s.id) { const mid = machineFor(s.id, s.mid); if (mid !== s.mid) { s.mid = mid; SS.mid = mid; } }

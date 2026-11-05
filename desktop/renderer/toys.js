@@ -45,3 +45,29 @@ function toyEmber() {
   };
   return h('div', { class: 'card row', style: 'align-items:center;gap:16px' }, flame, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Ember'), say));
 }
+
+/* ── Hidden things ── */
+/** A greeting for a special day, or null. */
+function toyHoliday() {
+  const d = new Date(), k = (d.getMonth() + 1) + '-' + d.getDate();
+  return ({ '12-24': 'Merry Christmas!', '12-25': 'Merry Christmas!', '12-26': 'Merry Christmas!', '12-31': 'Happy New Year!', '1-1': 'Happy New Year!', '10-31': 'Boo! Happy Halloween', '11-5': 'Happy Bonfire Night',
+    '2-14': 'Happy Valentine’s Day', '4-1': 'Nothing is broken today. Probably.', '5-4': 'May the fourth be with you' })[k] || null;
+}
+/** The first time you look on a special day, the confetti goes off once. */
+function toyHolidayOnce() { const day = new Date().toDateString(); if (toyHoliday() && localStorage.getItem('cm.holidayShown') !== day) { localStorage.setItem('cm.holidayShown', day); setTimeout(toyConfetti, 400); } }
+/** Things you can type in a chat instead of a message. true = it was one, and nothing is sent. */
+function toyEgg(text) {
+  const t = String(text || '').trim().toLowerCase(), say = {
+    '/confetti': 'Party time!', '/party': 'Party time!', '/ember': TOY_EMBER[Math.floor(Math.random() * TOY_EMBER.length)], '/flame': TOY_EMBER[Math.floor(Math.random() * TOY_EMBER.length)],
+    '/coffee': 'Brewing… this is not a real feature, but you deserve one.', '/hello': TOY_HELLO[Math.floor(Math.random() * TOY_HELLO.length)] + '!', '/42': 'The answer. Now, what was the question?', '/sudo': 'Nice try.' }[t];
+  if (!say) return false;
+  if (t === '/confetti' || t === '/party') toyConfetti();
+  toast(say); return true;
+}
+// the old code: up up down down left right left right B A
+(() => {
+  const code = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']; let i = 0;
+  document.addEventListener('keydown', (e) => { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; if (k === code[i]) { i++; if (i === code.length) { i = 0; toyConfetti(); toast('Ember approves.'); } } else i = k === code[0] ? 1 : 0; });
+  let taps = 0, last = 0;   // the logo in the top bar, five quick clicks
+  document.addEventListener('click', (e) => { if (!e.target.closest || !e.target.closest('#nav .brand')) return; const n = Date.now(); taps = n - last > 1500 ? 1 : taps + 1; last = n; if (taps >= 5) { taps = 0; toyConfetti(); toast(TOY_EMBER[Math.floor(Math.random() * TOY_EMBER.length)]); } });
+})();

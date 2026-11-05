@@ -41,6 +41,26 @@ object Toys {
     val HELLO = listOf("Hallo", "Hola", "Bonjour", "Ciao", "Olá", "Hej", "Salut", "Moi", "Ahoj", "Namaste", "Konnichiwa", "Merhaba", "Hei", "Servus", "Aloha", "Shalom")
     val EMBER = listOf("Warm in here, isn't it?", "I only eat good ideas.", "Poke me again. I dare you.", "Fire safety tip: save your files.", "I'm not hot, I'm just glowing.", "Hearth, sweet hearth.", "Did somebody say s'mores?", "Crackle crackle.")
 
+    /** A greeting for a special day, or null on an ordinary one. */
+    fun holiday(): String? {
+        val d = java.time.LocalDate.now()
+        return when (d.monthValue to d.dayOfMonth) {
+            12 to 24, 12 to 25, 12 to 26 -> "Merry Christmas!"; 12 to 31, 1 to 1 -> "Happy New Year!"; 10 to 31 -> "Boo! Happy Halloween"; 11 to 5 -> "Happy Bonfire Night"
+            2 to 14 -> "Happy Valentine's Day"; 4 to 1 -> "Nothing is broken today. Probably."; 5 to 4 -> "May the fourth be with you"; else -> null
+        }
+    }
+
+    /** Things you can type in a chat instead of a message. Returns what to show, or null when [text] is a normal message. */
+    fun egg(text: String): String? = when (text.trim().lowercase()) {
+        "/confetti", "/party" -> "Party time!"
+        "/ember", "/flame" -> EMBER.random()
+        "/coffee" -> "Brewing… this is not a real feature, but you deserve one."
+        "/hello" -> HELLO.random() + "!"
+        "/42" -> "The answer. Now, what was the question?"
+        "/sudo" -> "Nice try."
+        else -> null
+    }
+
     fun daily(list: List<String>): String = list[(java.time.LocalDate.now().toEpochDay() % list.size).toInt()]
 
     /** A short beep: [what] is "send" or "done". */

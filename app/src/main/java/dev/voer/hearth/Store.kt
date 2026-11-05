@@ -105,6 +105,8 @@ object Store {
     // Extras: the Home dashboard in full, and the beta features that are unlocked in About.
     fun fullDashboard(c: Context) = sp(c).getBoolean("fulldash", false)
     fun setFullDashboard(c: Context, v: Boolean) = sp(c).edit().putBoolean("fulldash", v).apply()
+    fun holidayShown(c: Context): String = sp(c).getString("holshown", "") ?: ""
+    fun setHolidayShown(c: Context, v: String) = sp(c).edit().putString("holshown", v).apply()
     fun betaUnlocked(c: Context) = sp(c).getBoolean("beta", false)
     fun setBetaUnlocked(c: Context, v: Boolean) = sp(c).edit().putBoolean("beta", v).apply()
     fun betaOn(c: Context, id: String) = sp(c).getBoolean("beta_$id", false)

@@ -109,7 +109,10 @@ fun AboutPage(onBeta: () -> Unit) {
             }, contentAlignment = Alignment.Center) { Spark(72.dp) }
         Spacer(Modifier.height(14.dp))
         Txt("Hearth", T.title)
-        Txt("Version ${Updates.current(c)}", T.small, muted = true)
+        var vt by remember { mutableIntStateOf(0) }
+        Txt("Version ${Updates.current(c)}", T.small, muted = true, modifier = Modifier.clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+            vt++; if (vt >= 7) { vt = 0; Ui.burst++; Toast.makeText(c, "Made with warmth, a lot of coffee, and Claude.", Toast.LENGTH_LONG).show() }
+        })
         Spacer(Modifier.height(6.dp))
         Txt("Claude Code, on your phone and your computer.", T.body, muted = true, modifier = Modifier.padding(horizontal = 12.dp))
     }

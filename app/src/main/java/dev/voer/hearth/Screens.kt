@@ -64,6 +64,8 @@ import java.util.Locale
 data class PendingOpen(val host: String, val session: String, val title: String, val cwd: String, val voice: Boolean = false)
 
 object Ui {
+    /** Goes up to start confetti anywhere. */
+    var burst by mutableIntStateOf(0)
     var usage by mutableStateOf<Usage?>(null)
     var profile by mutableStateOf<Profile?>(null)
     var signedIn by mutableStateOf(false)
@@ -376,13 +378,14 @@ fun NowScreen() {
     }
     Screen {
         val ldt = java.time.LocalDateTime.now()
-        Header(if (Store.betaOn(c, "hello")) Toys.daily(Toys.HELLO) + "!" else when { ldt.hour < 5 -> "Late night"; ldt.hour < 12 -> "Good morning"; ldt.hour < 18 -> "Good afternoon"; else -> "Good evening" },
+        Header(Toys.holiday() ?: if (Store.betaOn(c, "hello")) Toys.daily(Toys.HELLO) + "!" else when { ldt.hour < 5 -> "Late night"; ldt.hour < 12 -> "Good morning"; ldt.hour < 18 -> "Good afternoon"; else -> "Good evening" },
             listOfNotNull(ldt.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), Ui.profile?.plan?.takeIf { it.isNotEmpty() }?.let { "Claude $it" }).joinToString(" · ")) {
             TextAction(if (Ui.busy) "Updating…" else "Refresh") { scope.launch { Ui.refresh(c, ask = true) } }
         }
         Ui.error?.let {
             Card { Txt(it, T.small, color = MaterialTheme.colorScheme.primary) }
         }
+        LaunchedEffect(Unit) { if (Toys.holiday() != null && Store.holidayShown(c) != java.time.LocalDate.now().toString()) { Store.setHolidayShown(c, java.time.LocalDate.now().toString()); Ui.burst++ } }
         if (Store.betaOn(c, "pep")) Txt(Toys.daily(Toys.PEP), T.body, muted = true)
         if (Store.betaOn(c, "ember")) Ember()
         val s = u?.session

@@ -726,6 +726,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         if (input.isNotBlank() && Store.betaOn(c, "sounds")) Toys.sound(c, "send")
         val text = (input.trim() + files.joinToString("") { "\n@" + it.second }).trim()
         if (text.isEmpty() || uploading) return
+        Toys.egg(text)?.let { msg -> input = ""; if (text.trim().lowercase() in listOf("/confetti", "/party")) Ui.burst++; Toast.makeText(c, msg, Toast.LENGTH_LONG).show(); return }
         if (text.equals("/clear", ignoreCase = true)) { input = ""; files.clear(); onClear(); return }   // like /clear in Claude Code: a fresh start in the same project
         input = ""; files.clear()
         if (sharedChat && gInfo != null) {   // a shared chat: the prompt goes to whoever's usage is chosen
@@ -747,10 +748,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
 
     if (voice && sess.id.isNotEmpty()) { CallScreen(m, sess, mode) { voice = false; scope.launch { reload() } }; return }
     val working = sending || serverBusy
-    var burst by remember { mutableIntStateOf(0) }
     var wasWorking by remember { mutableStateOf(false) }
-    LaunchedEffect(working) { if (wasWorking && !working && msgs.isNotEmpty()) { if (Store.betaOn(c, "confetti")) burst++; if (Store.betaOn(c, "sounds")) Toys.sound(c, "done") }; wasWorking = working }
-    Confetti(burst)
+    LaunchedEffect(working) { if (wasWorking && !working && msgs.isNotEmpty()) { if (Store.betaOn(c, "confetti")) Ui.burst++; if (Store.betaOn(c, "sounds")) Toys.sound(c, "done") }; wasWorking = working }
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
         Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction("back", "Back", Alignment.CenterStart, 40.dp, back)
