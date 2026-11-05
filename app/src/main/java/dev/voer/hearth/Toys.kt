@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -72,7 +73,7 @@ fun Confetti(burst: Int) {
                 val a = (1f - t).coerceIn(0f, 1f)
                 val ang = p.spin + p.rot * t
                 val w = 9.dp.toPx(); val hgt = 5.dp.toPx()
-                androidx.compose.ui.graphics.drawscope.withTransform({ rotate(ang * 57.3f, Offset(x, y)) }) { drawRect(colors[p.color].copy(alpha = a), Offset(x - w / 2, y - hgt / 2), Size(w, hgt)) }
+                withTransform({ rotate(ang * 57.3f, Offset(x, y)) }) { drawRect(colors[p.color].copy(alpha = a), Offset(x - w / 2, y - hgt / 2), Size(w, hgt)) }
             }
         }
     }
