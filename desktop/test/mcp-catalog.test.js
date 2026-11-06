@@ -21,7 +21,7 @@ const calls = () => { try { return fs.readFileSync(LOG, 'utf8').trim().split('\n
   ok('3 a tool that is not in the catalog cannot be added', (await req('POST', '/mcp/install', tok, { id: 'rm -rf /' })).code === 404 && calls().length === 1);
   ok('4 a tool that needs a secret says so when it is missing, or looks wrong', (await req('POST', '/mcp/install', tok, { id: 'github' })).code === 400 && (await req('POST', '/mcp/install', tok, { id: 'github', secret: 'a b; rm' })).code === 400);
   const g = await req('POST', '/mcp/install', tok, { id: 'github', secret: 'ghp_abcdefghijklmnop1234' });
-  ok('5 the secret is handed over as the tool's own environment setting', g.code === 200 && calls()[1].includes('-e') && calls()[1].includes('GITHUB_PERSONAL_ACCESS_TOKEN=ghp_abcdefghijklmnop1234'));
+  ok('5 the secret is handed over as an environment setting of the tool', g.code === 200 && calls()[1].includes('-e') && calls()[1].includes('GITHUB_PERSONAL_ACCESS_TOKEN=ghp_abcdefghijklmnop1234'));
   const f = await req('POST', '/mcp/install', tok, { id: 'filesystem' });
   ok('6 the files tool is limited to the projects folder', f.code === 200 && calls()[2].slice(-1)[0] === path.join(T, 'proj'), JSON.stringify(calls()[2]));
   ok('7 a guest key cannot add tools', (await req('POST', '/mcp/install', 'share.abcd.abcdefghijklmnop', { id: 'memory' })).code === 401);
