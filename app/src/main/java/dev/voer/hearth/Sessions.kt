@@ -860,7 +860,15 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             item { Spacer(Modifier.height(4.dp)) }
         }
         }
-        err?.let { Txt(it, T.small, color = cs.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        err?.let { e ->
+            Txt(e, T.small, color = cs.primary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+            var shown by remember(e) { mutableStateOf("") }
+            Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextAction("Details") { scope.launch { shown = runCatching { withContext(Dispatchers.IO) { Relay.logs(m) } }.getOrElse { "Could not read the server log: " + (it.message ?: "") } } }
+                TextAction("Report") { scope.launch { val l = shown.ifBlank { withContext(Dispatchers.IO) { runCatching { Relay.logs(m) }.getOrDefault("(not available)") } }; Ui.supportDraft = "Something went wrong in a chat.\n\nWhat I saw: $e\nServer: ${m.name}\nPhone app: ${Updates.current(c)}\n\nServer log:\n" + l; Ui.openSupport = true; Ui.tab = 3 } }
+            }
+            if (shown.isNotBlank()) Txt(shown, T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 11.sp), muted = true, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+        }
         asks.filter { it.kind != "permission" && it.kind != "request" }.forEach { a -> AskCard(m, a) { asks = asks - a } }
         if (files.isNotEmpty() || uploading) Row(Modifier.padding(horizontal = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             files.toList().forEach { f -> Chip("${f.first.takeLast(24)}  ×", true) { files.remove(f) } }

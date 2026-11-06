@@ -110,6 +110,12 @@ object Relay {
         val a = JSONObject(getJson(m, "/search?q=" + java.net.URLEncoder.encode(q, "UTF-8"))).optJSONArray("results") ?: return emptyList()
         return (0 until a.length()).map { val o = a.getJSONObject(it); Sess(o.getString("id"), o.optString("title"), o.optString("cwd"), o.optLong("mtime"), false) to o.optString("snippet") }
     }
+    /** The last lines of the server's own log (newest last), with its version. */
+    fun logs(m: Machine, tail: Int = 14): String {
+        val o = JSONObject(getJson(m, "/admin/logs?tail=$tail"))
+        val a = o.optJSONArray("lines")
+        return "Server ${o.optString("version")}\n" + (0 until (a?.length() ?: 0)).joinToString("\n") { a!!.getString(it) }.ifBlank { "(nothing logged)" }
+    }
     fun chatTags(m: Machine): JSONObject = JSONObject(getJson(m, "/chat-tags")).optJSONObject("tags") ?: JSONObject()
     fun setChatTag(m: Machine, id: String, pin: Boolean?, name: String?) { val b = JSONObject().put("id", id); if (pin != null) b.put("pin", pin); if (name != null) b.put("name", name); postJson(m, "/chat-tags", b) }
 

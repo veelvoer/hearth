@@ -20,6 +20,7 @@ const textOf = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b
 const isoTs = (o) => { const t = Date.parse(o && o.timestamp); return Number.isFinite(t) ? t / 1000 : 0; };
 const clip = (v, n) => String(v == null ? '' : v).slice(0, n);
 
+let denied = 0;   // chat files or folders that exist but cannot be read (made by a run with root rights): the server then gives them back to its user
 function listFiles() {
   const out = [];
   let dirs = [];
@@ -27,10 +28,11 @@ function listFiles() {
   for (const d of dirs) {
     const dir = path.join(projectsDir(), d.name);
     let names = [];
-    try { names = fs.readdirSync(dir); } catch { continue; }
+    try { names = fs.readdirSync(dir); } catch (e) { if (e && e.code === 'EACCES') denied++; continue; }
     for (const f of names) {
       if (!f.endsWith('.jsonl')) continue;
       const file = path.join(dir, f);
+      try { fs.accessSync(file, fs.constants.R_OK); } catch (e) { if (e && e.code === 'EACCES') denied++; continue; }
       try { const st = fs.statSync(file); out.push({ id: f.slice(0, -6), file, mtime: st.mtimeMs, size: st.size }); } catch { /* gone */ }
     }
   }
@@ -385,4 +387,4 @@ function warm() {
   setTimeout(step, 500).unref();
 }
 
-module.exports = { search, warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };
+module.exports = { deniedCount: () => denied, search, warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };

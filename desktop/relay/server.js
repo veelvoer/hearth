@@ -48,6 +48,8 @@ const TALK_PROMPT = "This is a casual talking session, not a coding session: cha
 const TALK_DENY = 'Bash Edit Write MultiEdit NotebookEdit Agent';
 const BRIEF = 'The user is listening to your reply read aloud. Keep it brief and conversational: short spoken sentences, no markdown, no lists, no code blocks. Say what you did and what you found.';
 const MIN_DONE_SECONDS = 20;       // hook-based "done" events for terminal sessions
+const LOG_RING = [];
+const noteLog = (m) => { try { LOG_RING.push(new Date().toISOString().slice(11, 19) + ' ' + String(m).slice(0, 300)); if (LOG_RING.length > 300) LOG_RING.splice(0, LOG_RING.length - 300); } catch { /* never */ } };
 const PERMISSION_WAIT_MS = 25000;  // terminal sessions: wait this long for the phone, then fall back to the terminal prompt
 const JOB_PERMISSION_WAIT_MS = 15 * 60000; // relay-run chats: Claude waits this long for you to approve
 
@@ -79,7 +81,9 @@ function start(opts) {
   const dir = opts.dir, port = opts.port || Number(process.env.CM_PORT) || 47601, host = opts.host || '0.0.0.0';
   const reach = (a) => !!opts.allowRemote || lanOnly(a);   // normally only your own network; "reach from outside" is an opt-in for port forwarding
   const publicMode = !!opts.publicMode, allowBypass = opts.allowBypass !== false;
-  const onLog = opts.onLog || (() => {});
+  const logRing = LOG_RING;   // the last lines the server wrote, so a problem can be read from the app instead of from a terminal
+  const log0 = opts.onLog || (() => {});
+  const onLog = (m) => { try { logRing.push(new Date().toISOString().slice(11, 19) + ' ' + String(m).slice(0, 300)); if (logRing.length > 300) logRing.splice(0, logRing.length - 300); } catch { /* never let a log line break anything */ } log0(m); };
   let root = null;
   if (opts.projectsRoot) { fs.mkdirSync(opts.projectsRoot, { recursive: true }); root = fs.realpathSync(opts.projectsRoot); }
   const moveRoot = opts.moveRoot ? path.resolve(opts.moveRoot) : null;   // where "move to projects" puts a project (your own computer)
@@ -116,6 +120,22 @@ function start(opts) {
     return sudoCache.ok ? { ok: true, uid0: false, how: `Passwordless sudo works for "${os.userInfo().username}".` }
       : { ok: false, line: sudoLine(), why: `This server may not use sudo without a password for the user "${os.userInfo().username}". To allow it, run "sudo visudo" and add the line: ${sudoLine()}` + (sudoCache.err ? `  (sudo said: ${sudoCache.err})` : '') };
   };
+  /** Runs with root rights leave files behind that belong to root: the chats in the Claude folder and the files in the project. The user of this server cannot read or change them, so the chat vanishes from the list and the next run fails. They are given back (needs the same passwordless sudo that root chats use). */
+  let fixingOwner = false, lastOwnerFix = 0;
+  function fixOwnership(why) {
+    if (fixingOwner || typeof process.getuid !== 'function' || process.getuid() === 0 || !rootAllowed()) return;
+    if (Date.now() - lastOwnerFix < 20000) return;
+    if (!rootReady().ok) return;
+    fixingOwner = true; lastOwnerFix = Date.now();
+    const own = `${process.getuid()}:${process.getgid()}`, h = os.homedir();
+    const folders = (readCfg().rootCwds || []).filter((x) => typeof x === 'string' && isDir(x) && (root ? under(x, root) : under(x, h)));
+    try {
+      const c = spawn('sudo', ['-n', 'chown', '-R', own, path.join(h, '.claude'), path.join(h, '.claude.json'), ...folders], { stdio: 'ignore' });
+      c.on('error', () => { fixingOwner = false; }); c.on('close', () => { fixingOwner = false; onLog('gave files made with root rights back (' + why + ')'); try { bumpChats(); } catch { /* not ready yet */ } });
+    } catch { fixingOwner = false; }
+  }
+  const noteRootCwd = (cwd) => { if (!cwd) return; const l = (readCfg().rootCwds || []).filter((x) => x !== cwd); l.unshift(cwd); writeCfg({ rootCwds: l.slice(0, 40) }); };
+  let seenDenied = 0;
   const allowRules = () => (Array.isArray(readCfg().allowRules) ? readCfg().allowRules : []);
   const addRule = (r) => { if (!r) return null; const all = allowRules(); const ex = all.find((x) => x.tool === r.tool && x.prefix === r.prefix); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: r.tool, prefix: r.prefix, label: r.label, at: Date.now() }; writeCfg({ allowRules: [...all, n] }); return n; };
   const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
@@ -475,7 +495,7 @@ function start(opts) {
     if (asRoot) {
       if (!rootAllowed()) return { error: 403, message: 'Chats with root rights are off on this server. Switch them on in Settings → Server permissions first.' };
       const rr = rootReady(); if (!rr.ok) return { error: 403, message: rr.why };
-      rootLaunch = !rr.uid0;
+      rootLaunch = !rr.uid0; if (rootLaunch) noteRootCwd(cwd);
       const mi = args.indexOf('--permission-mode');
       if (mode === 'bypassPermissions' && mi >= 0) args[mi + 1] = 'acceptEdits';   // Claude Code itself refuses its bypass mode as root; Hearth's own Full auto answers the approvals instead
       const ai = args.indexOf('--append-system-prompt'); if (ai >= 0) args[ai + 1] += ' ' + ROOT_PROMPT;
@@ -539,10 +559,7 @@ function start(opts) {
       announceDone(job);
       for (const f of job.onDone) { try { f(job); } catch (e) { onLog('onDone: ' + e.message); } }
       try { shares.jobDone(job.sid || job.key); } catch (e) { onLog('shares: ' + e.message); }
-      if (job.rootLaunch && typeof process.getuid === 'function') {   // files Claude made as root in your Claude folder go back to you, so later chats can still write them
-        const own = `${process.getuid()}:${process.getgid()}`; const h = os.homedir();
-        try { const c = spawn('sudo', ['-n', 'chown', '-R', own, path.join(h, '.claude'), path.join(h, '.claude.json')], { stdio: 'ignore' }); c.on('error', () => {}); c.unref(); } catch { /* best effort */ }
-      }
+      if (job.rootLaunch) { lastOwnerFix = 0; fixOwnership('run ended'); }
       bumpChats(); if (agentSync) agentSync.kick('job-done');
       try { fs.unlinkSync(mcpFile); } catch { /* gone */ }
       setTimeout(() => { for (const [k, v] of jobs) if (v === job) jobs.delete(k); }, 120000).unref();
@@ -1088,6 +1105,7 @@ function start(opts) {
         if (parts[0] === 'projects' && parts[1] === 'trash') { const tr = path.join(root || moveRoot || '', '.hearth-trash'); let out = []; try { out = fs.readdirSync(tr).map((n) => { try { return { stem: n, ...JSON.parse(fs.readFileSync(path.join(tr, n, 'meta.json'), 'utf8')) }; } catch { return null; } }).filter(Boolean).sort((x, y) => y.at - x.at); } catch { /* none */ } return json(res, 200, out); }
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
+          if (core.deniedCount() > seenDenied) { seenDenied = core.deniedCount(); lastOwnerFix = 0; fixOwnership('a chat could not be read'); }
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
           const quiet = new Set([...jobs.values()].filter((j) => j.done).map((j) => j.sid || j.key));
           const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => { try { return { ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true, shared: (() => { const sh = shares.bySession(x.id); return sh ? shares.live(sh).length : -1; })() }; } catch (e) { onLog('chat ' + x.id + ': ' + e.message); return { ...x, running: false, kind: 'code', root: false, shared: -1 }; } });
@@ -1519,6 +1537,7 @@ function start(opts) {
           if (!hubFiles) return json(res, 404, { error: 'this is not the server' });
           return json(res, 200, hubFiles.remove(String(b.rel || '')));
         }
+        if (parts[0] === 'admin' && parts[1] === 'logs' && req.method === 'GET') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
         if (parts[0] === 'admin' && parts[1] === 'restart') {   // a plain restart of this server, from the app (the service manager starts it again)
           if (!opts.selfUpdate) return json(res, 400, { error: 'This one restarts together with its app.' });
           if (!b.force && [...jobs.values()].some((j) => !j.done)) return json(res, 409, { error: 'Claude is working on this server right now.', busy: true });
@@ -1634,6 +1653,7 @@ function start(opts) {
     } catch (e) { onLog('request ' + req.method + ' ' + String(req.url).split('?')[0] + ': ' + String(e && e.stack || e && e.message || e).split('\n').slice(0, 3).join(' | ')); if (!res.headersSent) json(res, 500, { error: 'The server hit a problem with that request (' + String(e && e.message || 'unknown').slice(0, 120) + ')' }); }
   });
   server.keepAliveTimeout = 65000;
+  setTimeout(() => { try { fixOwnership('start'); } catch { /* not possible here */ } }, 5000).unref();   // a run that was cut off may have left files that belong to root
 
   // ── laptop side: link to a server, report there, and do the work it hands over ──
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1764,4 +1784,4 @@ function start(opts) {
   });
 }
 
-module.exports = { start, lanOnly, findClaude };
+module.exports = { start, lanOnly, findClaude, noteLog };

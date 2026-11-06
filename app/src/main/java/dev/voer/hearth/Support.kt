@@ -87,7 +87,7 @@ fun SupportScreen(close: () -> Unit) {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf(Store.supportEmail(c) ?: "") }
-    var view by remember { mutableStateOf(if (Store.supportToken(c) != null) "home" else "login") }
+    var view by remember { mutableStateOf(if (Store.supportToken(c) != null) (if (Ui.supportDraft.isNotEmpty()) "new" else "home") else "login") }
     var notice by remember { mutableStateOf("") }
     var open by remember { mutableStateOf("") }
     var sentId by remember { mutableStateOf("") }
@@ -223,8 +223,9 @@ private fun SupportNew(email: String, back: () -> Unit, sent: (String) -> Unit) 
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
     var cat by remember { mutableStateOf("bug") }
-    var title by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
+    val draft = remember { Ui.supportDraft.also { Ui.supportDraft = "" } }
+    var title by remember { mutableStateOf(if (draft.isNotEmpty()) "Something went wrong in a chat" else "") }
+    var text by remember { mutableStateOf(draft) }
     var info by remember { mutableStateOf(true) }
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }

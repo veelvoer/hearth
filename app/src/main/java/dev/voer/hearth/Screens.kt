@@ -64,6 +64,9 @@ import java.util.Locale
 data class PendingOpen(val host: String, val session: String, val title: String, val cwd: String, val voice: Boolean = false)
 
 object Ui {
+    /** A report that is ready to send: the support screen opens with this text in it. */
+    var supportDraft by mutableStateOf("")
+    var openSupport by mutableStateOf(false)
     /** Goes up to start confetti anywhere. */
     var burst by mutableIntStateOf(0)
     var usage by mutableStateOf<Usage?>(null)
@@ -941,7 +944,8 @@ private fun MemoryCard() {
 fun SettingsScreen() {
     val c = LocalContext.current
     val scope = rememberCoroutineScope()
-    var support by remember { mutableStateOf(false) }
+    var support by remember { mutableStateOf(Ui.openSupport) }
+    LaunchedEffect(Ui.openSupport) { if (Ui.openSupport) { support = true; Ui.openSupport = false } }
     if (support) { SupportScreen { support = false }; return }
     var thr by remember { mutableStateOf(Store.thresholds(c)) }
     var interval by remember { mutableIntStateOf(Store.interval(c)) }
