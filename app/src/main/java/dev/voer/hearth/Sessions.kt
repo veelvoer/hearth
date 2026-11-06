@@ -819,7 +819,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty()) item { Txt(if (sess.kind == "talk") "What's on your mind?" else "What should we build in ${folder(sess.cwd)}?", T.title, modifier = Modifier.padding(top = 24.dp)) }
             itemsIndexed(msgs) { idx, msg ->
-              Box(if (settled.intValue in 0..idx) Modifier.appear() else Modifier) {
+              Box((if (settled.intValue in 0..idx) Modifier.appear() else Modifier).animateItem()) {
                 when (msg.role) {
                     "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(softFill()).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                         Column(horizontalAlignment = Alignment.End) {
