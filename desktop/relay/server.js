@@ -151,6 +151,43 @@ function start(opts) {
   const backupsOn = () => readCfg().backups === true;
   const runBackup = () => { const r = safety.createBackup({ dir, chatsDir: core.projectsDir() }); if (r.ok) onLog('chat backup made: ' + r.name); else onLog('chat backup: ' + r.error); return r; };
   const backupTimer = setInterval(() => { try { if (!backupsOn()) return; const last = safety.listBackups(dir)[0]; const h = new Date().getHours(); if ((!last || Date.now() - last.at > 23 * 3600e3) && h >= 2 && h <= 5) runBackup(); } catch { /* next hour */ } }, 3600e3); backupTimer.unref();
+  // ── routines: a goal that Claude works on by itself, on a schedule, with a timeline of what it did ──
+  const routFile = path.join(dir, 'routines.json'), runsFile = path.join(dir, 'routine-runs.json');
+  const readRoutines = () => { try { const a = JSON.parse(fs.readFileSync(routFile, 'utf8')); return Array.isArray(a) ? a : []; } catch { return []; } };
+  const saveRoutines = (l) => { try { fs.writeFileSync(routFile, JSON.stringify(l.slice(0, 40)), { mode: 0o600 }); } catch { /* best effort */ } };
+  const readRuns = () => { try { const a = JSON.parse(fs.readFileSync(runsFile, 'utf8')); return Array.isArray(a) ? a : []; } catch { return []; } };
+  const saveRuns = (l) => { try { fs.writeFileSync(runsFile, JSON.stringify(l.slice(0, 200)), { mode: 0o600 }); } catch { /* best effort */ } };
+  const ROUTINE_MODES = ['plan', 'acceptEdits', 'auto'];
+  const cleanRoutine = (x, old = {}) => {
+    const name = String(x.name !== undefined ? x.name : old.name || '').trim().slice(0, 60), goal = String(x.goal !== undefined ? x.goal : old.goal || '').trim().slice(0, 4000);
+    if (!name || !goal) return { error: 'A routine needs a name and a goal.' };
+    const sch = x.schedule || old.schedule || { type: 'daily', at: '09:00' };
+    const schedule = sch.type === 'interval' ? { type: 'interval', minutes: Math.max(process.env.HEARTH_TEST ? 0.005 : 15, Math.min(7 * 1440, Number(sch.minutes) || 60)) } : { type: 'daily', at: /^\d{1,2}:\d{2}$/.test(String(sch.at)) ? String(sch.at) : '09:00' };
+    const cwd = String(x.cwd !== undefined ? x.cwd : old.cwd || root || '');
+    if (cwd && !okDir(cwd)) return { error: 'That folder is outside the projects folder.' };
+    return { id: old.id || crypto.randomBytes(4).toString('hex'), name, goal, cwd, schedule, mode: ROUTINE_MODES.includes(x.mode) ? x.mode : (old.mode || 'plan'), enabled: x.enabled !== undefined ? !!x.enabled : old.enabled !== false, lastRun: old.lastRun || 0, createdAt: old.createdAt || Date.now() };
+  };
+  const routineDue = (r, now) => {
+    if (!r.enabled) return false;
+    if (r.schedule.type === 'interval') return now - (r.lastRun || 0) >= r.schedule.minutes * 60000;
+    const [h, m] = r.schedule.at.split(':').map(Number), d = new Date(now), due = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime();
+    return now >= due && (r.lastRun || 0) < due;
+  };
+  /** Starts one run of a routine. Returns { ok, session } or { error }. */
+  function runRoutine(r, why) {
+    if ([...jobs.values()].some((j) => j.routine === r.id && !j.done)) return { error: 'It is still running.' };
+    const text = r.goal + '\n\n(This is the routine "' + r.name + '", started ' + why + '. Work on your own, do not ask questions, and finish with a short summary of what you found or did.)';
+    const res = startJob({ text, cwd: r.cwd || undefined, mode: r.mode, kind: 'code' }, 'new');
+    const runs = readRuns(), run = { id: crypto.randomBytes(4).toString('hex'), routine: r.id, name: r.name, at: Date.now(), why, status: res.error ? 'failed' : 'running', summary: res.error ? String(res.message || 'Could not start') : '', session: '' };
+    runs.unshift(run); saveRuns(runs);
+    const all = readRoutines(); const mine = all.find((x) => x.id === r.id); if (mine) { mine.lastRun = Date.now(); saveRoutines(all); }
+    if (res.error) return { error: res.message || 'Could not start' };
+    res.job.routine = r.id;
+    res.job.onDone.push((j) => { const l = readRuns(), me = l.find((x) => x.id === run.id); if (me) { me.status = j.error ? 'failed' : 'done'; me.session = j.sid || ''; me.summary = String(j.resultText || '').replace(/\s+/g, ' ').trim().slice(0, 600); me.doneAt = Date.now(); saveRuns(l); } });
+    return { ok: true, run };
+  }
+  const routineTick = setInterval(() => { try { const now = Date.now(); for (const r of readRoutines()) if (routineDue(r, now)) { const out = runRoutine(r, r.schedule.type === 'daily' ? 'on schedule' : 'on its interval'); if (out.error) onLog('routine ' + r.name + ': ' + out.error); } } catch (e) { onLog('routines: ' + e.message); } }, Number(process.env.HEARTH_ROUTINE_TICK_MS) || 30000);
+  routineTick.unref();
   let seenDenied = 0;
   const allowRules = () => (Array.isArray(readCfg().allowRules) ? readCfg().allowRules : []);
   const addRule = (r) => { if (!r) return null; const all = allowRules(); const ex = all.find((x) => x.tool === r.tool && x.prefix === r.prefix); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: r.tool, prefix: r.prefix, label: r.label, at: Date.now() }; writeCfg({ allowRules: [...all, n] }); return n; };
@@ -1136,6 +1173,8 @@ function start(opts) {
           if (g.status === 0) { const lines = String(g.stdout).split('\n').filter(Boolean); branch = (lines[0] || '').replace(/^## /, '').split('...')[0]; changed = lines.length - 1; }
           return json(res, 200, { name: path.basename(cwd), cwd, chats: chats.length, lastAt: chats[0] ? chats[0].mtime : 0, cost: Math.round(cost * 100) / 100, changed, branch, recent: chats.slice(0, 5), snapshots: safety.listSnapshots({ dir, cwd }).length });
         }
+        if (parts[0] === 'routines' && parts[1] === 'timeline') return json(res, 200, { runs: readRuns().slice(0, Math.max(1, Math.min(100, Number(u.searchParams.get('tail')) || 30))) });
+        if (parts[0] === 'routines' && parts.length === 1) return json(res, 200, { routines: readRoutines() });
         if (parts[0] === 'admin' && parts[1] === 'logs') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
         if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })), denyRules: denyRules().map(({ id, prefix, label }) => ({ id, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
@@ -1368,6 +1407,15 @@ function start(opts) {
           if (cur.pin || cur.name) { cur.t = Date.now(); tags[id] = cur; } else delete tags[id];
           if (Object.keys(tags).length > 2000) return json(res, 400, { error: 'too many' });
           writeCfg({ chatTags: tags }); return json(res, 200, { tags });
+        }
+        if (parts[0] === 'routines' && parts.length === 1) {
+          let list = readRoutines(), out = {};
+          if (b.add) { const r = cleanRoutine(b.add); if (r.error) return json(res, 400, r); list.unshift(r); out.added = r.id; }
+          if (b.update && b.update.id) { const i = list.findIndex((x) => x.id === b.update.id); if (i < 0) return json(res, 404, { error: 'No such routine.' }); const r = cleanRoutine(b.update, list[i]); if (r.error) return json(res, 400, r); list[i] = r; }
+          if (b.remove) list = list.filter((x) => x.id !== String(b.remove));
+          saveRoutines(list);
+          if (b.run) { const r = list.find((x) => x.id === String(b.run)); if (!r) return json(res, 404, { error: 'No such routine.' }); const o = runRoutine(r, 'by you'); if (o.error) return json(res, 409, { error: o.error }); out.run = o.run; }
+          return json(res, 200, { routines: readRoutines(), ...out });
         }
         if (parts[0] === 'templates' && parts.length === 1) {   // saved starting points for a chat
           let list = Array.isArray(readCfg().templates) ? readCfg().templates : [];

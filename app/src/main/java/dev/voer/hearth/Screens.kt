@@ -1110,6 +1110,7 @@ fun SettingsScreen() {
             Spacer(Modifier.height(10.dp))
         }
                 }
+                "routines" -> RoutinesPage()
                 "server" -> {
         SyncCard()
         MemoryCard()

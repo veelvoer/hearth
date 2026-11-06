@@ -45,6 +45,8 @@ jobs:
         run: node desktop/test/rules.test.js
       - name: Extras test (recap, templates, project summary)
         run: node desktop/test/extras.test.js
+      - name: Routines test
+        run: node desktop/test/routines.test.js
       - name: Checklist test
         run: node desktop/test/checklist.test.js
       - name: Delete chats test

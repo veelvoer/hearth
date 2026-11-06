@@ -36,7 +36,8 @@ private val PAGES = listOf(
     SPage("updates", "sync", "Updates", "Newest version, what changed", "update version download install release"),
     SPage("notifications", "bell", "Notifications and alerts", "Calls, usage alerts, background", "notify call alert battery background threshold refresh sound status bar", "Alerts"),
     SPage("look", "contrast", "Look and feel", "Colors, Home, widgets, voice", "theme dark light color system glass animation widget voice language dashboard home", "Look"),
-    SPage("server", "chip", "Server", "Sync, memory, usage limit", "sync memory limit continue restart"),
+    SPage("routines", "clock", "Routines", "Goals Claude works on by itself", "routine schedule agent automatic daily digest"),
+    SPage("server", "chip", "Server", "Sync, memory, usage limit, safety", "sync memory limit continue restart safety backup budget snapshot undo rules"),
     SPage("tools", "sparkle", "Tools for Claude", "Skills, MCP, API keys, permissions", "skill mcp api key permission root", "Tools"),
     SPage("help", "support", "Help and support", "Tour, setup, contact us", "tour tutorial setup support email contact bug", "Help"),
 )
@@ -62,7 +63,7 @@ fun SettingsMenu(open: (String) -> Unit) {
     fun row(id: String, last: Boolean) = PAGES.first { it.id == id }.let { p -> @Composable { SettingsRow(p.icon, p.title, p.sub, last) { open(p.id) } } }
     SettingsGroup { row("computers", false)(); row("updates", true)() }
     SettingsGroup { row("notifications", false)(); row("look", true)() }
-    SettingsGroup { row("server", false)(); row("tools", true)() }
+    SettingsGroup { row("routines", false)(); row("server", false)(); row("tools", true)() }
     SettingsGroup { row("help", true)() }
     SettingsGroup {
         if (beta) SettingsRow("flask", "Beta features", "Extras you can switch on", false) { open("beta") }
