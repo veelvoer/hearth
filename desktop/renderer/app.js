@@ -336,6 +336,7 @@ function settingsView(only) {
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
   p.append(only ? h('div') : doctorCard());
+  p.append(only ? h('div') : routinesCard());
   p.append(only ? h('div') : safetyCard());
   p.append(only ? h('div') : rulesCard());
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
@@ -344,6 +345,33 @@ function settingsView(only) {
 }
 const hubMachine = async () => { const ms = await cm.machines(); return ms.find((x) => x.secure) || ms[0]; };
 const tooOld = (e) => /404|unknown|not found/i.test(clean(e));
+const ROUTINES_READY = [['Daily digest', 'Look at what changed in my projects in the last 24 hours (commits, files, chats) and summarise it in 5 short lines.', { type: 'daily', at: '08:00' }], ['Server check', 'Check this server: disk space, memory, failed services and the Hearth health. Report only what is wrong, in plain words.', { type: 'daily', at: '07:00' }],
+  ['Weekly security look', 'Look through my projects for secrets, outdated dependencies and urgent TODOs. Report what you find. Do not change anything.', { type: 'interval', minutes: 10080 }]];
+const routineWhen = (s) => (!s ? '' : s.type === 'interval' ? (s.minutes >= 1440 ? 'Every ' + Math.round(s.minutes / 1440) + ' days' : s.minutes >= 60 ? 'Every ' + Math.round(s.minutes / 60) + ' hours' : 'Every ' + Math.round(s.minutes) + ' minutes') : 'Every day at ' + (s.at || '09:00'));
+/** Routines: a goal that Claude works on by itself on a schedule, and a timeline of what it found. */
+function routinesCard() {
+  const body = h('div', { class: 'stack', style: 'gap:10px' });
+  const load = async (patch) => {
+    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let r, t; try { r = patch ? await cm.relay(m.id, 'POST', '/routines', patch) : await cm.relay(m.id, 'GET', '/routines'); t = (await cm.relay(m.id, 'GET', '/routines/timeline?tail=12')).runs || []; } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for routines. Update it first.' : clean(e))); return; }
+    const custom = async () => {
+      const name = await askText('A new routine', 'What should it be called?', { placeholder: 'e.g. Morning check', ok: 'Next' }); if (!name || !name.trim()) return;
+      const goal = await askText('What should Claude do?', 'It works on its own and writes down what it found. It only reads, unless you change that later.', { placeholder: 'e.g. Look at my open pull requests and tell me which need me', ok: 'Add' }); if (!goal || !goal.trim()) return;
+      load({ add: { name: name.trim(), goal: goal.trim(), schedule: { type: 'daily', at: '08:00' }, mode: 'plan' } });
+    };
+    body.replaceChildren(
+      ...(r.routines || []).map((x) => h('div', { class: 'spwrap stack', style: 'gap:4px;padding:10px 12px' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', {}, x.name), h('div', { class: 'small muted' }, routineWhen(x.schedule) + (x.mode === 'plan' ? ' · reads only' : ' · can edit files'))), toggle(x.enabled, () => load({ update: { id: x.id, enabled: !x.enabled } }))),
+        h('div', { class: 'small muted' }, x.goal), h('div', { class: 'row', style: 'gap:8px' }, h('button', { class: 'ghost sm', onclick: () => load({ run: x.id }) }, 'Run now'), h('button', { class: 'ghost sm', onclick: () => load({ remove: x.id }) }, 'Delete')))),
+      h('div', { class: 'small muted', style: 'text-transform:uppercase;letter-spacing:.06em' }, 'Add a routine'),
+      h('div', { class: 'row wrap' }, ...ROUTINES_READY.map(([n, g, s]) => chip('+ ' + n, false, () => load({ add: { name: n, goal: g, schedule: s, mode: 'plan' } }))), chip('My own…', false, custom)),
+      t.length ? h('div', { class: 'small muted', style: 'margin-top:6px;text-transform:uppercase;letter-spacing:.06em' }, 'What it did') : null,
+      ...t.map((x) => h('button', { class: 'spitem', style: 'text-align:left', onclick: () => { if (x.session) { setTab('sessions'); openSession({ id: x.session, title: x.name, cwd: '', mid: m.id, mtime: Date.now(), live: false }); } } },
+        h('div', { class: 'row' }, h('i', { class: 'pdot', style: 'background:' + (x.status === 'done' ? '#4CAF7D' : x.status === 'failed' ? 'var(--clay)' : 'var(--muted)') }), h('b', { class: 'grow ellip', style: 'margin-left:8px' }, x.name), h('span', { class: 'small muted' }, new Date(x.at).toLocaleString())),
+        h('div', { class: 'small muted' }, x.status === 'running' ? 'Working on it…' : (x.summary || (x.status === 'failed' ? 'It did not finish.' : 'Done.'))))));
+  };
+  load(); const iv = setInterval(() => { if (body.isConnected) load(); else if (iv && body.dataset.seen) clearInterval(iv); else body.dataset.seen = '1'; }, 15000);   // stops by itself once the card is gone
+  return h('div', { class: 'card stack' }, ch('now', 'Routines', 'Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit files.'), body);
+}
 /** Safety: a snapshot before every run, a spending limit and nightly backups of the chats. */
 function safetyCard() {
   const body = h('div', { class: 'stack', style: 'gap:10px' });
@@ -397,6 +425,7 @@ const SX_TABS = [
   ['updates', 'sync', 'Updates', 'Connection', /^updates/i],
   ['notifications', 'bell', 'Notifications and calls', 'App', /alerts|call me|notifications|calls from claude/i],
   ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
+  ['routines', 'now', 'Routines', 'Server and tools', /^routines|^what it did/i],
   ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check|^safety|never allow/i],
   ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions/i],
   ['help', 'support', 'Help and support', 'Help', /help|support/i],
