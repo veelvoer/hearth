@@ -44,6 +44,9 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   await req('POST', '/sessions/new/send', tok, { text: 'x'.repeat(400000), mode: 'acceptEdits', cwd: proj });
   await sleep(800);
   ok('13 the server is still up after a run that died at once', (await req('GET', '/health', tok)).code === 200 && (await req('GET', '/chat-tags', tok)).code !== 0);
+  const lg = await req('GET', '/admin/logs?tail=5', tok);
+  ok('14 the server log can be read by its owner, with the version', lg.code === 200 && Array.isArray(lg.j.lines) && /^\d+\.\d+\.\d+/.test(lg.j.version));
+  ok('15 a guest key cannot read the log', (await req('GET', '/admin/logs', 'share.abcd.abcdefghijklmnop')).code === 401);
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

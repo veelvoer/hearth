@@ -31,7 +31,7 @@ const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) =
 const until = async (fn, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { if (fn()) return true; await sleep(100); } return false; };
 const count = () => { try { return Number(fs.readFileSync(path.join(T, 'home', 'count'), 'utf8')); } catch { return 0; } };
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   let events = ''; req('GET', '/events', tok, null, (b) => { events = b; });
   const proj = path.join(T, 'proj', 'app');
   const o = await req('POST', '/sessions/new/send', tok, { text: 'build it', cwd: proj });

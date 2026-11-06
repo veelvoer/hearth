@@ -7,7 +7,7 @@ const call = (method, url, tok, body) => new Promise((res) => { const d = body ?
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
 (async () => {
-  await sleep(1500); const tok = JSON.parse(fs.readFileSync(path.join(T, 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'relay.json'));
   const a = await call('POST', '/pair/request', null, { name: 'Pixel 9 <script>' });
   ok('1 a phone can ask without a code', a.code === 200 && a.j.id && a.j.id.length === 32);
   ok('2 asking again right away is refused', (await call('POST', '/pair/request', null, { name: 'x' })).code === 429);

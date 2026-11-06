@@ -16,7 +16,7 @@ let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; cons
 const req = (method, url, hdr, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47793, path: url, method, headers: { ...hdr, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (c) => { b += c; }); rs.on('end', () => { let j = {}; try { j = JSON.parse(b); } catch { /* */ } res({ code: rs.statusCode, j }); }); }); r.on('error', () => res({ code: 0, j: {} })); if (d) r.write(d); r.end(); });
 const calls = () => { try { return fs.readFileSync(path.join(T, 'home', 'calls.txt'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token, own = { Authorization: 'Bearer ' + tok };
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json')), own = { Authorization: 'Bearer ' + tok };
   const msg = (text, extra) => ({ messages: [{ role: 'user', content: text }], ...extra });
   ok('1 only the owner can make keys', (await req('POST', '/admin/apikeys', { Authorization: 'Bearer nope' }, { kind: 'low' })).code === 401);
   const low = (await req('POST', '/admin/apikeys', own, { name: 'My app', kind: 'low', perDay: 3 })).j;

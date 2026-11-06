@@ -7,7 +7,7 @@ const call = (method, url, tok, body, raw) => new Promise((res) => { const d = b
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
 (async () => {
-  await sleep(1500); const tok = JSON.parse(fs.readFileSync(T + '/cfg/relay.json')).token;
+  const tok = await require('./_wait')(T + '/cfg/relay.json');
   call('POST', '/agent/poll', tok, { name: 'Laptop', epoch: 0 }); call('POST', '/agent/poll', tok, { name: 'Desktop', epoch: 0 }); await sleep(700);
   const list = await call('GET', '/computers', tok);
   ok('1 the server lists both computers and itself', Array.isArray(list) && list[0].kind === 'server' && list.some((c) => c.id === 'pc:Laptop' && c.online) && list.some((c) => c.id === 'pc:Desktop' && c.online), JSON.stringify(list.map((c) => c.id)));

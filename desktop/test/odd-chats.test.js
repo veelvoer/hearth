@@ -19,7 +19,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
 const get = (url, tok) => new Promise((res) => http.get({ host: '127.0.0.1', port: 47798, path: url, headers: { Authorization: 'Bearer ' + tok } }, (rs) => { let b = ''; rs.on('data', (c) => { b += c; }); rs.on('end', () => res({ code: rs.statusCode, body: b })); }).on('error', () => res({ code: 0, body: '' })));
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   const r = await get('/sessions', tok); let list = []; try { list = JSON.parse(r.body); } catch { /* */ }
   ok('1 the list loads', r.code === 200 && Array.isArray(list), 'code ' + r.code);
   ok('2 the good chat and the one with a number as folder are both there', list.some((x) => x.title === 'a good chat') && list.some((x) => x.title === 'chat with a number as folder'), list.map((x) => x.title).join(' | '));

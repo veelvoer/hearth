@@ -29,7 +29,7 @@ let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; cons
 const req = (method, url, tok, body, onData) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47792, path: url, method, headers: { ...(tok ? { Authorization: 'Bearer ' + tok } : {}), ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (x) => { let b = ''; x.on('data', (c) => { b += c; if (onData) onData(b); }); x.on('end', () => { let j = {}; try { j = JSON.parse(b); } catch { /* ndjson */ } res({ code: x.statusCode, j, b }); }); }); r.on('error', () => res({ code: 0, j: {}, b: '' })); if (d) r.write(d); r.end(); });
 const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) => x.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean).map((l) => JSON.parse(l.slice(6)));
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   let events = ''; req('GET', '/events', tok, null, (b) => { events = b; });
   const cwd = path.join(T, 'proj', 'app');
   // a normal chat of the host

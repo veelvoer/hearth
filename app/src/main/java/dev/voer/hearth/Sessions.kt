@@ -324,7 +324,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
-                Txt(listOfNotNull(if (working) "Working" else null, name, machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
+                Txt(listOfNotNull(if (working) "Working" else if (s.interrupted) "Interrupted, tap to see your message" else null, name, machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
                     T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
             }
         }

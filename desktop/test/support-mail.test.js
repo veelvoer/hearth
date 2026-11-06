@@ -26,7 +26,7 @@ const req = (method, url, tok, body, onData) => new Promise((res) => { const d =
 const J = (r) => { try { return JSON.parse(r.body); } catch { return {}; } };
 const evs = (b) => b.split('\n\n').filter((x) => x.includes('data: ')).map((x) => x.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean).map((l) => { try { return JSON.parse(l.slice(6)); } catch { return {}; } });
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   let events = ''; req('GET', '/events', tok, null, (b) => { events = b; });
   const mail = (id, extra) => ({ kind: 'new', id, title: 'App crashes', category: 'bug', from: 'friend@example.com', text: 'It crashes when I open settings.', ...extra });
   ok('1 only the owner can hand in a support mail', (await req('POST', '/support/incoming', 'wrong', mail('HRT-1'))).code === 401);

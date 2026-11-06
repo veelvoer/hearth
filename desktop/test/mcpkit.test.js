@@ -22,7 +22,7 @@ const relay = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const req = (method, url, tok, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47792, path: url, method, headers: { Authorization: 'Bearer ' + tok, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (x) => { b += x; }); rs.on('end', () => { let j = {}; try { j = JSON.parse(b); } catch { /* */ } res({ code: rs.statusCode, j }); }); }); r.on('error', () => res({ code: 0, j: {} })); if (d) r.write(d); r.end(); });
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   ok('5 it needs to be told what to connect to', (await req('POST', '/mcp/build', tok, { target: '' })).code === 400);
   ok('6 a guest key cannot start one', (await req('POST', '/mcp/build', 'share.abcd.abcdefghijklmnop', { target: 'Inkscape' })).code === 401);
   const r = await req('POST', '/mcp/build', tok, { target: 'Inkscape (vector graphics)', notes: 'export to PNG too' }); await sleep(1500);

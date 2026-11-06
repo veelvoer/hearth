@@ -524,6 +524,7 @@ function start(opts) {
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         let o; try { o = JSON.parse(line); } catch { continue; }
+        try {   // one odd event from Claude must not stop the events after it, nor the run
         const t = o.type;
         if (t === 'system' && o.subtype === 'init') {
           if (o.session_id && !job.sid) { job.sid = o.session_id; jobs.set(job.sid, job); try { noteRun(job.sid, job.cwd, body.text); } catch { /* best effort */ } if (job.wantCall) setPrefs(job.sid, { call: job.wantCall }); if (job.wantKind) setPrefs(job.sid, { kind: job.wantKind }); if (job.wantRoot) setPrefs(job.sid, { root: true }); if (job.wantAuto) setPrefs(job.sid, { auto: true }); }
@@ -547,6 +548,7 @@ function start(opts) {
           const us = o.usage || {};
           emit(job, { t: 'done', error: job.error, text: job.error ? String(job.resultText || '').slice(0, 400) : undefined, ms: o.duration_ms, cost: o.total_cost_usd, usage: { in: us.input_tokens || 0, out: us.output_tokens || 0, cr: us.cache_read_input_tokens || 0, cw: us.cache_creation_input_tokens || 0 } });
         }
+        } catch (e) { onLog('event: ' + (e && e.message)); }
       }
     });
     const finish = (err) => {

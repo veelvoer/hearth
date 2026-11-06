@@ -34,7 +34,7 @@ const req = (method, url, tok, body, onData) => new Promise((res) => { const d =
 const J = (r) => { try { return JSON.parse(r.body); } catch { return {}; } };
 const evs = (b) => b.split('\n\n').filter((x) => x.startsWith('id: ')).map((x) => x.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean).map((l) => JSON.parse(l.slice(6)));
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   let events = ''; req('GET', '/events', tok, null, (b) => { events = b; });
   const proj = path.join(T, 'proj', 'app');
   const run = (text, cwd) => { const o = { stream: '' }; o.done = req('POST', '/sessions/new/send', tok, { text, cwd: cwd || proj }, (b) => { o.stream = b; }); return o; };

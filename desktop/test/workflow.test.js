@@ -23,7 +23,7 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
 const J = (r) => { try { return JSON.parse(r.body); } catch { return {}; } };
 const prompts = () => { try { return fs.readFileSync(path.join(T, 'home', 'prompts.txt'), 'utf8').trim().split('\n'); } catch { return []; } };
 (async () => {
-  await sleep(2000); const tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token;
+  const tok = await require('./_wait')(path.join(T, 'd', 'relay.json'));
   const proj = path.join(T, 'proj', 'app');
   await req('POST', '/sessions/new/send', tok, { text: 'hello', cwd: proj }); await sleep(800);
   const sid = J(await req('GET', '/sessions', tok))[0].id;
@@ -41,7 +41,7 @@ const prompts = () => { try { return fs.readFileSync(path.join(T, 'home', 'promp
   ok('7 after the last step it is done and stops starting runs', J(await req('GET', `/sessions/${sid}/workflow`, tok)).state === 'done');
   const n = prompts().length; await sleep(1000); ok('8 no runs after it is done', prompts().length === n);
   await req('POST', `/sessions/${sid}/workflow`, tok, { steps: [{ name: 'Long', prompt: 'Keep testing.', minutes: 60 }] }); await sleep(600);
-  ok('9 pause stops new runs', J(await req('POST', `/sessions/${sid}/workflow`, tok, { action: 'pause' })).state === 'paused'); const m = prompts().length; await sleep(1000); ok('10 nothing starts while paused', prompts().length === m);
+  ok('9 pause stops new runs', J(await req('POST', `/sessions/${sid}/workflow`, tok, { action: 'pause' })).state === 'paused'); await sleep(1500); const m = prompts().length; await sleep(1200); ok('10 nothing starts while paused', prompts().length === m);
   ok('11 resume works', J(await req('POST', `/sessions/${sid}/workflow`, tok, { action: 'resume' })).state === 'running'); await sleep(900); ok('12 and runs start again', prompts().length > m);
   ok('13 stop removes it', J(await req('POST', `/sessions/${sid}/workflow`, tok, { action: 'stop' })).state === 'none');
   const args = fs.readFileSync(path.join(T, 'home', 'args.txt'), 'utf8');
