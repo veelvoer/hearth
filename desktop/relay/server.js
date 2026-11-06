@@ -1668,7 +1668,8 @@ function start(opts) {
     } catch (e) { onLog('request ' + req.method + ' ' + String(req.url).split('?')[0] + ': ' + String(e && e.stack || e && e.message || e).split('\n').slice(0, 3).join(' | ')); if (!res.headersSent) json(res, 500, { error: 'The server hit a problem with that request (' + String(e && e.message || 'unknown').slice(0, 120) + ')' }); }
   });
   server.keepAliveTimeout = 65000;
-  setTimeout(() => { try { fixOwnership('start'); } catch { /* not possible here */ } }, 5000).unref();   // a run that was cut off may have left files that belong to root
+  setTimeout(() => { try { fixOwnership('start'); } catch { /* not possible here */ } }, 5000).unref();
+  setInterval(() => { try { if (core.deniedCount() > seenDenied) { seenDenied = core.deniedCount(); core.listFiles(); lastOwnerFix = 0; fixOwnership('looking again'); } else core.listFiles(); } catch { /* next time */ } }, 10 * 60000).unref();   // also when nobody is looking at the list   // a run that was cut off may have left files that belong to root
 
   // ── laptop side: link to a server, report there, and do the work it hands over ──
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

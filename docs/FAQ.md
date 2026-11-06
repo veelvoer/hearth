@@ -6,6 +6,8 @@
 
 **My phone does not find my computer.** Both must be on the same Wi-Fi, and Hearth must be open on the computer. Some guest or office Wi-Fi networks block devices from seeing each other; use *Enter the address myself* then.
 
+**A chat or the whole server is stuck.** On the server run `hearth-server restart` (also `stop`, `start` and `logs`). Nothing is asked again, and your projects and chats stay. In the app: Settings > Server > Health check tells you what is wrong. To update to the newest version run `hearth-server update`.
+
 **The code is wrong or ran out.** Codes work for 10 minutes. Run `hearth-server code` on the server for a new one.
 
 **A chat does not show on my other device.** Open **Settings → Sync** on the desktop app and press *Sync now*. Both lines should say OK. A chat that lives outside your `projects` folder stays on its own computer; other devices see it marked *only on …*.

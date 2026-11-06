@@ -647,6 +647,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 val seen = raw.filter { x -> x.role == "user" }.takeLast(40).map { x -> norm(x.text) }
                 unsent.removeAll { u -> val t = norm(u.first); System.currentTimeMillis() - u.second > 30 * 60_000 || seen.any { x -> x == t || (t.length > 24 && (x.contains(t) || (t.contains(x) && x.length > 24))) } }
                 val it = raw + unsent.map { u -> Msg("user", u.first) }
+                if (input.isBlank() && raw.any { x -> x.role == "meta" && x.text.contains("interrupted before it could be saved") }) raw.firstOrNull { x -> x.role == "user" }?.let { x -> input = x.text }   // an interrupted run: the prompt is already in the box, one tap sends it again
                 MsgCache.put(sess.id, raw)
                 if (it.size != msgs.size || it.lastOrNull()?.text != msgs.lastOrNull()?.text || it.lastOrNull()?.result != msgs.lastOrNull()?.result) { msgs.clear(); msgs.addAll(it) }; if (settled.intValue < 0) settled.intValue = msgs.size; err = null }
             .onFailure { if (!sending) err = friendlyError(it, m.name).replace(" Your message is back in the box.", "").replace(" Your message is back in the box: try again in a moment.", " Try again in a moment.").replace(" Your message is back in the box: try again.", "") }   // while Claude is running, a failed look at the chat is not an error: the run itself says when it is over
