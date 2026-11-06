@@ -92,3 +92,18 @@ Point it at your server: `base_url` = your Hearth address, `api_key` = your `hk_
 | 403 | The model or effort is not allowed for this key. |
 | 429 | The key's daily limit, session stop or weekly stop is reached, the plan's own limit is reached, or the server is busy. |
 | 502 / 504 | Claude failed or took too long. |
+
+## Endpoints used by the apps (owner token only; guest keys get 401)
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /chat-tags`, `POST /chat-tags {id, pin?, name?}` | Pins and names of chats, shared by phone and computer. |
+| `GET /search?q=` | Words inside the chats: `{results: [{id, title, cwd, mtime, snippet, count}]}`. |
+| `POST /support/checklist` | The owner's checklist of support reports. Body: `{sync: [...]}` (what the desk has), `{id, done}`, `{remove: "done" \| id}`. Returns `{items}`. |
+| `POST /support/incoming` | From the support desk on the same machine: a new mail, with optional `files: [{name, type, data(base64)}]` kept in `support-files/<id>/`. |
+| `POST /support/act {id, action}` | `claude` sends the report (and its files) into the Hearth chat and returns `{session, cwd}`; `list` adds it to Google Tasks. |
+| `GET /admin/logs?tail=N` | The last log lines of the server and its version. |
+| `GET /admin/doctor` | A health check: `{checks: [{name, ok, text, fix?}]}`. |
+| `GET /sessions` | Also lists runs that never reached the disk, with `interrupted: true` (kept 3 days in `pending-runs.json`). |
+
+Runs with root rights leave chat files that belong to root. The server notices unreadable chat files and gives them back to its user (`sudo -n chown`), at start, when a run ends and when the list finds one.
