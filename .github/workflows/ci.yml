@@ -47,6 +47,8 @@ jobs:
         run: node desktop/test/extras.test.js
       - name: Routines test
         run: node desktop/test/routines.test.js
+      - name: One-tap tools test
+        run: node desktop/test/mcp-catalog.test.js
       - name: Checklist test
         run: node desktop/test/checklist.test.js
       - name: Delete chats test

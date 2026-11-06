@@ -49,6 +49,13 @@ const TALK_PROMPT = "This is a casual talking session, not a coding session: cha
 const TALK_DENY = 'Bash Edit Write MultiEdit NotebookEdit Agent';
 const BRIEF = 'The user is listening to your reply read aloud. Keep it brief and conversational: short spoken sentences, no markdown, no lists, no code blocks. Say what you did and what you found.';
 const MIN_DONE_SECONDS = 20;       // hook-based "done" events for terminal sessions
+const MCP_CATALOG = [
+  { id: 'memory', name: 'Memory', about: 'Lets Claude remember facts between chats.', command: () => ['npx', '-y', '@modelcontextprotocol/server-memory'] },
+  { id: 'sequential-thinking', name: 'Step by step thinking', about: 'Helps Claude work through hard problems in steps.', command: () => ['npx', '-y', '@modelcontextprotocol/server-sequential-thinking'] },
+  { id: 'filesystem', name: 'Files of the projects folder', about: 'A second way for Claude to read and write the files of your projects.', command: (root) => ['npx', '-y', '@modelcontextprotocol/server-filesystem', root] },
+  { id: 'context7', name: 'Up-to-date docs', about: 'Claude looks up the current documentation of a library.', command: () => ['npx', '-y', '@upstash/context7-mcp'] },
+  { id: 'github', name: 'GitHub', about: 'Issues, pull requests and files of your repositories.', needs: 'a GitHub token', env: 'GITHUB_PERSONAL_ACCESS_TOKEN', command: () => ['npx', '-y', '@modelcontextprotocol/server-github'] },
+];
 const LOG_RING = [];
 const noteLog = (m) => { try { LOG_RING.push(new Date().toISOString().slice(11, 19) + ' ' + String(m).slice(0, 300)); if (LOG_RING.length > 300) LOG_RING.splice(0, LOG_RING.length - 300); } catch { /* never */ } };
 const PERMISSION_WAIT_MS = 25000;  // terminal sessions: wait this long for the phone, then fall back to the terminal prompt
@@ -1164,6 +1171,7 @@ function start(opts) {
           const t = r.totals || {}, busiest = (r.days || []).reduce((m, d) => (d.tokens > (m ? m.tokens : 0) ? d : m), null);
           return json(res, 200, { days, activeDays: t.activeDays || 0, prompts: t.prompts || 0, sessions: t.sessions || 0, tokens: t.tokens || 0, cost: Math.round((t.cost || 0) * 100) / 100, streak: t.currentStreak || 0, favorite: r.favorite || '', busiest: busiest && busiest.tokens > 0 ? { date: busiest.date, tokens: busiest.tokens } : null, empty: !(t.prompts || t.tokens) });
         }
+        if (parts[0] === 'mcp' && parts[1] === 'catalog') return json(res, 200, { tools: MCP_CATALOG.map(({ id, name, about, needs }) => ({ id, name, about, needs: needs || '' })) });
         if (parts[0] === 'templates' && parts.length === 1) return json(res, 200, { templates: Array.isArray(readCfg().templates) ? readCfg().templates : [] });
         if (parts[0] === 'projects' && parts[1] === 'summary') {   // one project at a glance: its chats, what they cost, what changed
           const cwd = String(u.searchParams.get('cwd') || ''); if (!cwd || !okDir(cwd)) return json(res, 403, { error: 'that project is outside the projects folder' });
@@ -1416,6 +1424,15 @@ function start(opts) {
           saveRoutines(list);
           if (b.run) { const r = list.find((x) => x.id === String(b.run)); if (!r) return json(res, 404, { error: 'No such routine.' }); const o = runRoutine(r, 'by you'); if (o.error) return json(res, 409, { error: o.error }); out.run = o.run; }
           return json(res, 200, { routines: readRoutines(), ...out });
+        }
+        if (parts[0] === 'mcp' && parts[1] === 'install') {   // one tap: add a ready-made tool for Claude (nothing else can be installed this way)
+          const t = MCP_CATALOG.find((x) => x.id === String(b.id)); if (!t) return json(res, 404, { error: 'Unknown tool.' });
+          const cl = findClaude(); if (!cl) return json(res, 500, { error: 'Claude Code was not found on this server.' });
+          let secret = ''; if (t.needs) { secret = String(b.secret || '').trim(); if (!/^[\w.\-]{8,200}$/.test(secret)) return json(res, 400, { error: 'This tool needs ' + t.needs + '.' }); }
+          const args = ['mcp', 'add', '--scope', 'user', ...(t.needs ? ['-e', t.env + '=' + secret] : []), t.id, '--', ...t.command(root || os.homedir())];
+          const r = spawnSync(cl, args, { timeout: 90000, encoding: 'utf8', cwd: root || os.homedir() });
+          if (r.status !== 0) return json(res, 500, { error: ('Could not add it: ' + String(r.stderr || r.stdout || r.error && r.error.message || '').trim()).slice(0, 300) });
+          onLog('tool added: ' + t.id); return json(res, 200, { ok: true, text: t.name + ' is added. New chats can use it.' });
         }
         if (parts[0] === 'templates' && parts.length === 1) {   // saved starting points for a chat
           let list = Array.isArray(readCfg().templates) ? readCfg().templates : [];

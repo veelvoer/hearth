@@ -1121,6 +1121,7 @@ fun SettingsScreen() {
                 }
                 "tools" -> {
         SkillsCard()
+        ToolCatalogCard()
         McpBuildCard()
         ApiKeysCard()
         PermissionsCard()

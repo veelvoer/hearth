@@ -336,6 +336,7 @@ function settingsView(only) {
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
   p.append(only ? h('div') : doctorCard());
+  p.append(only ? h('div') : toolCatalogCard());
   p.append(only ? h('div') : routinesCard());
   p.append(only ? h('div') : safetyCard());
   p.append(only ? h('div') : rulesCard());
@@ -345,6 +346,21 @@ function settingsView(only) {
 }
 const hubMachine = async () => { const ms = await cm.machines(); return ms.find((x) => x.secure) || ms[0]; };
 const tooOld = (e) => /404|unknown|not found/i.test(clean(e));
+/** Ready-made tools for Claude, added with one tap. */
+function toolCatalogCard() {
+  const body = h('div', { class: 'stack', style: 'gap:8px' });
+  (async () => {
+    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let tools; try { tools = (await cm.relay(m.id, 'GET', '/mcp/catalog')).tools || []; } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    body.replaceChildren(...tools.map((t) => { const btn = h('button', { class: 'ghost sm', onclick: async () => {
+      let secret = ''; if (t.needs) { secret = await askText(t.name, 'This tool needs ' + t.needs + '. It is kept on your server, in the settings of Claude Code.', { placeholder: 'Paste it here', ok: 'Add' }); if (!secret || !secret.trim()) return; }
+      btn.disabled = true; btn.textContent = 'Adding…';
+      try { const r = await cm.relay(m.id, 'POST', '/mcp/install', { id: t.id, secret: (secret || '').trim() }); toast(r.text || 'Added.'); btn.textContent = 'Added'; } catch (e) { toast(clean(e)); btn.disabled = false; btn.textContent = 'Add'; }
+    } }, 'Add');
+      return h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', {}, t.name), h('div', { class: 'small muted' }, t.about)), btn); }));
+  })();
+  return h('div', { class: 'card stack' }, ch('tool', 'Add a tool for Claude', 'Ready-made tools that you add with one tap. New chats can use them. Some need a key from the service.'), body);
+}
 const ROUTINES_READY = [['Daily digest', 'Look at what changed in my projects in the last 24 hours (commits, files, chats) and summarise it in 5 short lines.', { type: 'daily', at: '08:00' }], ['Server check', 'Check this server: disk space, memory, failed services and the Hearth health. Report only what is wrong, in plain words.', { type: 'daily', at: '07:00' }],
   ['Weekly security look', 'Look through my projects for secrets, outdated dependencies and urgent TODOs. Report what you find. Do not change anything.', { type: 'interval', minutes: 10080 }]];
 const routineWhen = (s) => (!s ? '' : s.type === 'interval' ? (s.minutes >= 1440 ? 'Every ' + Math.round(s.minutes / 1440) + ' days' : s.minutes >= 60 ? 'Every ' + Math.round(s.minutes / 60) + ' hours' : 'Every ' + Math.round(s.minutes) + ' minutes') : 'Every day at ' + (s.at || '09:00'));
@@ -427,7 +443,7 @@ const SX_TABS = [
   ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
   ['routines', 'now', 'Routines', 'Server and tools', /^routines|^what it did/i],
   ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check|^safety|never allow/i],
-  ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions/i],
+  ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions|add a tool/i],
   ['help', 'support', 'Help and support', 'Help', /help|support/i],
 ];
 function sxTabOf(name) { const t = SX_TABS.find((x) => x[4].test(name)); return t ? t[0] : 'help'; }

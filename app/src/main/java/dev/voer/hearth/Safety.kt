@@ -175,3 +175,34 @@ fun ProjectLine(m: Machine, cwd: String) {
     }
     if (line.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) { Glyph("home", 16.dp); Spacer(Modifier.width(8.dp)); Txt(line, T.small, muted = true) }
 }
+
+/** One-tap tools for Claude: Memory, up-to-date docs, GitHub and more. */
+@Composable
+fun ToolCatalogCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val hub = remember { hubOf(c) }
+    var tools by remember { mutableStateOf<List<Triple<String, String, String>>?>(null) }
+    var err by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf("") }
+    var asking by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var secret by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { if (hub != null) runCatching { withContext(Dispatchers.IO) { Relay.mcpCatalog(hub) } }.onSuccess { tools = it }.onFailure { err = if ((it.message ?: "").contains("404")) "This server is too old for this. Update it first." else friendlyError(it, hub.name).substringBefore(" Your message") } }
+    fun add(id: String, secret: String) { if (hub == null) return; busy = id; scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.mcpInstall(hub, id, secret) } }.onSuccess { Toast.makeText(c, it, Toast.LENGTH_LONG).show(); err = "" }.onFailure { err = it.message ?: "Could not add it." }; busy = "" } }
+    Fold("plug", "Add a tool for Claude", "Ready-made tools that you add with one tap. New chats can use them. Some need a key from the service.") {
+        Spacer(Modifier.height(8.dp))
+        if (err.isNotBlank()) Txt(err, T.small, color = MaterialTheme.colorScheme.primary)
+        if (tools == null && err.isBlank()) Skeleton(48.dp, radius = 14.dp)
+        tools?.forEach { t ->
+            val (name, about) = t.second.split("|", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(vertical = 6.dp)) { Txt(name, T.body.copy(fontWeight = FontWeight.SemiBold)); Txt(about, T.small, muted = true) }
+                TextAction(if (busy == t.first) "Adding…" else "Add") { if (busy.isEmpty()) { if (t.third.isNotBlank()) { asking = t; secret = "" } else add(t.first, "") } }
+            }
+        }
+    }
+    asking?.let { t -> androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        title = { Txt(t.second.substringBefore("|"), T.h2) },
+        text = { Column { Txt("This tool needs ${t.third}. It is kept on your server, in the settings of Claude Code.", T.small, muted = true); Spacer(Modifier.height(8.dp)); Field(secret, { secret = it.trim() }, "Paste it here", mono = true) } },
+        confirmButton = { TextAction("Add") { val s = secret; asking = null; add(t.first, s) } }, dismissButton = { TextAction("Cancel") { asking = null } }) }
+}

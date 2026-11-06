@@ -138,6 +138,11 @@ object Relay {
         return (0 until a.length()).map { val o = a.getJSONObject(it); o.optString("name") to o.optString("text") }
     }
     fun addTemplate(m: Machine, name: String, text: String): JSONObject = postJson(m, "/templates", JSONObject().put("add", JSONObject().put("name", name).put("text", text)))
+    fun mcpCatalog(m: Machine): List<Triple<String, String, String>> {
+        val a = JSONObject(getJson(m, "/mcp/catalog")).optJSONArray("tools") ?: return emptyList()
+        return (0 until a.length()).map { val o = a.getJSONObject(it); Triple(o.optString("id"), o.optString("name") + "|" + o.optString("about"), o.optString("needs")) }
+    }
+    fun mcpInstall(m: Machine, id: String, secret: String = ""): String = postJson(m, "/mcp/install", JSONObject().put("id", id).put("secret", secret)).optString("text", "Added.")
     fun chatTags(m: Machine): JSONObject = JSONObject(getJson(m, "/chat-tags")).optJSONObject("tags") ?: JSONObject()
     fun setChatTag(m: Machine, id: String, pin: Boolean?, name: String?) { val b = JSONObject().put("id", id); if (pin != null) b.put("pin", pin); if (name != null) b.put("name", name); postJson(m, "/chat-tags", b) }
 
