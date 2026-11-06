@@ -400,6 +400,7 @@ fun NowScreen() {
             }
         }
         LaunchedEffect(Unit) { if (Toys.holiday() != null && Store.holidayShown(c) != java.time.LocalDate.now().toString()) { Store.setHolidayShown(c, java.time.LocalDate.now().toString()); Ui.burst++ } }
+        RecapCard()
         if (Store.betaOn(c, "pep")) Txt(Toys.daily(Toys.PEP), T.body, muted = true)
         if (Store.betaOn(c, "ember")) Ember()
         val s = u?.session
@@ -1109,6 +1110,8 @@ fun SettingsScreen() {
         MemoryCard()
         LimitCard()
         DoctorCard()
+        SafetyCard()
+        RulesCard()
                 }
                 "tools" -> {
         SkillsCard()

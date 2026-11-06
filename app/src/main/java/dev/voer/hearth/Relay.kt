@@ -121,6 +121,22 @@ object Relay {
         val a = JSONObject(getJson(m, "/admin/doctor")).optJSONArray("checks") ?: return emptyList()
         return (0 until a.length()).map { val o = a.getJSONObject(it); listOf(o.optString("name"), o.optBoolean("ok"), o.optString("text"), o.optString("fix")) }
     }
+    // ── safety, rules, recap, templates ──
+    fun safety(m: Machine): JSONObject = JSONObject(getJson(m, "/admin/safety"))
+    fun setSafety(m: Machine, patch: JSONObject): JSONObject = postJson(m, "/admin/safety", patch)
+    fun undo(m: Machine, sessionId: String): JSONObject = postJson(m, "/sessions/$sessionId/undo", JSONObject())
+    fun rules(m: Machine): JSONObject = JSONObject(getJson(m, "/admin/options"))
+    fun ruleChange(m: Machine, patch: JSONObject): JSONObject = postJson(m, "/admin/options", patch)
+    fun decisions(m: Machine): List<Triple<Long, String, String>> {
+        val a = JSONObject(getJson(m, "/admin/decisions?tail=12")).optJSONArray("decisions") ?: return emptyList()
+        return (0 until a.length()).map { val o = a.getJSONObject(it); Triple(o.optLong("at"), o.optString("result"), o.optString("text")) }
+    }
+    fun recap(m: Machine): JSONObject = JSONObject(getJson(m, "/recap?days=7"))
+    fun templates(m: Machine): List<Pair<String, String>> {
+        val a = JSONObject(getJson(m, "/templates")).optJSONArray("templates") ?: return emptyList()
+        return (0 until a.length()).map { val o = a.getJSONObject(it); o.optString("name") to o.optString("text") }
+    }
+    fun addTemplate(m: Machine, name: String, text: String): JSONObject = postJson(m, "/templates", JSONObject().put("add", JSONObject().put("name", name).put("text", text)))
     fun chatTags(m: Machine): JSONObject = JSONObject(getJson(m, "/chat-tags")).optJSONObject("tags") ?: JSONObject()
     fun setChatTag(m: Machine, id: String, pin: Boolean?, name: String?) { val b = JSONObject().put("id", id); if (pin != null) b.put("pin", pin); if (name != null) b.put("name", name); postJson(m, "/chat-tags", b) }
 
