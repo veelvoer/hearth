@@ -41,6 +41,10 @@ jobs:
         run: node desktop/test/safety.test.js
       - name: Safety through the server
         run: node desktop/test/safety-server.test.js
+      - name: Rules and decisions test
+        run: node desktop/test/rules.test.js
+      - name: Extras test (recap, templates, project summary)
+        run: node desktop/test/extras.test.js
       - name: Checklist test
         run: node desktop/test/checklist.test.js
       - name: Delete chats test

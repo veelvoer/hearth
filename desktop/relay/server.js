@@ -154,6 +154,12 @@ function start(opts) {
   let seenDenied = 0;
   const allowRules = () => (Array.isArray(readCfg().allowRules) ? readCfg().allowRules : []);
   const addRule = (r) => { if (!r) return null; const all = allowRules(); const ex = all.find((x) => x.tool === r.tool && x.prefix === r.prefix); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: r.tool, prefix: r.prefix, label: r.label, at: Date.now() }; writeCfg({ allowRules: [...all, n] }); return n; };
+  /** Rules that always say no ("ask before deleting"): a command that contains the words is refused without asking. */
+  const denyRules = () => (Array.isArray(readCfg().denyRules) ? readCfg().denyRules : []);
+  const addDeny = (text) => { const p = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 80); if (p.length < 2) return null; const all = denyRules(); const ex = all.find((x) => x.prefix === p); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: 'Bash', prefix: p, label: p, at: Date.now() }; writeCfg({ denyRules: [...all, n].slice(-100) }); return n; };
+  /** What Hearth decided about permission requests, newest last: by a rule or by you. */
+  const DECISIONS = [];
+  const logDecision = (d) => { try { DECISIONS.push({ at: Date.now(), ...d }); if (DECISIONS.length > 200) DECISIONS.splice(0, DECISIONS.length - 200); } catch { /* never */ } };
   const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
   /** A folder Claude may work in: inside the projects folder, or (when that is switched on) any folder of this server. */
   const okDir = (p) => inRoot(p) || (outsideOk() && isDir(p));
@@ -358,8 +364,9 @@ function start(opts) {
       }
     } else if (name === 'PermissionRequest') {
       // allowed for good, or this chat is on Full auto: no question
-      if (tool === 'Bash' && perms.anyMatch(allowRules(), tool, h.tool_input)) return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } };
-      if (getPrefs(sid).auto === true && bypassOk()) return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } };
+      if (tool === 'Bash') { const cmd = String((h.tool_input || {}).command || ''); const dr = denyRules().find((r) => cmd.includes(r.prefix)); if (dr) { logDecision({ tool, text: cmd.slice(0, 120), result: 'denied by your rule', rule: dr.label, chat: sid }); return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'Blocked by a rule you made in Hearth: "' + dr.label + '"' } } }; } }
+      if (tool === 'Bash' && perms.anyMatch(allowRules(), tool, h.tool_input)) { logDecision({ tool, text: String((h.tool_input || {}).command || '').slice(0, 120), result: 'allowed by your rule', chat: sid }); return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } }; }
+      if (getPrefs(sid).auto === true && bypassOk()) { logDecision({ tool, text: describe(tool, h.tool_input), result: 'allowed (Full auto)', chat: sid }); return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } }; }
       // the same prompt can reach us twice (a hook in your Claude settings plus the one added for this run): share one question
       const key = sid + '|' + tool + '|' + JSON.stringify(h.tool_input || {});
       let shared = pendingByKey.get(key);
@@ -376,6 +383,7 @@ function start(opts) {
         promise.finally(() => pendingByKey.delete(key));
       }
       const decision = await shared.promise;
+      logDecision({ tool, text: describe(tool, h.tool_input), result: decision === 'allow' || decision === 'allow_always' ? 'allowed by you' : decision === 'deny' ? 'denied by you' : 'no answer in time', chat: sid });
       if (decision === 'allow' || decision === 'deny' || decision === 'allow_always') {
         const d = { behavior: decision === 'deny' ? 'deny' : 'allow' };
         if (decision === 'deny') d.message = 'Denied in Hearth';
@@ -1112,8 +1120,24 @@ function start(opts) {
         }
         if (parts[0] === 'admin' && parts[1] === 'safety') return json(res, 200, { snapshots: snapshotsOn(), backups: { on: backupsOn(), list: safety.listBackups(dir) }, budget: { ...budgetCfg(), usedDay: Math.round(costLastDay() * 100) / 100 } });
         if (parts[0] === 'sessions' && parts[2] === 'snapshots') { const f = core.findSession(parts[1]); const cwd = f ? core.summarize(f).cwd : ''; return json(res, 200, cwd && okDir(cwd) ? safety.listSnapshots({ dir, cwd }).map((x) => ({ id: x.id, at: x.at, label: x.label, text: x.text, files: x.files, bytes: x.bytes })) : []); }
+        if (parts[0] === 'admin' && parts[1] === 'decisions') return json(res, 200, { decisions: DECISIONS.slice(-Math.max(1, Math.min(200, Number(u.searchParams.get('tail')) || 50))).reverse() });
+        if (parts[0] === 'recap') {   // a short look back: how the last days went
+          const days = Math.max(1, Math.min(31, Number(u.searchParams.get('days')) || 7)); let r; try { r = core.report(days); } catch { r = null; }
+          if (!r) return json(res, 200, { days, empty: true });
+          const t = r.totals || {}, busiest = (r.days || []).reduce((m, d) => (d.tokens > (m ? m.tokens : 0) ? d : m), null);
+          return json(res, 200, { days, activeDays: t.activeDays || 0, prompts: t.prompts || 0, sessions: t.sessions || 0, tokens: t.tokens || 0, cost: Math.round((t.cost || 0) * 100) / 100, streak: t.currentStreak || 0, favorite: r.favorite || '', busiest: busiest && busiest.tokens > 0 ? { date: busiest.date, tokens: busiest.tokens } : null, empty: !(t.prompts || t.tokens) });
+        }
+        if (parts[0] === 'templates' && parts.length === 1) return json(res, 200, { templates: Array.isArray(readCfg().templates) ? readCfg().templates : [] });
+        if (parts[0] === 'projects' && parts[1] === 'summary') {   // one project at a glance: its chats, what they cost, what changed
+          const cwd = String(u.searchParams.get('cwd') || ''); if (!cwd || !okDir(cwd)) return json(res, 403, { error: 'that project is outside the projects folder' });
+          const chats = core.sessions(new Set(), (f, sm) => sm.cwd === cwd, 300).map((x) => ({ id: x.id, title: x.title, mtime: x.mtime }));
+          let cost = 0; for (const c of chats.slice(0, 60)) { try { const f = core.findSession(c.id); if (f) cost += core.summarize(f).cost || 0; } catch { /* skip */ } }
+          let changed = null, branch = ''; const g = spawnSync('git', ['-C', cwd, 'status', '--porcelain', '-b'], { timeout: 5000, encoding: 'utf8' });
+          if (g.status === 0) { const lines = String(g.stdout).split('\n').filter(Boolean); branch = (lines[0] || '').replace(/^## /, '').split('...')[0]; changed = lines.length - 1; }
+          return json(res, 200, { name: path.basename(cwd), cwd, chats: chats.length, lastAt: chats[0] ? chats[0].mtime : 0, cost: Math.round(cost * 100) / 100, changed, branch, recent: chats.slice(0, 5), snapshots: safety.listSnapshots({ dir, cwd }).length });
+        }
         if (parts[0] === 'admin' && parts[1] === 'logs') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
-        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
+        if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })), denyRules: denyRules().map(({ id, prefix, label }) => ({ id, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
           const want = String(u.searchParams.get('path') || '') || root || os.homedir();
           let p; try { p = fs.realpathSync(want); if (!fs.statSync(p).isDirectory()) throw new Error(); } catch { return json(res, 404, { error: 'no such folder' }); }
@@ -1345,6 +1369,12 @@ function start(opts) {
           if (Object.keys(tags).length > 2000) return json(res, 400, { error: 'too many' });
           writeCfg({ chatTags: tags }); return json(res, 200, { tags });
         }
+        if (parts[0] === 'templates' && parts.length === 1) {   // saved starting points for a chat
+          let list = Array.isArray(readCfg().templates) ? readCfg().templates : [];
+          if (b.add && typeof b.add === 'object') { const name = String(b.add.name || '').trim().slice(0, 40), text = String(b.add.text || '').trim().slice(0, 4000); if (!name || !text) return json(res, 400, { error: 'A template needs a name and a text.' }); list = [...list.filter((x) => x.name !== name), { id: crypto.randomBytes(4).toString('hex'), name, text }].slice(-50); }
+          if (b.remove) list = list.filter((x) => x.id !== String(b.remove));
+          writeCfg({ templates: list }); return json(res, 200, { templates: list });
+        }
         if (parts[0] === 'admin' && parts[1] === 'safety') {
           if (b.snapshots !== undefined) writeCfg({ snapshots: !!b.snapshots });
           if (b.backups !== undefined) writeCfg({ backups: !!b.backups });
@@ -1373,6 +1403,8 @@ function start(opts) {
           if (b.autoContinue !== undefined) writeCfg({ autoContinue: !!b.autoContinue });
           if (b.recheck) rootReady(true);
           if (b.removeRule) writeCfg({ allowRules: allowRules().filter((r) => r.id !== String(b.removeRule)) });
+          if (b.removeDeny) writeCfg({ denyRules: denyRules().filter((r) => r.id !== String(b.removeDeny)) });
+          if (b.addDeny) addDeny(b.addDeny);
           if (b.addPrefix !== undefined) { const r = perms.fromPrefix(b.addPrefix); if (!r) return json(res, 400, { error: 'That cannot be allowed for good: use a plain command like "npm test" (no ; & | > or dangerous commands).' }); addRule(r); }
           return json(res, 200, { outside: outsideOk(), bypass: bypassOk(), root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(!!b.recheck), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         }
