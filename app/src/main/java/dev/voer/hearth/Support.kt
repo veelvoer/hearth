@@ -364,7 +364,7 @@ private fun SupportActions(id: String, title: String, category: String, from: St
         msg = "$label…"
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/support/act", JSONObject().put("id", id).put("title", title).put("category", category).put("from", from).put("text", text.take(5000)).put("action", action)) } }
-                .onSuccess { msg = it.optString("text", "Done.") }.onFailure { msg = if ((it.message ?: "").contains("unknown", true)) "Update your server first." else it.message ?: "Didn't work" }
+                .onSuccess { msg = it.optString("text", "Done."); val sid = it.optString("session"); if (action == "claude" && it.optBoolean("ok", true) && sid.isNotEmpty()) { Ui.pendingOpen = PendingOpen(m.host, sid, title, it.optString("cwd"), false); Ui.tab = 0 } }.onFailure { msg = if ((it.message ?: "").contains("unknown", true)) "Update your server first." else it.message ?: "Didn't work" }
         }
     }
     Spacer(Modifier.height(8.dp))

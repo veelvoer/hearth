@@ -504,7 +504,7 @@ function start(opts) {
         let o; try { o = JSON.parse(line); } catch { continue; }
         const t = o.type;
         if (t === 'system' && o.subtype === 'init') {
-          if (o.session_id && !job.sid) { job.sid = o.session_id; jobs.set(job.sid, job); if (job.wantCall) setPrefs(job.sid, { call: job.wantCall }); if (job.wantKind) setPrefs(job.sid, { kind: job.wantKind }); if (job.wantRoot) setPrefs(job.sid, { root: true }); if (job.wantAuto) setPrefs(job.sid, { auto: true }); }
+          if (o.session_id && !job.sid) { job.sid = o.session_id; jobs.set(job.sid, job); try { noteRun(job.sid, job.cwd, body.text); } catch { /* best effort */ } if (job.wantCall) setPrefs(job.sid, { call: job.wantCall }); if (job.wantKind) setPrefs(job.sid, { kind: job.wantKind }); if (job.wantRoot) setPrefs(job.sid, { root: true }); if (job.wantAuto) setPrefs(job.sid, { auto: true }); }
           emit(job, { t: 'session', id: o.session_id || '', model: o.model || '' });
         } else if (t === 'stream_event') {
           const dl = ((o.event || {}).delta) || {};
@@ -652,6 +652,11 @@ function start(opts) {
   // ── support mail: a notification asks what to do with it (give it to Claude, put it on your list, ignore it) ──
   const listFile = path.join(dir, 'support-list.json');
   const readList = () => { try { return JSON.parse(fs.readFileSync(listFile, 'utf8')); } catch { return []; } };
+  // ── runs that were started but never reached the disk (the server was restarted or crashed in between): kept for three days, so a prompt never just vanishes ──
+  const stubFile = path.join(dir, 'pending-runs.json');
+  const readStubs = () => { try { const o = JSON.parse(fs.readFileSync(stubFile, 'utf8')); const keep = {}; for (const [k, v] of Object.entries(o)) if (Date.now() - v.at < 3 * 864e5) keep[k] = v; return keep; } catch { return {}; } };
+  const writeStubs = (o) => { try { fs.writeFileSync(stubFile, JSON.stringify(o), { mode: 0o600 }); } catch { /* best effort */ } };
+  const noteRun = (sid, cwd, text) => { if (!sid) return; const o = readStubs(); o[sid] = { cwd: String(cwd || ''), text: String(text || '').slice(0, 4000), at: Date.now() }; writeStubs(o); };
   const supportText = (m) => `Support ${m.kind === 'follow-up' ? 'follow-up' : 'request'} ${m.id} (${m.category}) from ${m.from}\nTitle: ${m.title}\n\n${m.text}`;
   /** Puts a task on Google Tasks (the default list), when the owner connected it. */
   async function googleTask(title, notes) {
@@ -693,7 +698,18 @@ function start(opts) {
     try { await fetch((process.env.HEARTH_SUPPORT_URL || c.supportUrl || 'http://127.0.0.1:47610').replace(/\/$/, '') + '/owner/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.token }, body: JSON.stringify({ id, event, note }), signal: AbortSignal.timeout(10000) }); } catch { /* no support desk here */ }
   }
   async function supportAct(clean, b, machine) {
-    if (b === 'claude') { const r = startJob({ text: `A support mail just arrived. Read it, look into the problem in this project, and tell me what you find and what you would answer. Do not email anyone.\n\n${supportText(clean)}`, cwd: root || undefined, mode: 'acceptEdits' }, 'new'); if (r.error) onLog('support to Claude: ' + r.message); return { ok: !r.error, text: r.error ? r.message : 'Started a chat with Claude.' }; }
+    if (b === 'claude') {   // the report goes into the chat you are already working in for Hearth, so you see Claude work on it right there
+      const base = path.resolve(__dirname, '..', '..'), want = (readCfg().supportCwd || '').trim();
+      const isHearth = (c) => c && (want ? c === want : path.basename(c) === 'claude_app' || fs.existsSync(path.join(c, 'desktop', 'relay', 'server.js')));
+      const target = core.sessions(new Set(), null, 60).filter((x) => isHearth(x.cwd) && visibleSession(x)).sort((x, y) => y.mtime - x.mtime)[0];
+      const cwd = target ? target.cwd : (isHearth(base) && okDir(base) ? base : (root || undefined));
+      const files = []; try { const fd = path.join(dir, 'support-files', clean.id); if (/^HRT-\d{3,8}$/.test(clean.id) && cwd) { const up = path.join(cwd, '.uploads'); fs.mkdirSync(up, { recursive: true }); for (const n of fs.readdirSync(fd)) { const to = path.join(up, Date.now() + '-' + n.replace(/^\d+-\d+-/, '')); fs.copyFileSync(path.join(fd, n), to); files.push(to); } } } catch { /* no files */ }
+      const text = `A support report came in (${clean.id}). Look into it here in this project, fix it, and tell me what you changed. Do not email anyone.\n\n${supportText(clean)}${files.length ? '\n\nThe person sent these pictures/files:\n' + files.map((f) => '@' + f).join('\n') : ''}`;
+      const r = startJob({ text, cwd, mode: 'acceptEdits' }, target ? target.id : 'new');
+      if (r.error) { onLog('support to Claude: ' + r.message); return { ok: false, text: r.error === 409 ? 'Claude is still working in your Hearth chat. Try again when it is done.' : r.message, session: target ? target.id : '', cwd: cwd || '' }; }
+      let sid = target ? target.id : ''; for (let i = 0; i < 40 && !sid; i++) { sid = r.job.sid || ''; if (!sid) await new Promise((x) => setTimeout(x, 150)); }
+      return { ok: true, text: target ? 'Sent to your Hearth chat. Opening it…' : 'Started a Hearth chat. Opening it…', session: sid, cwd: cwd || '' };
+    }
     if (b === 'list') {
       const have = readList().find((x) => x.id === clean.id && !x.done);
       if (have) return { ok: true, text: 'Already on your list.' };
@@ -709,6 +725,10 @@ function start(opts) {
   function supportIncoming(m) {
     const clean = { kind: m.kind === 'follow-up' ? 'follow-up' : 'new', id: String(m.id || '').slice(0, 20), title: String(m.title || '').slice(0, 120), category: String(m.category || 'other').slice(0, 20), from: String(m.from || '').slice(0, 120), text: String(m.text || '').slice(0, 5000) };
     if (supportPending() >= 50) return { code: 429, data: { error: 'too many support mails waiting' } };
+    if (Array.isArray(m.files) && /^HRT-\d{3,8}$/.test(clean.id)) {   // pictures and files that came with the mail: kept next to the list, so "Fix with Claude" can show them to Claude
+      const d = path.join(dir, 'support-files', clean.id); try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); } catch { /* best effort */ }
+      m.files.slice(0, 3).forEach((f, i) => { try { const buf = Buffer.from(String(f && f.data || ''), 'base64'); if (buf.length && buf.length <= 2e6) fs.writeFileSync(path.join(d, Date.now() + '-' + i + '-' + String(f.name || 'file').replace(/[^\w.\- ()]/g, '_').replace(/\.{2,}/g, '.').slice(-80)), buf, { mode: 0o600 }); } catch { /* skip that one */ } });
+    }
     const req = crypto.randomBytes(4).toString('hex');
     const ev = { kind: 'support', req, session: '', title: clean.title, cwd: '', machine: opts.name || os.hostname(), ts: Date.now(), call: false, ticket: clean.id,
       text: `${clean.kind === 'follow-up' ? 'Follow-up on a' : 'New'} ${{ bug: 'bug report', question: 'question', idea: 'idea' }[clean.category] || 'support mail'} from ${clean.from}: ${clean.text.replace(/\s+/g, ' ').slice(0, 160)}` };
@@ -1072,7 +1092,9 @@ function start(opts) {
           const have = new Set(own.map((x) => x.id));
           const away = hubSync ? hubSync.elsewhere().filter((e) => !have.has(e.id) && e.cwd).map((e) => ({ id: e.id, title: e.title, cwd: e.cwd, mtime: Math.floor(e.mtime), live: false, busy: false, running: far.has(e.id), kind: getPrefs(e.id).kind, elsewhere: e.machine })) : [];
           const gone = new Set(readCfg().deleted || []);
-          return json(res, 200, [...own, ...away].filter((x) => !gone.has(x.id)).sort((x, y) => y.mtime - x.mtime));
+          const stubs = readStubs(), seenIds = new Set([...own, ...away].map((x) => x.id));
+          const lost = Object.entries(stubs).filter(([id, v]) => !seenIds.has(id) && !core.findSession(id) && !jobs.has(id) && (!root || !v.cwd || under(v.cwd, root))).map(([id, v]) => ({ id, title: v.text.replace(/\s+/g, ' ').slice(0, 70) || 'Interrupted chat', cwd: v.cwd, mtime: Math.floor(v.at), live: false, busy: false, running: false, kind: 'code', interrupted: true }));
+          return json(res, 200, [...own, ...away, ...lost].filter((x) => !gone.has(x.id)).sort((x, y) => y.mtime - x.mtime));
         }
         if (parts[0] === 'sessions' && parts[2] === 'messages') {
           const ew = hubSync && hubSync.findElsewhere(parts[1]);
@@ -1082,6 +1104,7 @@ function start(opts) {
           const withWaiting = (list) => { const n = (t) => String(t || '').replace(/\s+/g, ' ').trim(), seen = list.filter((m) => m.role === 'user').slice(-40).map((m) => n(m.text)); return [...list, ...waiting.filter((w) => !seen.includes(n(w.text)))]; };
           if (ew) return json(res, 200, withWaiting(core.messagesOf(ew, tail)));
           const f = core.findSession(parts[1]);
+          if (!f && !jobs.has(parts[1])) { const st = readStubs()[parts[1]]; if (st) return json(res, 200, [{ role: 'user', text: st.text, ts: Math.floor(st.at / 1000) }, { role: 'meta', text: 'This run was interrupted before it could be saved (the server restarted or the connection broke). Send the message again to start it over.' }]); }
           if (f && !visibleSession(core.summarize(f))) return json(res, 403, { error: 'outside the projects folder' });
           { const shx = shares.bySession(parts[1]); const list = withWaiting(core.messages(parts[1], tail)); return json(res, 200, shx ? shares.merge(shx, list) : list); }
         }
@@ -1314,6 +1337,7 @@ function start(opts) {
           bumpChats(); return json(res, 200, { ok: true, stem, chats: ids.length });
         }
         if (parts[0] === 'sessions' && (parts[2] === 'delete' || parts[2] === 'restore') && parts.length === 3) {   // a deleted chat goes to a trash folder first, so a mistake can be undone
+          if (parts[2] === 'delete') { const st = readStubs(); if (st[parts[1]]) { delete st[parts[1]]; writeStubs(st); if (!core.findSession(parts[1])) return json(res, 200, { ok: true }); } }   // an interrupted run that you delete must not come back
           const sid = parts[1], trash = path.join(core.projectsDir(), '.hearth-trash');
           if (parts[2] === 'restore') {
             const hit = (() => { try { return fs.readdirSync(trash).find((n) => n.endsWith('__' + sid + '.jsonl')); } catch { return null; } })();

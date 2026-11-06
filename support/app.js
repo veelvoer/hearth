@@ -72,6 +72,7 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
     return out;
   }
   const mailFiles = (files) => (files || []).map((f) => ({ filename: f.name, path: f.path, contentType: f.type }));
+  const fileData = (files) => (files || []).map((f) => { try { return { name: f.name, type: f.type, data: fs.readFileSync(f.path).toString('base64') }; } catch { return null; } }).filter(Boolean);   // handed to the owner's Hearth, so Claude can look at the pictures
   const publicFiles = (files) => (files || []).map((f) => ({ name: f.name, size: f.size }));
 
   // ── requests ──
@@ -88,12 +89,12 @@ function createApp({ dataDir, transport, from, owners = [], resolveMx = async (d
     const t = { id, email, category, title, status: 'open', createdAt: now(), updatedAt: now(), meta: { app: String(m.app || '').slice(0, 30), version: String(m.version || '').slice(0, 20), platform: String(m.platform || '').slice(0, 80) }, messages: [{ from: 'user', text, at: now(), ...(files.length ? { files } : {}) }] };
     db.tickets[id] = t; save();
     const sent = await Promise.all([send(mail.confirmation(t, plus(id)), email), send(mail.notifyOwner(t, plus(id)), ownerTo, mailFiles(files))]);
-    Promise.resolve(onOwnerMail({ kind: 'new', id, title, category, from: email, text })).catch(() => {});   // tells the owner's Hearth, which asks what to do with it
+    Promise.resolve(onOwnerMail({ kind: 'new', id, title, category, from: email, text, files: fileData(files) })).catch(() => {});   // tells the owner's Hearth, which asks what to do with it
     return { code: 200, body: { id, mailed: sent.every(Boolean) } };
   }
   async function addUserMessage(t, text, files = []) {
     t.messages.push({ from: 'user', text, at: now(), ...(files.length ? { files } : {}) }); t.updatedAt = now(); t.status = 'open'; save();
-    Promise.resolve(onOwnerMail({ kind: 'follow-up', id: t.id, title: t.title, category: t.category, from: t.email, text })).catch(() => {});
+    Promise.resolve(onOwnerMail({ kind: 'follow-up', id: t.id, title: t.title, category: t.category, from: t.email, text, files: fileData(files) })).catch(() => {});
     return send(mail.followUpOwner(t, text, plus(t.id)), ownerTo, mailFiles(files));
   }
   async function addSupportMessage(t, text) {

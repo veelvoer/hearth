@@ -207,7 +207,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
     LaunchedEffect(machines, guests, refreshTick) {
         while (true) {
             // every computer is asked at the same time and shows up as soon as it answers; a computer that is off must not hold the others back
-            (machines + guests).map { mm -> launch { val k = mm.host + "|" + mm.token.take(8); lists[k] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.onSuccess { errs.remove(k) }.onFailure { errs[k] = it.message ?: it.javaClass.simpleName }.getOrNull() } }.forEach { it.join() }
+            (machines + guests).map { mm -> launch { val k = mm.host + "|" + mm.token.take(8); lists[k] = runCatching { withContext(Dispatchers.IO) { Relay.sessions(mm) } }.onSuccess { errs.remove(k) }.onFailure { errs[k] = friendlyError(it, mm.name).replace(" Your message is back in the box.", "").replace(" Your message is back in the box: try again in a moment.", " Try again in a moment.").replace(" Your message is back in the box: try again.", "") }.getOrNull() } }.forEach { it.join() }
             (machines.firstOrNull { it.secure } ?: machines.firstOrNull())?.let { hm ->   // pins and names live on the server, so the phone and the computer agree
                 runCatching { withContext(Dispatchers.IO) {
                     val t = Relay.chatTags(hm)
@@ -681,7 +681,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
+                    var attempt = 0; var gotEvent = false   // a proxy that says 502/503/504 while the server restarts: try again a few times before giving up
+                    while (true) { try {
                     Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model.ifBlank { null }, effort = effort.ifBlank { null }, run = if (isNew && m.secure && Ui.newRun != "vps") Ui.newRun else null, root = isNew && sess.root) { t, tx, e ->
+                        gotEvent = true
                         when (t) {
                             "session" -> if (isNew && tx.isNotEmpty()) sess = sess.copy(id = tx, title = text.take(60))
                             "prefs" -> call = tx
@@ -693,13 +696,14 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                             "done" -> if (e) err = tx.ifBlank { "Claude reported an error." }
                         }
                     }
+                    break } catch (x: ApiException) { if (x.code in 502..504 && !gotEvent && attempt < 3) { attempt++; Thread.sleep(2000L * attempt) } else throw x } }
                 }
             }.onFailure {
                 if (it is ApiException && it.code == 409 && (it.message ?: "").contains("still working")) {   // busy from somewhere else: wait for it, then send
                     queued.add(0, text); unsent.removeAll { u -> u.first == text }
                     val ix = msgs.indexOfLast { x -> x.role == "user" && x.text == text }; if (ix >= 0) msgs.removeAt(ix)
                     serverBusy = true
-                } else err = it.message ?: "Connection lost"
+                } else { err = friendlyError(it, m.name); if (input.isBlank()) input = text }   // whatever went wrong, what you wrote is back in the box
             }
             parts.clear(); sending = false; reload()
         }

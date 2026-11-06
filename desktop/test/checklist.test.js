@@ -30,6 +30,15 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   r = await ck({ remove: 'HRT-2' });
   ok('7 one item can be removed', r.j.items.length === 0);
   ok('8 a guest key cannot touch the checklist', (await req('POST', '/support/checklist', 'share.abcd.abcdefghijklmnop', { remove: 'done' })).code === 401);
+  const inc = await req('POST', '/support/incoming', tok, { kind: 'new', id: 'HRT-4242', title: 'With a picture', category: 'bug', from: 'a@x.nl', text: 'See the screenshot', files: [{ name: 'shot one.jpg', type: 'image/jpeg', data: Buffer.from('JPEGDATA').toString('base64') }, { name: '../evil.sh', data: Buffer.from('x').toString('base64') }] });
+  const fd = path.join(T, 'd', 'support-files', 'HRT-4242'), got = fs.existsSync(fd) ? fs.readdirSync(fd) : [];
+  ok('9 pictures that come with a support mail are kept for Claude', inc.code === 200 && got.length === 2 && got.some((n) => /shot one\.jpg$/.test(n)) && !got.some((n) => /\.\./.test(n)), got.join());
+  fs.writeFileSync(path.join(T, 'd', 'pending-runs.json'), JSON.stringify({ 'lost-run-1': { cwd: proj, text: 'make me a license plate counter web app', at: Date.now() - 60000 } }));
+  const lst = (await req('GET', '/sessions', tok)).j, lostItem = lst.find((x) => x.id === 'lost-run-1');
+  ok('10 a run that never reached the disk still shows in the list, marked as interrupted', !!lostItem && lostItem.interrupted === true && /license plate/.test(lostItem.title));
+  const lm = (await req('GET', '/sessions/lost-run-1/messages', tok)).j;
+  ok('11 opening it shows the prompt and says what happened', Array.isArray(lm) && lm[0].role === 'user' && /license plate/.test(lm[0].text) && /interrupted/.test(lm[1].text));
+  ok('12 deleting it works and it does not come back', (await req('POST', '/sessions/lost-run-1/delete', tok, {})).code === 200 && !(await req('GET', '/sessions', tok)).j.some((x) => x.id === 'lost-run-1'));
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();
