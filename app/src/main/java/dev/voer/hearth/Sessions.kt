@@ -648,7 +648,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 val it = raw + unsent.map { u -> Msg("user", u.first) }
                 MsgCache.put(sess.id, raw)
                 if (it.size != msgs.size || it.lastOrNull()?.text != msgs.lastOrNull()?.text || it.lastOrNull()?.result != msgs.lastOrNull()?.result) { msgs.clear(); msgs.addAll(it) }; if (settled.intValue < 0) settled.intValue = msgs.size; err = null }
-            .onFailure { err = it.message ?: "Can't reach ${m.name}" }
+            .onFailure { if (!sending) err = friendlyError(it, m.name).replace(" Your message is back in the box.", "").replace(" Your message is back in the box: try again in a moment.", " Try again in a moment.").replace(" Your message is back in the box: try again.", "") }   // while Claude is running, a failed look at the chat is not an error: the run itself says when it is over
     }
     LaunchedEffect(sess.id) {
         // the messages come first and on their own: the small extras load beside them instead of in front of them

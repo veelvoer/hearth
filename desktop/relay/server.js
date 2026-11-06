@@ -1106,7 +1106,8 @@ function start(opts) {
           const f = core.findSession(parts[1]);
           if (!f && !jobs.has(parts[1])) { const st = readStubs()[parts[1]]; if (st) return json(res, 200, [{ role: 'user', text: st.text, ts: Math.floor(st.at / 1000) }, { role: 'meta', text: 'This run was interrupted before it could be saved (the server restarted or the connection broke). Send the message again to start it over.' }]); }
           if (f && !visibleSession(core.summarize(f))) return json(res, 403, { error: 'outside the projects folder' });
-          { const shx = shares.bySession(parts[1]); const list = withWaiting(core.messages(parts[1], tail)); return json(res, 200, shx ? shares.merge(shx, list) : list); }
+          { const shx = shares.bySession(parts[1]); let raw = []; try { raw = core.messages(parts[1], tail); } catch (e) { onLog('messages ' + parts[1] + ': ' + e.message); }   // a chat file that is half written must never turn into an error on the phone
+          const list = withWaiting(raw); return json(res, 200, shx ? shares.merge(shx, list) : list); }
         }
         if (parts[0] === 'sessions' && parts[2] === 'state') {   // is Claude working on this chat right now? (cheap: the phone asks every few seconds)
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set(), id = parts[1];
