@@ -109,6 +109,8 @@ object Store {
     fun setHolidayShown(c: Context, v: String) = sp(c).edit().putString("holshown", v).apply()
     fun recapClosed(c: Context): Int = sp(c).getInt("recapclosed", 0)
     fun setRecapClosed(c: Context, w: Int) = sp(c).edit().putInt("recapclosed", w).apply()
+    fun simpleView(c: Context) = sp(c).getBoolean("simpleview", false)
+    fun setSimpleView(c: Context, v: Boolean) = sp(c).edit().putBoolean("simpleview", v).apply()
     fun crash(c: Context): String = sp(c).getString("crash", "") ?: ""
     fun setCrash(c: Context, v: String) = sp(c).edit().putString("crash", v).commit().let { }
     fun betaUnlocked(c: Context) = sp(c).getBoolean("beta", false)

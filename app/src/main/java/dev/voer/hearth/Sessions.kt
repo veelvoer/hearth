@@ -165,6 +165,7 @@ fun SessionsScreen() {
     LaunchedEffect(Ui.machinesRev) { while (true) { machines.firstOrNull { it.secure }?.let { m -> runCatching { withContext(Dispatchers.IO) { Shares.sync(c, m) } } }; val before = guests; guests = Shares.guests(c); if (before.map { it.share + it.token } != guests.map { it.share + it.token }) CallService.sync(c); delay(8_000) } }
     LaunchedEffect(Ui.shareRev) { if (Ui.pendingJoin != null) joinOpen = true }
     if (joinOpen) JoinDialog(Ui.pendingJoin ?: "", { joinOpen = false; Ui.pendingJoin = null }) { g -> joinOpen = false; Ui.pendingJoin = null; guests = Shares.guests(c); view = View.Home; CallService.sync(c) }
+    LaunchedEffect(Ui.startNew) { if (Ui.startNew) { Ui.startNew = false; view = View.New } }
     val po = Ui.pendingOpen
     LaunchedEffect(po) {
         if (po != null) {
@@ -581,7 +582,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val parts = remember { mutableStateListOf<Part>() }
     var sending by remember { mutableStateOf(false) }
     var serverBusy by remember { mutableStateOf(false) }
-    var input by remember { mutableStateOf("") }
+    var input by remember { mutableStateOf(if (s0.id.isEmpty()) Ui.prefill.also { Ui.prefill = "" } else "") }
     var err by remember { mutableStateOf<String?>(null) }
     val appCtx = LocalContext.current
     var mode by remember { mutableStateOf(Store.chatMode(appCtx, sess.id).ifEmpty { if (m.secure) "auto" else "acceptEdits" }) }
@@ -623,12 +624,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val files = remember { mutableStateListOf<Pair<String, String>>() }   // (name, path on the computer)
     var uploading by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
-    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) scope.launch {
+    fun attach(uri: android.net.Uri) {
+        scope.launch {
             uploading = true; err = null
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val name = ctx.contentResolver.query(uri, null, null, null, null)?.use { cur -> val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if (cur.moveToFirst() && i >= 0) cur.getString(i) else null } ?: "photo.jpg"
+                    val name = ctx.contentResolver.query(uri, null, null, null, null)?.use { cur -> val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if (cur.moveToFirst() && i >= 0) cur.getString(i) else null } ?: ("file-" + System.currentTimeMillis())
                     val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw ApiException(0, "Couldn't read that file")
                     if (bytes.size > 25_000_000) throw ApiException(0, "That file is over 25 MB")
                     name to Relay.upload(m, sess.id, sess.cwd, name, bytes)
@@ -637,6 +638,14 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             uploading = false
         }
     }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri -> if (uri != null) attach(uri) }
+    var photoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val camera = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { done -> if (done) photoUri?.let { attach(it) } }
+    val dictate = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        val said = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (!said.isNullOrBlank()) input = (input + " " + said).trim()
+    }
+    LaunchedEffect(Unit) { if (s0.id.isEmpty() && Ui.prefillUris.isNotEmpty()) { val l = Ui.prefillUris.toList(); Ui.prefillUris.clear(); l.forEach { attach(it) } } }   // pictures shared from another app
     var voice by remember { mutableStateOf(startVoice || (CallSession.active && CallSession.sessId == s0.id)) }
     val list = rememberLazyListState()
     val cs = MaterialTheme.colorScheme
@@ -769,6 +778,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
 
     if (voice && sess.id.isNotEmpty()) { CallScreen(m, sess, mode) { voice = false; scope.launch { reload() } }; return }
     val working = sending || serverBusy
+    val speaker = remember { Speaker(ctx) }
+    DisposableEffect(Unit) { onDispose { speaker.shutdown() } }
     var wasWorking by remember { mutableStateOf(false) }
     LaunchedEffect(working) { if (wasWorking && !working && msgs.isNotEmpty()) { if (Store.betaOn(c, "confetti")) Ui.burst++; if (Store.betaOn(c, "sounds")) Toys.sound(c, "done") }; wasWorking = working }
     Column(Modifier.fillMaxSize().imePadding().padding(top = 12.dp)) {
@@ -836,19 +847,20 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                         if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
                         }
                     }
-                    "tool" -> ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
+                    "tool" -> if (!Store.simpleView(c)) ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
                     "meta" -> Txt(msg.text, T.small, muted = true)
                     else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column {
                         MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true)
                         if (idx == msgs.indexOfLast { it.role == "assistant" } && !working) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { Row {   // the newest reply can be copied or sent on in one tap
                             TextAction("Copy") { (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Claude", msg.text)); Toast.makeText(c, "Copied", Toast.LENGTH_SHORT).show() }
+                            TextAction(if (speaker.speaking) "Stop reading" else "Read") { speaker.toggle(msg.text) }
                             TextAction("Share") { c.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, msg.text), null)) }
                         } }
                     }
                 }
               }
             }
-            itemsIndexed(parts) { _, p -> if (p.tool) ToolCard(p.name, p.detail, p.result, p.err, p.at) else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
+            itemsIndexed(parts) { _, p -> if (p.tool) { if (!Store.simpleView(c)) ToolCard(p.name, p.detail, p.result, p.err, p.at) } else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
             queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
             if (working) item { WorkingIndicator() }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {
@@ -896,9 +908,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = if (perm != null || reqAsk != null || incoming != null) 0.dp else 8.dp)) {
             Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!guest) IconAction("clip", "Attach", Alignment.Center) { pick.launch("*/*") } else Spacer(Modifier.width(12.dp))
+                if (!guest) IconAction("clip", "Attach", Alignment.Center) { pick.launch("*/*") }
+                if (!guest) IconAction("camera", "Take a photo", Alignment.Center) { runCatching { val f = java.io.File(ctx.cacheDir, "shots").also { it.mkdirs() }.let { d -> java.io.File(d, "photo-" + System.currentTimeMillis() + ".jpg") }; val u = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f); photoUri = u; camera.launch(u) }.onFailure { err = "The camera could not be opened." } }
+                if (guest) Spacer(Modifier.width(12.dp))
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty() && sess.kind != "talk") "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
+                if (!guest && !working && input.isBlank()) IconAction("mic", "Speak your message", Alignment.Center) { runCatching { dictate.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)) }.onFailure { err = "This phone has no speech input." } }
                 Box(Modifier.size(40.dp).semantics { contentDescription = if (stop) "Stop" else if (sending) "Sending" else "Send"; role = androidx.compose.ui.semantics.Role.Button }.pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
                     if (sending && !stop) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else MorphGlyph(if (stop) "stop" else "send", 22.dp, cs.onPrimary)
                 }

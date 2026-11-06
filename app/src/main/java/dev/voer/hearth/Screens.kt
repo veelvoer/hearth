@@ -64,6 +64,10 @@ import java.util.Locale
 data class PendingOpen(val host: String, val session: String, val title: String, val cwd: String, val voice: Boolean = false)
 
 object Ui {
+    /** From another app (Share) or a shortcut: a new chat should open, maybe with text and pictures already in it. */
+    var startNew by mutableStateOf(false)
+    var prefill by mutableStateOf("")
+    val prefillUris = mutableStateListOf<android.net.Uri>()
     /** A report that is ready to send: the support screen opens with this text in it. */
     var supportDraft by mutableStateOf("")
     var openSupport by mutableStateOf(false)
@@ -1061,6 +1065,7 @@ fun SettingsScreen() {
             Row2("Animations", "Fades, slides and bounces. Off is the lightest.") { Switch(Fx.motion, { Fx.motion = it; Store.setMotion(c, it) }) }
             Spacer(Modifier.height(8.dp))
         }
+        Card { Row2("Simple view in chats", "Hides the tool and command details, so a chat only shows the conversation.") { var on by remember { mutableStateOf(Store.simpleView(c)) }; Switch(on, { on = it; Store.setSimpleView(c, it) }) } }
         Card { Row2("Full dashboard on Home", "Show everything the computer dashboard shows: totals, models, projects, tools and more, below the Home cards.") { var on by remember { mutableStateOf(Store.fullDashboard(c)) }; Switch(on, { on = it; Store.setFullDashboard(c, it) }) } }
         Column(Modifier.appear().fillMaxWidth().panel(RoundedCornerShape(20.dp)).padding(horizontal = 18.dp, vertical = 6.dp)) {
             Row(Modifier.fillMaxWidth().clickable { sub = "widgets" }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {   // looks like the folding cards, but opens its own page

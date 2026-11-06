@@ -147,3 +147,18 @@ fun WorkingIndicator() {
         androidx.compose.animation.AnimatedContent(if (playful) Toys.VERBS[i] + "…" else "Claude is working…", transitionSpec = { androidx.compose.animation.fadeIn(tween(300)) togetherWith androidx.compose.animation.fadeOut(tween(300)) }, label = "verb") { Txt(it, T.small, muted = true) }
     }
 }
+
+/** Reads a reply aloud with the phone's own voice. */
+class Speaker(c: Context) {
+    private var tts: android.speech.tts.TextToSpeech? = null
+    private var ready = false
+    var speaking by mutableStateOf(false)
+    private val app = c.applicationContext
+    private fun start(after: () -> Unit) { if (tts != null) { if (ready) after(); return }; tts = android.speech.tts.TextToSpeech(app) { ok -> ready = ok == android.speech.tts.TextToSpeech.SUCCESS; if (ready) { tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() { override fun onStart(id: String?) {}; override fun onDone(id: String?) { speaking = false }; @Deprecated("old") override fun onError(id: String?) { speaking = false } }); after() } } }
+    fun toggle(text: String) {
+        if (speaking) { tts?.stop(); speaking = false; return }
+        val clean = text.replace(Regex("```[\\s\\S]*?```"), " code block. ").replace(Regex("[*_`#>]"), "").take(3900)
+        start { speaking = true; tts?.speak(clean, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "hearth-read") }
+    }
+    fun shutdown() { runCatching { tts?.stop(); tts?.shutdown() }; tts = null; speaking = false }
+}

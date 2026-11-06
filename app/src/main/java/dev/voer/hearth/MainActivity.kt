@@ -68,6 +68,13 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        if (i?.action == android.content.Intent.ACTION_SEND) {   // "Share" from another app: the text or the pictures start a new chat
+            Ui.prefill = listOfNotNull(i.getStringExtra(android.content.Intent.EXTRA_SUBJECT), i.getStringExtra(android.content.Intent.EXTRA_TEXT)).joinToString("\n")
+            Ui.prefillUris.clear()
+            @Suppress("DEPRECATION") (i.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM))?.let { Ui.prefillUris.add(it) }
+            Ui.startNew = true; Ui.tab = 0; return
+        }
+        if (i?.action == "dev.voer.hearth.NEW_CHAT") { Ui.startNew = true; Ui.tab = 0; return }
         val host = i?.getStringExtra("open_host") ?: return
         Ui.pendingOpen = PendingOpen(host, i.getStringExtra("open_session") ?: return, i.getStringExtra("open_title") ?: "Session", i.getStringExtra("open_cwd") ?: "", i.getBooleanExtra("open_voice", false))
         Ui.tab = 0

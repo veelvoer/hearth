@@ -54,6 +54,7 @@ fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorSche
             "bulb" -> svg("M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z")
             "pizza" -> svg("M12 3L3 19c5-3 13-3 18 0z M10 11h.01 M13 14h.01 M9 15h.01")
             "coin" -> svg("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v10 M9.5 9.5c0-1 1-1.5 2.5-1.5s2.5.8 2.5 1.8-1 1.4-2.5 1.7-2.5.7-2.5 1.8 1 1.7 2.5 1.7 2.5-.5 2.5-1.5")
+            "camera" -> svg("M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z")
             "chevd" -> svg("M6 9l6 6 6-6")
             "chevu" -> svg("M6 15l6-6 6 6")
             "chevr" -> svg("M9 6l6 6-6 6")
@@ -133,5 +134,5 @@ fun IconAction(glyph: String, desc: String, align: Alignment = LocalIconAlign.cu
 val ICON_ONLY = setOf("Cancel", "Close", "Not now", "Got it", "Done", "Save", "Back", "Copy", "Share", "Attach", "Tour", "Setup", "What changed", "Look again", "Refresh", "Check for updates", "Check again", "Remove", "Add")
 val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
     "Check for updates" to "sync", "Check again" to "sync", "Test call" to "phone", "Cancel" to "x", "Close" to "x", "Not now" to "x", "Got it" to "check", "Back" to "back", "Tour" to "tour",
-    "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Undo" to "history", "Undo this run" to "history", "Back up now" to "download", "Restore the last backup" to "sync", "Report" to "mail", "Details" to "info", "Share" to "share", "Pin to top" to "pin", "Unpin" to "pin", "Rename" to "edit", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
+    "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Read" to "volume", "Stop reading" to "x", "Undo" to "history", "Undo this run" to "history", "Back up now" to "download", "Restore the last backup" to "sync", "Report" to "mail", "Details" to "info", "Share" to "share", "Pin to top" to "pin", "Unpin" to "pin", "Rename" to "edit", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
     "Make invite link" to "share", "Share link" to "share", "Stop sharing" to "trash", "Join" to "people", "Enter the address myself" to "link", "What changed" to "history", "Restart" to "sync", "Delete" to "trash", "Delete this chat…" to "trash", "Revoke" to "x", "Look again" to "sync", "Show all" to "plus", "Remove step" to "trash", "Open folder" to "folder", "Set up a workflow" to "sliders", "Add to tasks" to "check", "Fix with Claude" to "tour", "Save" to "check", "Install" to "download", "Continue" to "play", "Setup" to "play", "Background access" to "clock", "Full-screen calls" to "phone")
