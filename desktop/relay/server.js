@@ -486,6 +486,8 @@ function start(opts) {
       ? spawn('flatpak-spawn', ['--host', `--directory=${cwd}`, 'bash', '-lc', 'exec claude "$@"', 'claude', ...args], { stdio: ['pipe', 'pipe', 'ignore'] })
       : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
       : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    child.stdin.on('error', () => {});   // Claude may exit before it has read the prompt: that is the run's problem, it must never take the whole server down
+    child.stdout.on('error', () => {});
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
     const job = { onDone: [], key, sid: sidParam === 'new' ? '' : sidParam, child, events: [], listeners: new Set(), done: false, started: Date.now(), cwd, text: '', error: false, wantCall: null, wantKind: kind === 'talk' && sidParam === 'new' ? 'talk' : null, wantRoot: asRoot, rootLaunch, bugs: bugsOn, resumeBody: { mode: body.mode, model: body.model }, wantAuto: asRoot && body.mode === 'bypassPermissions' && bypassOk() };
     jobs.set(key, job);
@@ -1629,7 +1631,7 @@ function start(opts) {
         }
       }
       return json(res, 404, { error: 'not found' });
-    } catch (e) { onLog(String(e && e.message)); if (!res.headersSent) json(res, 500, { error: 'relay error' }); }
+    } catch (e) { onLog('request ' + req.method + ' ' + String(req.url).split('?')[0] + ': ' + String(e && e.stack || e && e.message || e).split('\n').slice(0, 3).join(' | ')); if (!res.headersSent) json(res, 500, { error: 'The server hit a problem with that request (' + String(e && e.message || 'unknown').slice(0, 120) + ')' }); }
   });
   server.keepAliveTimeout = 65000;
 

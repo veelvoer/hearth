@@ -382,6 +382,7 @@ fun friendlyError(e: Throwable, name: String? = null): String {
     val code = (e as? ApiException)?.code ?: 0
     return when {
         code in 502..504 -> "$who is not answering right now (it may be restarting). Your message is back in the box: try again in a moment."
+        code == 500 && msg.isNotBlank() && !msg.startsWith("Relay error") -> "$who: $msg Your message is back in the box."
         code == 500 -> "$who had a problem with that (error 500). Your message is back in the box: try again."
         msg.contains("failed to connect", true) || msg.contains("timeout", true) || msg.contains("timed out", true) || msg.contains("unreachable", true) || msg.contains("No route", true) || msg.contains("Connection refused", true) -> "Can't reach $who. Is it on, and on the same Wi-Fi? Your message is back in the box."
         msg.startsWith("Lost the connection") -> msg

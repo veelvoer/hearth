@@ -8,6 +8,10 @@ const os = require('os');
 const fs = require('fs');
 const { start } = require('./server');
 
+// One run that goes wrong (a pipe that breaks, a program that cannot start) must not stop the server and every other chat with it: note it and keep going.
+process.on('uncaughtException', (e) => { console.error(new Date().toISOString(), 'problem (kept running):', e && e.stack ? String(e.stack).split('\n').slice(0, 4).join(' | ') : e); });
+process.on('unhandledRejection', (e) => { console.error(new Date().toISOString(), 'problem (kept running):', e && e.stack ? String(e.stack).split('\n').slice(0, 4).join(' | ') : e); });
+
 const args = process.argv.slice(2);
 const get = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const dir = get('dir', path.join(os.homedir(), '.config', 'hearth'));

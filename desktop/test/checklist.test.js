@@ -6,7 +6,8 @@ fs.mkdirSync(path.join(os.homedir(), '.cache'), { recursive: true }); const T = 
 const proj = path.join(T, 'proj', 'app'), P = path.join(T, 'home', '.claude', 'projects', proj.replace(/[^A-Za-z0-9]/g, '-')); fs.mkdirSync(proj, { recursive: true }); fs.mkdirSync(P, { recursive: true });
 const mk = (id, user, reply) => fs.writeFileSync(path.join(P, id + '.jsonl'), [JSON.stringify({ type: 'user', cwd: proj, timestamp: '2026-10-20T10:00:00Z', message: { content: user } }), JSON.stringify({ type: 'assistant', cwd: proj, timestamp: '2026-10-20T10:00:05Z', message: { role: 'assistant', content: [{ type: 'text', text: reply }] } })].join('\n') + '\n');
 mk('one', 'fix the login page', 'I changed the Pineapple handler in auth.js'); mk('two', 'write a poem', 'Roses are red');
-const relay = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--dir', path.join(T, 'd'), '--port', '47792', '--host', '127.0.0.1', '--projects', path.join(T, 'proj')], { env: { ...process.env, HOME: path.join(T, 'home'), HEARTH_TEST: '1', HEARTH_MEM_CHILD: '1' }, stdio: 'ignore' });
+const FAKE = path.join(T, 'fakebin'); fs.mkdirSync(FAKE, { recursive: true }); fs.writeFileSync(path.join(FAKE, 'claude'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+const relay = spawn('node', [path.join(__dirname, '..', 'relay', 'standalone.js'), '--dir', path.join(T, 'd'), '--port', '47792', '--host', '127.0.0.1', '--projects', path.join(T, 'proj')], { env: { ...process.env, PATH: FAKE + path.delimiter + process.env.PATH, HOME: path.join(T, 'home'), HEARTH_TEST: '1', HEARTH_MEM_CHILD: '1' }, stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (x ? '  ' + x : '')); };
 const req = (method, url, tok, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47792, path: url, method, headers: { Authorization: 'Bearer ' + tok, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (x) => { b += x; }); rs.on('end', () => { let j = {}; try { j = JSON.parse(b); } catch { /* */ } res({ code: rs.statusCode, j }); }); }); r.on('error', () => res({ code: 0, j: {} })); if (d) r.write(d); r.end(); });
@@ -39,6 +40,10 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   const lm = (await req('GET', '/sessions/lost-run-1/messages', tok)).j;
   ok('11 opening it shows the prompt and says what happened', Array.isArray(lm) && lm[0].role === 'user' && /license plate/.test(lm[0].text) && /interrupted/.test(lm[1].text));
   ok('12 deleting it works and it does not come back', (await req('POST', '/sessions/lost-run-1/delete', tok, {})).code === 200 && !(await req('GET', '/sessions', tok)).j.some((x) => x.id === 'lost-run-1'));
+  // a Claude that quits before it reads the prompt must not take the server down
+  await req('POST', '/sessions/new/send', tok, { text: 'x'.repeat(400000), mode: 'acceptEdits', cwd: proj });
+  await sleep(800);
+  ok('13 the server is still up after a run that died at once', (await req('GET', '/health', tok)).code === 200 && (await req('GET', '/chat-tags', tok)).code !== 0);
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

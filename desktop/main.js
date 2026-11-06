@@ -25,6 +25,8 @@ if (process.platform === 'win32') app.setAppUserModelId('dev.voer.hearth');   //
     }
   } catch { /* start fresh */ }
 }
+// a run that goes wrong inside the built-in relay must not close the whole app
+process.on('uncaughtException', (e) => { try { console.error('problem (kept running):', e && e.stack ? String(e.stack).split('\n').slice(0, 4).join(' | ') : e); } catch { /* nothing to do */ } });
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
 // ───────────────────────── state ─────────────────────────
