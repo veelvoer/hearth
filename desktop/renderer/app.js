@@ -61,6 +61,7 @@ const ICONS = {
   support: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.6a2.6 2.6 0 1 1 3.7 2.4c-.8.4-1.3 1-1.3 2"/><circle cx="12" cy="16.8" r=".6" fill="currentColor"/>', paint: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.4 0 2-.9 1.6-1.9-.4-1 .2-2.1 1.4-2.1h2a3.5 3.5 0 0 0 3.5-3.5C20.5 7.5 16.7 3.5 12 3.5z"/><circle cx="7.8" cy="11" r=".9" fill="currentColor"/><circle cx="11" cy="7.4" r=".9" fill="currentColor"/><circle cx="15.4" cy="8.6" r=".9" fill="currentColor"/>',
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5h4"/>', phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.4"/><path d="M10.5 18.5h3"/>', server: '<rect x="3.5" y="4" width="17" height="6.5" rx="1.8"/><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.8"/><circle cx="7.5" cy="7.2" r=".7" fill="currentColor"/><circle cx="7.5" cy="16.8" r=".7" fill="currentColor"/>',
   folder: '<path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4l2 2.2h8A1.5 1.5 0 0 1 20.5 9.2V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z"/>', send: '<path d="M4 12l16-8-5.5 16-3-6.5z"/><path d="M11.5 13.5L20 4"/>', stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.2"/>', git: '<circle cx="6.5" cy="6" r="2"/><circle cx="6.5" cy="18" r="2"/><circle cx="17.5" cy="9" r="2"/><path d="M6.5 8v8M8.4 6.6c5 0 9 .5 9.1 0"/>',
+  cloud: '<path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9z"/>', bulb: '<path d="M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/>', pizza: '<path d="M12 3L3 19c5-3 13-3 18 0z M10 11h.01 M13 14h.01 M9 15h.01"/>', coin: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v10 M9.5 9.5c0-1 1-1.5 2.5-1.5s2.5.8 2.5 1.8-1 1.4-2.5 1.7-2.5.7-2.5 1.8 1 1.7 2.5 1.7 2.5-.5 2.5-1.5"/>',
   drop: '<path d="M12 2.7s6 6.1 6 10.8a6 6 0 0 1-12 0C6 8.8 12 2.7 12 2.7z"/>', bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', cup: '<path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z M17 10h2a2 2 0 0 1 0 4h-2 M7 2v3 M11 2v3"/>',
   book: '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z M4 21V5 M8 7h6"/>', fire: '<path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-10z"/>', sparkle: '<path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/>',
   chip: '<path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3"/>',
@@ -360,7 +361,7 @@ const SX_TABS = [
   ['help', 'support', 'Help and support', 'Help', /help|support/i],
 ];
 function sxTabOf(name) { const t = SX_TABS.find((x) => x[4].test(name)); return t ? t[0] : 'help'; }
-const FUN_ICONS = {"verbs": "sparkle", "water": "drop", "energy": "bolt", "coffee": "cup", "words": "book", "streak": "fire", "favorite": "sparkle", "busiest": "now", "weekend": "dashboard", "longest": "history", "cache": "chip", "confetti": "party", "sounds": "volume", "pep": "heart", "hello": "globe", "ember": "fire"};
+const FUN_ICONS = {"co2": "cloud", "timesaved": "now", "bulb": "bulb", "bottles": "drop", "pizza": "pizza", "perprompt": "coin", "verbs": "sparkle", "water": "drop", "energy": "bolt", "coffee": "cup", "words": "book", "streak": "fire", "favorite": "sparkle", "busiest": "now", "weekend": "dashboard", "longest": "history", "cache": "chip", "confetti": "party", "sounds": "volume", "pep": "heart", "hello": "globe", "ember": "fire"};
 const FUN_FEATURES = [
   ['water', 'Water used', 'A rough guess of the water that cooling the data centres took for what Claude wrote.'],
   ['energy', 'Energy used', 'The electricity behind your replies, shown as phone charges.'],
@@ -372,6 +373,12 @@ const FUN_FEATURES = [
   ['weekend', 'Weekend share', 'How much of your work happens on a Saturday or Sunday.'],
   ['longest', 'Longest chat', 'Your longest session in one go.'],
   ['cache', 'Cache savings', 'What caching saved you, at API prices.'],
+  ['co2', 'CO₂', 'A rough guess of the CO₂ behind the electricity, shown as meters driven in a car.'],
+  ['timesaved', 'Time saved', 'How long it would have taken to type what Claude wrote, at 40 words a minute.'],
+  ['bulb', 'Light bulb', 'The energy used, as hours of a 10 watt LED bulb.'],
+  ['bottles', 'Water bottles', 'The water estimate, as bottles of half a litre.'],
+  ['pizza', 'Pizza money', 'What your Claude work would have cost at API prices, in pizzas of 15 dollars.'],
+  ['perprompt', 'Cost per prompt', 'What one prompt of yours is worth on average, at API prices.'],
 ];
 const FUN_TOYS = [
   ['confetti', 'Confetti', 'A burst of confetti when Claude finishes.'],
@@ -394,6 +401,12 @@ function funLine(id, o) {
   if (id === 'busiest') { const d = days.reduce((m, x) => (x.tokens > (m ? m.tokens : 0) ? x : m), null); return d ? [new Date(d.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }), fmtBig(d.tokens) + ' tokens that day'] : null; }
   if (id === 'weekend') { let we = 0, all = 0; days.forEach((x) => { all += x.tokens; const dw = new Date(x.date + 'T12:00:00').getDay(); if (dw === 0 || dw === 6) we += x.tokens; }); return all > 0 ? [Math.round(we / all * 100) + '%', 'Of your work is on a Saturday or Sunday'] : null; }
   if (id === 'longest') { const m = Math.round((t.longestSessionMs || 0) / 60000); return m > 0 ? [m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm', 'Your longest session in one go'] : null; }
+  if (id === 'co2') { const g = out / 1000 * 0.3 * 0.4; return out > 0 ? ['≈ ' + (g < 1000 ? Math.round(g) + ' g' : (g / 1000).toFixed(1) + ' kg'), 'Like driving ' + Math.round(g / 0.12).toLocaleString() + ' meters in a car'] : null; }
+  if (id === 'timesaved') { const hr = out * 0.75 / 40 / 60; return out > 0 ? ['≈ ' + (hr < 1 ? Math.round(hr * 60) + ' min' : hr.toFixed(1) + ' hours'), 'Of typing, at 40 words a minute'] : null; }
+  if (id === 'bulb') { const hr = out / 1000 * 0.3 / 10; return out > 0 ? ['≈ ' + (hr < 1 ? Math.round(hr * 60) + ' min' : hr.toFixed(1) + ' hours'), 'Of a 10 watt LED bulb'] : null; }
+  if (id === 'bottles') return out > 0 ? ['≈ ' + (out / 1000 * 2 / 500).toFixed(1) + ' bottles', 'Of half a litre each'] : null;
+  if (id === 'pizza') return t.cost > 0 ? ['≈ ' + (t.cost / 15).toFixed(1) + ' pizzas', 'At $15 a pizza'] : null;
+  if (id === 'perprompt') return t.prompts > 0 && t.cost > 0 ? ['$' + (t.cost / t.prompts).toFixed(2), 'Per prompt, on average, at API prices'] : null;
   if (id === 'cache') return t.cacheSaved > 0 ? ['$' + Math.round(t.cacheSaved).toLocaleString(), 'Saved by caching, at API prices'] : null;
   return null;
 }

@@ -320,6 +320,6 @@ async function funFacts(box) {
   const on = FUN_FEATURES.filter(([id]) => (st.betaOn || {})[id]); if (!on.length) return;
   const m = (SS.machines || []).find((x) => x.secure) || (SS.machines || [])[0]; if (!m) return;
   if (!D.funRep || Date.now() - D.funAt > 60000) { try { D.funRep = await cm.relay(m.id, 'GET', '/usage-report?days=30'); D.funAt = Date.now(); } catch { return; } }
-  const lines = on.map(([id, title]) => [title, funLine(id, D.funRep)]).filter((x) => x[1]); if (!lines.length || !box.isConnected) return;
-  box.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Fun facts · last 30 days'), h('div', { class: 'g4' }, ...lines.map(([title, v]) => h('div', { class: 'funtile' }, h('div', { class: 'funval' }, v[0]), h('div', { class: 'small muted' }, title + ' · ' + v[1]))))));
+  const lines = on.map(([id, title]) => [title, funLine(id, D.funRep), id]).filter((x) => x[1]); if (!lines.length || !box.isConnected) return;
+  box.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Fun facts · last 30 days'), h('div', { class: 'g4' }, ...lines.map(([title, v, id]) => h('div', { class: 'funtile' }, h('span', { class: 'ftile' }, icon(FUN_ICONS[id] || 'tour')), h('div', { class: 'funval' }, v[0]), h('div', { style: 'font-weight:600' }, title), h('div', { class: 'small muted' }, v[1]))))));
 }

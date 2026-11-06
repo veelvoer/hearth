@@ -160,6 +160,12 @@ val FUN = listOf(
     Fun("weekend", "home", "Weekend share", "How much of your work happens on a Saturday or Sunday."),
     Fun("longest", "history", "Longest chat", "Your longest session in one go."),
     Fun("cache", "chip", "Cache savings", "What caching saved you, at API prices."),
+    Fun("co2", "cloud", "CO₂", "A rough guess of the CO₂ behind the electricity, shown as meters driven in a car."),
+    Fun("timesaved", "clock", "Time saved", "How long it would have taken to type what Claude wrote, at 40 words a minute."),
+    Fun("bulb", "bulb", "Light bulb", "The energy used, as hours of a 10 watt LED bulb."),
+    Fun("bottles", "drop", "Water bottles", "The water estimate, as bottles of half a litre."),
+    Fun("pizza", "pizza", "Pizza money", "What your Claude work would have cost at API prices, in pizzas of 15 dollars."),
+    Fun("perprompt", "coin", "Cost per prompt", "What one prompt of yours is worth on average, at API prices."),
 )
 /** Just for fun: nothing to learn here. */
 val TOYS = listOf(
@@ -214,6 +220,12 @@ fun funLine(id: String, o: JSONObject): Pair<String, String>? {
             for (i in 0 until a.length()) { val d = a.getJSONObject(i); val tk = d.optDouble("tokens", 0.0); all += tk; val dow = runCatching { java.time.LocalDate.parse(d.getString("date")).dayOfWeek.value }.getOrDefault(1); if (dow >= 6) we += tk }
             if (all > 0) "${(we / all * 100).toInt()}%" to "Of your work is on a Saturday or Sunday" else null }
         "longest" -> t.optLong("longestSessionMs", 0).takeIf { it > 0 }?.let { ms -> val m = ms / 60000; (if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m") to "Your longest session in one go" }
+        "co2" -> out.takeIf { it > 0 }?.let { val g = it / 1000 * 0.3 * 0.4; (if (g < 1000) "≈ ${"%.0f".format(g)} g" else "≈ ${"%.1f".format(g / 1000)} kg") to "Like driving ${"%,.0f".format(g / 0.12)} meters in a car" }
+        "timesaved" -> out.takeIf { it > 0 }?.let { val h = it * 0.75 / 40 / 60; (if (h < 1) "≈ ${"%.0f".format(h * 60)} min" else "≈ ${"%.1f".format(h)} hours") to "Of typing, at 40 words a minute" }
+        "bulb" -> out.takeIf { it > 0 }?.let { val hrs = it / 1000 * 0.3 / 10; (if (hrs < 1) "≈ ${"%.0f".format(hrs * 60)} min" else "≈ ${"%.1f".format(hrs)} hours") to "Of a 10 watt LED bulb" }
+        "bottles" -> out.takeIf { it > 0 }?.let { val b = it / 1000 * 2 / 500; "≈ ${"%.1f".format(b)} bottles" to "Of half a litre each" }
+        "pizza" -> t.optDouble("cost", 0.0).takeIf { it > 0 }?.let { "≈ ${"%.1f".format(it / 15)} pizzas" to "At \$15 a pizza" }
+        "perprompt" -> if (t.optInt("prompts", 0) > 0 && t.optDouble("cost", 0.0) > 0) "\$${"%.2f".format(t.optDouble("cost", 0.0) / t.optInt("prompts", 1))}" to "Per prompt, on average, at API prices" else null
         "cache" -> t.optDouble("cacheSaved", 0.0).takeIf { it > 0 }?.let { "\$${"%,.0f".format(it)}" to "Saved by caching, at API prices" }
         else -> null
     }
@@ -226,15 +238,19 @@ fun FunFactsCard(raw: JSONObject?) {
     if (!Store.betaUnlocked(c) || raw == null) return
     val on = FUN.filter { Store.betaOn(c, it.id) }.mapNotNull { f -> funLine(f.id, raw)?.let { f to it } }
     if (on.isEmpty()) return
-    Card {
-        Label("Fun facts · last 30 days")
-        on.forEachIndexed { i, (f, v) ->
-            Spacer(Modifier.height(if (i == 0) 8.dp else 12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(softFill()), contentAlignment = Alignment.Center) { Glyph(f.icon, 22.dp, MaterialTheme.colorScheme.primary) }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) { Txt(v.first, T.h2.copy(fontSize = 20.sp)); Txt(f.title + " · " + v.second, T.small, muted = true) }
+    Label("Fun facts · last 30 days")
+    on.chunked(2).forEach { pair ->   // two tiles to a row: a big number, what it is, and a small line
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            pair.forEach { (f, v) ->
+                Column(Modifier.weight(1f).fillMaxHeight().appear().panel(RoundedCornerShape(18.dp)).padding(14.dp)) {
+                    Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(softFill()), contentAlignment = Alignment.Center) { Glyph(f.icon, 18.dp, MaterialTheme.colorScheme.primary) }
+                    Spacer(Modifier.height(8.dp))
+                    Txt(v.first, T.h2.copy(fontSize = 20.sp))
+                    Txt(f.title, T.small.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+                    Txt(v.second, T.small.copy(fontSize = 12.sp), muted = true)
+                }
             }
+            if (pair.size == 1) Spacer(Modifier.weight(1f))
         }
     }
 }
