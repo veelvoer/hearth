@@ -62,6 +62,8 @@ const ICONS = {
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5h4"/>', phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.4"/><path d="M10.5 18.5h3"/>', server: '<rect x="3.5" y="4" width="17" height="6.5" rx="1.8"/><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.8"/><circle cx="7.5" cy="7.2" r=".7" fill="currentColor"/><circle cx="7.5" cy="16.8" r=".7" fill="currentColor"/>',
   folder: '<path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4l2 2.2h8A1.5 1.5 0 0 1 20.5 9.2V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z"/>', send: '<path d="M4 12l16-8-5.5 16-3-6.5z"/><path d="M11.5 13.5L20 4"/>', stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.2"/>', git: '<circle cx="6.5" cy="6" r="2"/><circle cx="6.5" cy="18" r="2"/><circle cx="17.5" cy="9" r="2"/><path d="M6.5 8v8M8.4 6.6c5 0 9 .5 9.1 0"/>',
   cloud: '<path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9z"/>', bulb: '<path d="M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/>', pizza: '<path d="M12 3L3 19c5-3 13-3 18 0z M10 11h.01 M13 14h.01 M9 15h.01"/>', coin: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v10 M9.5 9.5c0-1 1-1.5 2.5-1.5s2.5.8 2.5 1.8-1 1.4-2.5 1.7-2.5.7-2.5 1.8 1 1.7 2.5 1.7 2.5-.5 2.5-1.5"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   drop: '<path d="M12 2.7s6 6.1 6 10.8a6 6 0 0 1-12 0C6 8.8 12 2.7 12 2.7z"/>', bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', cup: '<path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z M17 10h2a2 2 0 0 1 0 4h-2 M7 2v3 M11 2v3"/>',
   book: '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z M4 21V5 M8 7h6"/>', fire: '<path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-10z"/>', sparkle: '<path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/>',
   chip: '<path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3"/>',
@@ -306,7 +308,8 @@ function settingsView(only) {
     h('div', { class: 'subtitle' }, 'Preview'),
     h('div', { class: 'previewbox' }, h('div', { class: 'previewbubble' }, 'Can you fix the tests?'), h('div', { class: 'previewdone' }, 'Done — all 48 pass.'), h('div', {}, h('button', { class: 'primary sm', tabindex: '-1' }, 'Primary button'))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Frosted glass', h('div', { class: 'small muted' }, 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass === true, () => set({ glass: st.glass !== true }))),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Animations', h('div', { class: 'small muted' }, 'Gliding highlights, fades and counting numbers. Turn off for the lightest, fastest app.')), toggle(st.motion !== false, () => set({ motion: st.motion === false })))));
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Animations', h('div', { class: 'small muted' }, 'Gliding highlights, fades and counting numbers. Turn off for the lightest, fastest app.')), toggle(st.motion !== false, () => set({ motion: st.motion === false }))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Simple view in chats', h('div', { class: 'small muted' }, 'Hides the tool and command details, so a chat only shows the conversation.')), toggle(st.simpleView === true, () => set({ simpleView: st.simpleView !== true })))));
   p.append(h('div', { class: 'card stack' }, ch('bell', 'Alerts', 'You get a notification when your usage crosses these levels. “Session reset” tells you when a heavy 5-hour session rolls over and you have a fresh one.'),
     h('div', { class: 'row' }, [50, 75, 90, 100].map((v) => chip(v + '%', st.thresholds.includes(v), () => set({ thresholds: st.thresholds.includes(v) ? st.thresholds.filter((x) => x !== v) : [...st.thresholds, v] })))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Session reset'), toggle(st.notifyReset, () => set({ notifyReset: !st.notifyReset })))));
@@ -333,9 +336,47 @@ function settingsView(only) {
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
   p.append(only ? h('div') : doctorCard());
+  p.append(only ? h('div') : safetyCard());
+  p.append(only ? h('div') : rulesCard());
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
   if (only) return p;
   return withSettingsMenu(p);
+}
+const hubMachine = async () => { const ms = await cm.machines(); return ms.find((x) => x.secure) || ms[0]; };
+const tooOld = (e) => /404|unknown|not found/i.test(clean(e));
+/** Safety: a snapshot before every run, a spending limit and nightly backups of the chats. */
+function safetyCard() {
+  const body = h('div', { class: 'stack', style: 'gap:10px' });
+  const load = async (patch) => {
+    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let d; try { d = patch ? await cm.relay(m.id, 'POST', '/admin/safety', patch) : await cm.relay(m.id, 'GET', '/admin/safety'); } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    const b = d.budget || {}, bk = d.backups || {}, last = (bk.list || [])[0];
+    const chips = (vals, cur, key) => h('div', { class: 'row wrap' }, ...vals.map((v) => chip(v === 0 ? 'Off' : '$' + v, cur === v, () => load({ budget: { perDay: key === 'perDay' ? v : b.perDay, perChat: key === 'perChat' ? v : b.perChat } }))));
+    body.replaceChildren(
+      h('div', { class: 'row', title: 'A copy of the project folder, kept for the last 8 runs. In a chat: the undo button at the top.' }, h('div', { class: 'grow' }, 'Snapshot before every run'), toggle(d.snapshots !== false, () => load({ snapshots: d.snapshots === false }))),
+      h('div', { class: 'small muted' }, 'Spending limit per day · used $' + (b.usedDay || 0).toFixed(2)), chips([0, 5, 10, 25, 50, 100], b.perDay || 0, 'perDay'),
+      h('div', { class: 'small muted' }, 'Limit per chat'), chips([0, 2, 5, 10, 25], b.perChat || 0, 'perChat'),
+      h('div', { class: 'row', title: 'Between 2 and 5 at night, the last 7 are kept. Restoring never overwrites a chat that is newer.' }, h('div', { class: 'grow' }, 'Nightly backup of the chats'), toggle(!!bk.on, () => load({ backups: !bk.on }))),
+      h('div', { class: 'row' }, h('div', { class: 'grow small muted' }, last ? 'Last: ' + new Date(last.at).toLocaleString() : 'No backup yet'), h('button', { class: 'ghost sm', onclick: () => load({ backupNow: true }) }, 'Back up now'), last ? h('button', { class: 'ghost sm', onclick: () => load({ restoreBackup: last.name }) }, 'Restore the last') : null));
+  };
+  load();
+  return h('div', { class: 'card stack' }, ch('shield', 'Safety', 'Before every run Hearth keeps a copy of the project, so you can undo everything Claude did. A budget stops runs that would cost more than you want. Backups copy your chats every night.'), body);
+}
+/** Words that are refused at once without asking, and what was decided lately. */
+function rulesCard() {
+  const body = h('div', { class: 'stack', style: 'gap:8px' });
+  const load = async (patch) => {
+    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let o, lg; try { if (patch) await cm.relay(m.id, 'POST', '/admin/options', patch); o = await cm.relay(m.id, 'GET', '/admin/options'); lg = (await cm.relay(m.id, 'GET', '/admin/decisions?tail=12')).decisions || []; } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    const input = h('input', { placeholder: 'Command words, e.g. rm -rf', style: 'flex:1' }), add = () => { if (input.value.trim()) load({ addDeny: input.value.trim() }); };
+    input.onkeydown = (e) => { if (e.key === 'Enter') add(); };
+    body.replaceChildren(...(o.denyRules || []).map((r) => h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label), h('button', { class: 'ghost sm', 'aria-label': 'Remove ' + r.label, onclick: () => load({ removeDeny: r.id }) }, 'Remove'))),
+      h('div', { class: 'row' }, input, h('button', { class: 'ghost sm', onclick: add }, 'Add')),
+      lg.length ? h('div', { class: 'small muted', style: 'margin-top:6px;text-transform:uppercase;letter-spacing:.06em' }, 'Lately') : null,
+      ...lg.map((x) => h('div', { class: 'row', style: 'align-items:flex-start;gap:8px' }, h('i', { class: 'pdot', style: 'margin-top:7px;background:' + (/^denied/.test(x.result) ? 'var(--clay)' : /^allowed/.test(x.result) ? '#4CAF7D' : 'var(--muted)') }), h('div', { class: 'grow', style: 'min-width:0' }, h('div', { class: 'mono ellip small' }, x.text), h('div', { class: 'small muted' }, x.result)))));
+  };
+  load();
+  return h('div', { class: 'card stack' }, ch('lock', 'Never allow', 'Claude asks before it runs a command. A word you add here is refused at once, without asking: for example "rm -rf" or "sudo". Below you see what was allowed and refused lately.'), body);
 }
 /** A quick health check of the server: what works, what does not, and what to do about it. */
 function doctorCard() {
@@ -356,7 +397,7 @@ const SX_TABS = [
   ['updates', 'sync', 'Updates', 'Connection', /^updates/i],
   ['notifications', 'bell', 'Notifications and calls', 'App', /alerts|call me|notifications|calls from claude/i],
   ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
-  ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check/i],
+  ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check|^safety|never allow/i],
   ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions/i],
   ['help', 'support', 'Help and support', 'Help', /help|support/i],
 ];
@@ -753,6 +794,7 @@ function applyPerf() {
   const st = S.settings || {}, r = document.documentElement;
   r.classList.toggle('noglass', st.glass !== true);
   r.classList.toggle('noanim', st.motion === false);
+  r.classList.toggle('simpleview', st.simpleView === true);   // the tool and command details are hidden: a chat only shows the conversation
 }
 async function applyPalette() {
   applyPerf();

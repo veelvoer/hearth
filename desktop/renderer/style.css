@@ -841,3 +841,5 @@ details.rcard.fold > summary::after { transition: transform .25s cubic-bezier(.2
 @media (prefers-reduced-motion: reduce) { svg, .toggle, .chip, .ptab { transition: none; } .ibpop { animation: none; } details::details-content { transition: none; } }
 .kbd { font: 600 12px var(--mono, ui-monospace, monospace); background: var(--active); border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; min-width: 86px; text-align: center; }
 .funtile { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 16px; background: var(--active); } .funtile .ftile { background: var(--card); margin-bottom: 4px; }
+.simpleview .tools, .simpleview details.tool { display: none !important; }
+.readrep { position: absolute; top: -8px; right: 64px; opacity: 0; transition: opacity .15s; } .md:hover .readrep, .readrep:focus-visible { opacity: 1; }

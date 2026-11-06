@@ -274,6 +274,7 @@ function dashboardView() {
     kpi('Messages today', String(today.msgs), `${wk.reduce((a, d) => a + d.msgs, 0)} this week`, yday.msgs ? (today.msgs - yday.msgs) / yday.msgs * 100 : null),
     kpi('Sessions today', String(today.sessions), `${D.live.length} open right now`),
     kpi('Cache hit rate', cr + fresh ? Math.round(cr / (cr + fresh) * 100) + '%' : '–', 'Last 7 days, higher is cheaper')));
+  recapCard(root);
   toyHolidayOnce();
   if (toyOn('pep')) root.append(h('div', { class: 'muted' }, toyDaily(TOY_PEP)));
   if (toyOn('ember')) root.append(toyEmber());
@@ -322,4 +323,18 @@ async function funFacts(box) {
   if (!D.funRep || Date.now() - D.funAt > 60000) { try { D.funRep = await cm.relay(m.id, 'GET', '/usage-report?days=30'); D.funAt = Date.now(); } catch { return; } }
   const lines = on.map(([id, title]) => [title, funLine(id, D.funRep), id]).filter((x) => x[1]); if (!lines.length || !box.isConnected) return;
   box.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Fun facts · last 30 days'), h('div', { class: 'g4' }, ...lines.map(([title, v, id]) => h('div', { class: 'funtile' }, h('span', { class: 'ftile' }, icon(FUN_ICONS[id] || 'tour')), h('div', { class: 'funval' }, v[0]), h('div', { style: 'font-weight:600' }, title), h('div', { class: 'small muted' }, v[1]))))));
+}
+
+/** Last week at a glance on Monday and Tuesday. Gone for the week once you close it. */
+async function recapCard(root) {
+  const day = new Date().getDay(); if (day !== 1 && day !== 2) return;
+  const wk = (() => { const d = new Date(); const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); return t.getUTCFullYear() * 100 + Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); })();
+  if (localStorage.getItem('cm.recapClosed') === String(wk)) return;
+  const m = (SS.machines || []).find((x) => x.secure) || (SS.machines || [])[0]; if (!m) return;
+  let r; try { r = await cm.relay(m.id, 'GET', '/recap?days=7'); } catch { return; }
+  if (!r || r.empty || !root.isConnected) return;
+  const el = h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Your last 7 days'), h('button', { class: 'ghost sm', onclick: () => { localStorage.setItem('cm.recapClosed', String(wk)); el.remove(); } }, 'Close')),
+    h('div', {}, 'You used Claude on ' + r.activeDays + ' days: ' + r.prompts + ' prompts in ' + r.sessions + ' chats.'),
+    h('div', { class: 'small muted' }, (r.busiest ? 'Busiest day: ' + new Date(r.busiest.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' }) + (r.favorite ? ' · mostly ' + r.favorite : '') + ' · ' : '') + 'Worth about $' + Math.round(r.cost).toLocaleString() + ' at API prices.' + (r.streak > 1 ? ' Streak: ' + r.streak + ' days.' : '')));
+  root.prepend(el);
 }

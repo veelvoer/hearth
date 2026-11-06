@@ -301,6 +301,15 @@ document.addEventListener('keydown', (e) => {
 
 // ───────── pane ─────────
 SS.rightOff = localStorage.getItem('cm.rightOff') !== '0';   // the side panel is closed until you ask for it: the chat is what you came for
+const GUIDED = [['Write an email', 'Help me write an email. Ask me who it is for and what I want to say, one question at a time.'], ['Plan a trip', 'Help me plan a trip. Ask me where, when, the budget and what I like, one question at a time, then make a day by day plan.'],
+  ['Fix my computer', 'Something is wrong with my computer. Ask me what happens, step by step, and guide me to fix it in plain words.'], ['Explain an error', 'I will paste an error. Explain what it means in plain words and tell me how to fix it.']];
+/** The templates you saved on the server: loaded once, then shown as chips on a new chat. */
+let TPL_LOADED = false;
+async function loadTemplates() {
+  if (TPL_LOADED) return; TPL_LOADED = true;
+  const m = SS.machines.find((x) => x.secure) || SS.machines[0]; if (!m) return;
+  try { SS.templates = (await cm.relay(m.id, 'GET', '/templates')).templates || []; if (SS.templates.length && SS.sel && SS.sel.isNew) drawPane(); } catch { /* an older server: no templates */ }
+}
 const SUGGEST = ['Explain how this project is organized', 'Find and fix bugs in the recent changes', 'Write tests for the most important code', 'Review my uncommitted changes'];
 
 function drawPane() {
@@ -324,6 +333,7 @@ function drawPane() {
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
     s.id && (guest || me.shared >= 0) ? h('button', { class: 'ghost sm', title: 'Whose usage do I use in this chat?', onclick: () => shOptions(s) }, 'Options') : null,
     s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
+    s.id && !guest ? ibtn('history', 'Undo the last run: put the project back the way it was before', () => undoRun(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
     s.id ? ibtn('panel', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : '0'); drawPane(); }, 'ghost sm') : null));
@@ -363,6 +373,11 @@ function drawPane() {
 }
 
 /** Leaves the new-chat screen: back to the chat you came from, or to the list of chats. */
+/** Puts the project folder back the way it was before Claude's last run (a copy of how it is now is kept, so the undo can be undone). */
+async function undoRun(s) {
+  if (!confirm('Undo the last run?\n\nEvery file of this project goes back to how it was before Claude’s last run: changed files come back, new files are removed. A copy of how it is now is kept, so you can undo the undo.')) return;
+  try { const r = await cm.relay(s.mid, 'POST', '/sessions/' + s.id + '/undo', {}); toast(r.ok ? 'The project is back to before the last run.' : (r.error || 'Could not undo.')); } catch (e) { toast(/404|no snapshot/i.test(clean(e)) ? 'There is no snapshot of this project to go back to.' : clean(e)); }
+}
 function backToChats() {
   const prev = SS.prevSel; SS.prevSel = null;
   if (prev && prev.id) { openSession(prev); return; }
@@ -487,7 +502,8 @@ function codingIntro() {
   return h('div', { class: 'intro' }, h('div', { html: sparkSVG(46) }), h('h2', {}, 'What should we work on?'), picker,
     h('div', { class: 'muted small' }, 'Project folder'), row,
     h('div', { class: 'row wrap', style: 'justify-content:center;max-width:560px' }, projects().slice(0, 4).map((p) => chip(folderName(p), s.cwd === p, () => { s.cwd = p; SS.lastCwd = p; path.value = p; }))),
-    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:640px;margin-top:10px' }, SUGGEST.map((t) => h('button', { class: 'chip', onclick: () => { const ta = $('#composer-text'); ta.value = t; ta.focus(); } }, t))));
+    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:640px;margin-top:10px' }, [...SUGGEST.map((t) => [t, t]), ...GUIDED, ...(SS.templates || []).map((x) => [x.name, x.text])].map(([n, t]) => h('button', { class: 'chip', title: t, onclick: () => { const ta = $('#composer-text'); ta.value = t; ta.focus(); } }, n))));
+  loadTemplates();
 }
 
 /** A server that manages one projects folder: pick a project in it, or create a new one. */
@@ -591,6 +607,7 @@ function toolCard(t, key) {
 }
 const assistantEl = (text) => {
   const d = h('div', { class: 'md' }); d.append(md(text));
+  d.append(h('button', { class: 'ghost sm readrep', title: 'Read this reply aloud', 'aria-label': 'Read this reply aloud', onclick: (e) => { const b = e.currentTarget; if (speechSynthesis.speaking) { speechSynthesis.cancel(); b.textContent = 'Read'; return; } const u = new SpeechSynthesisUtterance(String(text).replace(/```[\s\S]*?```/g, ' code block. ').replace(/[*_`#>]/g, '').slice(0, 3900)); u.onend = () => { b.textContent = 'Read'; }; b.textContent = 'Stop'; speechSynthesis.speak(u); } }, 'Read'));
   d.append(h('button', { class: 'ghost sm copyrep', title: 'Copy this reply', 'aria-label': 'Copy this reply', onclick: async (e) => { const b = e.currentTarget; try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1200); } catch { toast('Could not copy.'); } } }, 'Copy'));
   return d;
 };
