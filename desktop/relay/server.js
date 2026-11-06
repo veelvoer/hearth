@@ -577,6 +577,7 @@ function start(opts) {
     for (const r of job.listeners) { try { r.write(JSON.stringify(o) + '\n'); } catch { /* client left */ } }
   }
   function attach(res, job, from) {
+    res.on('error', () => {});   // a phone that left in the middle of a run is not a problem
     res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' });
     for (let i = from; i < job.events.length; i++) res.write(JSON.stringify(job.events[i]) + '\n');
     if (job.done) return res.end();
