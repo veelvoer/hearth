@@ -778,7 +778,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
 
     if (voice && sess.id.isNotEmpty()) { CallScreen(m, sess, mode) { voice = false; scope.launch { reload() } }; return }
     val working = sending || serverBusy
-    val speaker = remember { Speaker(ctx) }
+    val speaker = remember { ReadAloud(ctx) }
     DisposableEffect(Unit) { onDispose { speaker.shutdown() } }
     var wasWorking by remember { mutableStateOf(false) }
     LaunchedEffect(working) { if (wasWorking && !working && msgs.isNotEmpty()) { if (Store.betaOn(c, "confetti")) Ui.burst++; if (Store.betaOn(c, "sounds")) Toys.sound(c, "done") }; wasWorking = working }

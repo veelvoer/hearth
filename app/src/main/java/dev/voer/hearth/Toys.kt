@@ -149,7 +149,7 @@ fun WorkingIndicator() {
 }
 
 /** Reads a reply aloud with the phone's own voice. */
-class Speaker(c: Context) {
+class ReadAloud(c: Context) {
     private var tts: android.speech.tts.TextToSpeech? = null
     private var ready = false
     var speaking by mutableStateOf(false)
