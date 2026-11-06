@@ -17,6 +17,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -147,21 +149,32 @@ private fun Main() {
             Txt("End", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.clickable { CallSession.end() })
         }
         Box(Modifier.weight(1f)) {
-            androidx.compose.animation.Crossfade(targetState = tab, animationSpec = androidx.compose.animation.core.tween(if (Fx.motion) 240 else 0), label = "tab") { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
+            androidx.compose.animation.AnimatedContent(targetState = tab, label = "tab", transitionSpec = {   // the page slides the way the tab bar moves
+                if (!Fx.motion) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+                else { val d = if (targetState > initialState) 1 else -1
+                    (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { d * it / 6 } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260))) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { -d * it / 6 } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180))) }
+            }) { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
         }
         if (!Ui.chatOpen) {
             val cs = MaterialTheme.colorScheme
             // a standard bottom bar: full width, flat, the same four places always with their names, the current one marked with a pill behind its icon
             Column(Modifier.fillMaxWidth().background(cs.surfaceVariant).tourTarget("tabs")) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(cs.outline))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    tabs.forEachIndexed { i, s ->
-                        val on = tab == i
-                        Column(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable(role = androidx.compose.ui.semantics.Role.Tab, onClickLabel = s) { Ui.tab = i }.semantics { contentDescription = s; selected = on }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.width(60.dp).height(30.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp)).background(if (on) softFill() else androidx.compose.ui.graphics.Color.Transparent), contentAlignment = Alignment.Center) {
-                                Glyph(listOf("chat", "home", "history", "gear")[i], 24.dp, if (on) cs.primary else cs.onSurfaceVariant)
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    val w = maxWidth / tabs.size
+                    val px by androidx.compose.animation.core.animateDpAsState(w * tab, androidx.compose.animation.core.spring(0.78f, 380f), label = "pill")   // one pill that slides to the chosen place
+                    Box(Modifier.offset(x = px + (w - 60.dp) / 2, y = 2.dp).width(60.dp).height(30.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp)).background(softFill()))
+                    Row(Modifier.fillMaxWidth()) {
+                        tabs.forEachIndexed { i, s ->
+                            val on = tab == i
+                            val tint by androidx.compose.animation.animateColorAsState(if (on) cs.primary else cs.onSurfaceVariant, androidx.compose.animation.core.tween(260), label = "tint")
+                            val lab by androidx.compose.animation.core.animateFloatAsState(if (on) 1f else 0f, androidx.compose.animation.core.tween(260), label = "label")
+                            val pop by androidx.compose.animation.core.animateFloatAsState(if (on) 1.12f else 1f, androidx.compose.animation.core.spring(0.5f, 500f), label = "pop")
+                            Column(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable(role = androidx.compose.ui.semantics.Role.Tab, onClickLabel = s) { Ui.tab = i }.semantics { contentDescription = s; selected = on }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.width(60.dp).height(30.dp), contentAlignment = Alignment.Center) { Box(Modifier.graphicsLayer { scaleX = pop; scaleY = pop }) { Glyph(listOf("chat", "home", "history", "gear")[i], 24.dp, tint) } }
+                                Txt(s, T.small.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = cs.primary, modifier = Modifier.graphicsLayer { alpha = lab; translationY = (1f - lab) * 6f })
                             }
-                            Txt(s, T.small.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), color = if (on) cs.primary else cs.onSurfaceVariant)
                         }
                     }
                 }

@@ -17,7 +17,7 @@ function cardHost() { let c = document.getElementById('cardhost'); if (!c) { c =
 const clean = (e) => String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 /** Icon-only button with a hover label. */
-const ibtn = (name, title, fn, cls = 'ghost') => h('button', { class: cls + ' ib', title, 'aria-label': title, onclick: fn }, icon(name));
+const ibtn = (name, title, fn, cls = 'ghost') => h('button', { class: cls + ' ib', title, 'aria-label': title, onclick: (e) => { const s = e.currentTarget.querySelector('svg'); if (s) { s.classList.remove('ibpop'); void s.getBoundingClientRect(); s.classList.add('ibpop'); } return fn(e); } }, icon(name));
 /** The little (i): explains a setting in a popover instead of a paragraph of text. */
 function info(text) {
   const b = h('button', { class: 'infob', title: 'More info', 'aria-label': 'More info', onclick: (e) => {
@@ -422,7 +422,7 @@ function withSettingsMenu(p) {
     for (const t of tabs) {
       if (q && !(t.label + ' ' + cards.filter((c) => sxTabOf(c.querySelector('.chead .label').textContent) === t.id).map((c) => c.textContent).join(' ')).toLowerCase().includes(q)) continue;
       if (t.group !== lastGroup && !q) { lastGroup = t.group; nav.append(h('div', { class: 'sgroup' }, t.group)); }
-      nav.append(h('button', { class: 'snavitem' + (t.id === SX.tab && !q ? ' on' : ''), onclick: () => { SX.tab = t.id; SX.find = ''; draw(); content.scrollTop = 0; } }, h('span', { class: 'ftile' }, icon(t.ic)), h('span', {}, t.label)));
+      nav.append(h('button', { class: 'snavitem' + (t.id === SX.tab && !q ? ' on' : ''), onclick: () => { SX.tab = t.id; SX.find = ''; morph(() => { draw(); content.scrollTop = 0; }); } }, h('span', { class: 'ftile' }, icon(t.ic)), h('span', {}, t.label)));
     }
     const title = q ? 'Search results' : (tabs.find((t) => t.id === SX.tab) || tabs[0]).label;
     pane.append(h('h2', { class: 'spane-title' }, title));

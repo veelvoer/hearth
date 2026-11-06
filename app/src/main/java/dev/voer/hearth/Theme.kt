@@ -8,6 +8,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -184,7 +187,7 @@ fun Card(modifier: Modifier = Modifier, flat: Boolean = false, content: @Composa
     val shape = RoundedCornerShape(20.dp)
     if (flat) { Column(modifier.fillMaxWidth(), content = content); return }
     Column(
-        modifier.appear().fillMaxWidth().panel(shape).padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
+        modifier.appear().fillMaxWidth().panel(shape).animateContentSize().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
         content = content,
     )
 }
@@ -206,10 +209,12 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
             if (tip != null) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) { InfoDot(title, tip) }
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Glyph(if (open) "chevu" else "chevd", 22.dp) }
+            val rot by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, androidx.compose.animation.core.tween(if (Fx.motion) 280 else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "chev")
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Box(Modifier.graphicsLayer { rotationZ = rot }) { Glyph("chevd", 22.dp) } }
         }
-        if (LocalCalm.current) { if (open) Column(Modifier.padding(bottom = 12.dp)) { content() } }
-        else androidx.compose.animation.AnimatedVisibility(open) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
+        run {
+            androidx.compose.animation.AnimatedVisibility(open, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(if (Fx.motion) 280 else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (Fx.motion) 220 else 0)), exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(if (Fx.motion) 220 else 0)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (Fx.motion) 140 else 0))) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
+        }
     }
 }
 
@@ -334,4 +339,21 @@ fun EmptyState(title: String, sub: String? = null) {
         Txt(title, T.h2, modifier = Modifier.padding(horizontal = 24.dp))
         if (sub != null) { Spacer(Modifier.height(4.dp)); Txt(sub, T.small, muted = true, modifier = Modifier.padding(horizontal = 32.dp)) }
     }
+}
+
+/** An icon that changes into another one: the old one shrinks away while the new one grows in. */
+@Composable
+fun MorphGlyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    androidx.compose.animation.AnimatedContent(name, label = "glyph", transitionSpec = {
+        if (!Fx.motion) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+        else (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(220), initialScale = .5f)) togetherWith (androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140)) + androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(160), targetScale = .5f))
+    }) { Glyph(it, size, color) }
+}
+
+/** A grey shape that breathes while something loads, so the page has its final shape from the start. */
+@Composable
+fun Skeleton(height: Dp, modifier: Modifier = Modifier, radius: Dp = 20.dp) {
+    val tr = androidx.compose.animation.core.rememberInfiniteTransition(label = "skeleton")
+    val a by tr.animateFloat(.35f, .75f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
+    Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(radius)).background(MaterialTheme.colorScheme.outline.copy(alpha = if (Fx.motion) a else .5f)))
 }

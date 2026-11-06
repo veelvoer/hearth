@@ -406,7 +406,8 @@ fun NowScreen() {
         val w = u?.week
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val wr = w?.resetsAt
-            Tile("Week", if (w == null) "–" else "${w.at(now).toInt()}%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f).fillMaxHeight())
+            val weekShown by androidx.compose.animation.core.animateIntAsState(w?.at(now)?.toInt() ?: 0, androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "week")   // the number counts to its new value
+            Tile("Week", if (w == null) "–" else "$weekShown%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f).fillMaxHeight())
             Tile("API value", cost?.let { "$" + "%,.0f".format(it.total) } ?: "–", "last 30 days", Modifier.weight(1f).fillMaxHeight())
         }
         WeekPlanCard()

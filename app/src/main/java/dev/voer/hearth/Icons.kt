@@ -122,7 +122,7 @@ fun Head(icon: String, title: String, tip: String? = null, modifier: Modifier = 
 /** A button that is only an icon (header actions). Tap target is 40dp. */
 @Composable
 fun IconAction(glyph: String, desc: String, align: Alignment = LocalIconAlign.current, size: Dp = 48.dp, onClick: () -> Unit) =
-    Box(Modifier.size(size).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = align) { Glyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
+    Box(Modifier.size(size).clip(RoundedCornerShape(50)).clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = desc).semantics { contentDescription = desc }, contentAlignment = align) { MorphGlyph(glyph, 24.dp, MaterialTheme.colorScheme.primary) }
 
 /** The familiar icon that goes with a one-word button. */
 /** These buttons show only their icon (the words stay as the screen reader label); every other button keeps its words. */

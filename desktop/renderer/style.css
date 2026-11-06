@@ -822,3 +822,20 @@ html { scroll-behavior: smooth; }
 .msg.fresh, .md.fresh { animation: msgin .28s cubic-bezier(.2, .8, .3, 1) both; }
 @keyframes msgin { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .wflame, .emptyflame, .msg.fresh, .md.fresh { animation: none; } html { scroll-behavior: auto; } }
+
+/* Everything transforms instead of popping: lists glide, panels open smoothly, icons answer a click */
+.item { view-transition-name: none; }
+::view-transition-old(*), ::view-transition-new(*) { animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+svg { transition: transform .2s cubic-bezier(.2, .8, .2, 1), color .2s ease, opacity .2s ease; }
+.ib:hover svg { transform: scale(1.12); }
+.ibpop { animation: ibpop .38s cubic-bezier(.3, 1.7, .5, 1); }
+@keyframes ibpop { 0% { transform: scale(.7) rotate(-12deg); } 100% { transform: scale(1) rotate(0); } }
+details { interpolate-size: allow-keywords; }
+details::details-content { block-size: 0; overflow: clip; transition: block-size .28s cubic-bezier(.2, .8, .2, 1), content-visibility .28s allow-discrete; }
+details[open]::details-content { block-size: auto; }
+details.rcard.fold > summary::after { transition: transform .25s cubic-bezier(.2, .8, .2, 1), margin .25s ease; }
+.toggle, .toggle::after, .chip, .ptab, .snavitem, .tab, .pill { transition: background-color .22s ease, color .22s ease, border-color .22s ease, transform .22s cubic-bezier(.2, .8, .2, 1), box-shadow .22s ease; }
+.chip:active, .ptab:active { transform: scale(.96); }
+.bar > i, .meter > i, [class*="fill"] { transition: width .6s cubic-bezier(.2, .8, .2, 1), height .6s cubic-bezier(.2, .8, .2, 1); }
+.page.sx, .page.sx * { transition: background-color .2s ease, color .2s ease, opacity .2s ease, transform .2s ease !important; }
+@media (prefers-reduced-motion: reduce) { svg, .toggle, .chip, .ptab { transition: none; } .ibpop { animation: none; } details::details-content { transition: none; } }

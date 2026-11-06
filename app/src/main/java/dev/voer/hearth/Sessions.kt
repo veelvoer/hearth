@@ -296,6 +296,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             }.sortedByDescending { (_, s) -> if (prefsRev >= 0 && Store.pinned(c, s.id)) Long.MAX_VALUE else if (s.running) Long.MAX_VALUE - 1 else s.mtime }.take(60)
             .map { (mm, s) -> mm to (Store.chatName(c, s.id).takeIf { it.isNotBlank() }?.let { n -> s.copy(title = n) } ?: s) }
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
+        if (all.isEmpty() && lists.size < machines.size + guests.size && query.isBlank()) { Skeleton(76.dp); Skeleton(76.dp); Skeleton(76.dp) }   // the list has its shape while it loads
         if (all.isEmpty() && hits.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) EmptyState(if (query.isNotBlank()) "No chat matches" else if (onlyWorking) "Nothing is running" else if (onlyShared) "No shared chats yet" else "No chats yet", if (query.isNotBlank() || onlyWorking || onlyShared) null else "Tap the plus to start one.")
         if (hits.isNotEmpty()) { Label("In messages"); hits.forEach { (mm, s, snip) -> Card(Modifier.pressable { open(mm, s) }) { androidx.compose.foundation.text.selection.DisableSelection { Txt(Store.chatName(c, s.id).ifBlank { s.title }, T.body.copy(fontWeight = FontWeight.SemiBold)); Spacer(Modifier.height(2.dp)); Txt(snip, T.small, muted = true) } } } }
         all.forEachIndexed { i, (mm, s) -> Box(if (i == 0) Modifier.tourTarget("list") else Modifier) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } }
@@ -882,7 +883,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty() && sess.kind != "talk") "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
                 val stop = working && sess.id.isNotEmpty()
                 Box(Modifier.size(40.dp).semantics { contentDescription = if (stop) "Stop" else if (sending) "Sending" else "Send"; role = androidx.compose.ui.semantics.Role.Button }.pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
-                    if (stop) Glyph("stop", 22.dp, cs.onPrimary) else if (sending) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else Glyph("send", 22.dp, cs.onPrimary)
+                    if (sending && !stop) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else MorphGlyph(if (stop) "stop" else "send", 22.dp, cs.onPrimary)
                 }
             }
         }

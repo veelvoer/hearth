@@ -101,14 +101,22 @@ async function syncTags() {
 }
 function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
-  return h('div', { class: 'item' + (on ? ' on' : ''), onclick: () => openSession(s), oncontextmenu: (e) => chatMenu(e, s), title: 'Right-click to pin or rename' },
+  return h('div', { class: 'item' + (on ? ' on' : ''), style: 'view-transition-name: ci-' + String(s.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24), onclick: () => openSession(s), oncontextmenu: (e) => chatMenu(e, s), title: 'Right-click to pin or rename' },
     h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, chatTag(s.id).pin ? h('span', { class: 'ic', html: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>' }) : null, h('span', { class: 'ellip' }, s.title)),
     h('div', { class: 'small muted' }, (SS.projKey === '__all' && !s.guest ? (s.talk ? 'Talk' : folderName(s.cwd || 'Other')) + ' · ' : '') + ((s.running || s.busy) ? 'working now' : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
 const groupKey = (s) => (s.guest || s.shared > 0 ? 'Shared' : s.talk ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
 /** The projects as tabs along the top, and the chats of the open project in the column beside the chat. Searching looks through every project. */
+let SIDE_SIG = '';
+/** Redraws the chat list. When the order or the set of chats changed, the rows glide to their new places instead of jumping. */
 function drawSide() {
+  const sig = allSessions().map((s) => s.id + (s.running || s.busy ? '*' : '') + (chatTag(s.id).pin ? 'p' : '')).join(',') + '|' + SS.projKey + '|' + SS.search;
+  const changed = sig !== SIDE_SIG && SIDE_SIG !== ''; SIDE_SIG = sig;
+  if (changed && SS.side && SS.side.isConnected && tab === 'sessions') return morph(() => drawSideNow());
+  return drawSideNow();
+}
+function drawSideNow() {
   const side = SS.side;
   if (!side) return;
   const keep = side.scrollTop, hadFocus = document.activeElement && document.activeElement.id === 'chat-search';
