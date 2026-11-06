@@ -357,3 +357,16 @@ fun Skeleton(height: Dp, modifier: Modifier = Modifier, radius: Dp = 20.dp) {
     val a by tr.animateFloat(.35f, .75f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
     Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(radius)).background(MaterialTheme.colorScheme.outline.copy(alpha = if (Fx.motion) a else .5f)))
 }
+
+/** When an item in a column moves to another place (the list was re-ordered), it glides there instead of jumping. */
+fun Modifier.glide(): Modifier = composed {
+    val scope = rememberCoroutineScope()
+    var target by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset.Zero) }
+    var anim by remember { mutableStateOf<Animatable<androidx.compose.ui.unit.IntOffset, androidx.compose.animation.core.AnimationVector2D>?>(null) }
+    this.onGloballyPositioned { c -> val p = c.positionInParent(); target = androidx.compose.ui.unit.IntOffset(p.x.roundToInt(), p.y.roundToInt()) }
+        .offset {
+            val a = anim ?: Animatable(target, androidx.compose.ui.unit.IntOffset.VectorConverter).also { anim = it }
+            if (Fx.motion && a.targetValue != target) scope.launch { a.animateTo(target, spring(dampingRatio = 0.85f, stiffness = 300f)) } else if (!Fx.motion && a.targetValue != target) scope.launch { a.snapTo(target) }
+            a.value - target
+        }
+}
