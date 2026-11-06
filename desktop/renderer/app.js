@@ -119,7 +119,6 @@ function render() {
   content.className = (tab === 'sessions' && S.signedIn ? 'flush' : '') + (lastTab !== tab ? ' entering' + slideDir : ''); lastTab = tab;   // only a new screen glides in, not every refresh
   content.innerHTML = '';
   maybeTutorial();
-  if (!S.signedIn) return content.append(loginView());
   const v = { dashboard: dashboardView, now: nowView, sessions: sessionsView, history: historyView, settings: settingsView }[tab]();
   content.append(v);
   if (keepScroll) holdScroll(keepScroll, prevH, v);

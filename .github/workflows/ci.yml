@@ -35,6 +35,8 @@ jobs:
         run: node desktop/test/mcpkit.test.js
       - name: Root-owned files test
         run: node desktop/test/rootfiles.test.js
+      - name: Screens use only names that exist
+        run: node scripts/lint-renderer.js
       - name: Checklist test
         run: node desktop/test/checklist.test.js
       - name: Delete chats test
