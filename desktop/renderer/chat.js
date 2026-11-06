@@ -303,12 +303,21 @@ document.addEventListener('keydown', (e) => {
 SS.rightOff = localStorage.getItem('cm.rightOff') !== '0';   // the side panel is closed until you ask for it: the chat is what you came for
 const GUIDED = [['Write an email', 'Help me write an email. Ask me who it is for and what I want to say, one question at a time.'], ['Plan a trip', 'Help me plan a trip. Ask me where, when, the budget and what I like, one question at a time, then make a day by day plan.'],
   ['Fix my computer', 'Something is wrong with my computer. Ask me what happens, step by step, and guide me to fix it in plain words.'], ['Explain an error', 'I will paste an error. Explain what it means in plain words and tell me how to fix it.']];
+/** Redraws the pane without losing what is typed in the message box. */
+function redrawKeepText() { const ta = $('#composer-text'), t = ta ? ta.value : ''; drawPane(); if (t) setTimeout(() => { const n = $('#composer-text'); if (n) n.value = t; }, 0); }
+/** Keeps the text in the message box as a template on the server. */
+async function saveTemplate() {
+  const ta = $('#composer-text'); const text = ta ? ta.value.trim() : ''; if (!text) { toast('Write the message first, then save it.'); return; }
+  const name = await askText('Save as a template', 'Your message is kept as a starting point for new chats on this server.', { placeholder: 'Name, e.g. Review', ok: 'Save' }); if (!name || !name.trim()) return;
+  const m = SS.machines.find((x) => x.secure) || SS.machines[0]; if (!m) return;
+  try { SS.templates = (await cm.relay(m.id, 'POST', '/templates', { add: { name: name.trim(), text } })).templates || []; toast('Template saved.'); redrawKeepText(); } catch (e) { toast(/404|unknown|not found/i.test(clean(e)) ? 'Update your server first.' : clean(e)); }
+}
 /** The templates you saved on the server: loaded once, then shown as chips on a new chat. */
 let TPL_LOADED = false;
 async function loadTemplates() {
   if (TPL_LOADED) return; TPL_LOADED = true;
   const m = SS.machines.find((x) => x.secure) || SS.machines[0]; if (!m) return;
-  try { SS.templates = (await cm.relay(m.id, 'GET', '/templates')).templates || []; if (SS.templates.length && SS.sel && SS.sel.isNew) drawPane(); } catch { /* an older server: no templates */ }
+  try { SS.templates = (await cm.relay(m.id, 'GET', '/templates')).templates || []; if (SS.templates.length && SS.sel && SS.sel.isNew) redrawKeepText(); } catch { /* an older server: no templates */ }
 }
 const SUGGEST = ['Explain how this project is organized', 'Find and fix bugs in the recent changes', 'Write tests for the most important code', 'Review my uncommitted changes'];
 
@@ -502,7 +511,7 @@ function codingIntro() {
   return h('div', { class: 'intro' }, h('div', { html: sparkSVG(46) }), h('h2', {}, 'What should we work on?'), picker,
     h('div', { class: 'muted small' }, 'Project folder'), row,
     h('div', { class: 'row wrap', style: 'justify-content:center;max-width:560px' }, projects().slice(0, 4).map((p) => chip(folderName(p), s.cwd === p, () => { s.cwd = p; SS.lastCwd = p; path.value = p; }))),
-    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:640px;margin-top:10px' }, [...SUGGEST.map((t) => [t, t]), ...GUIDED, ...(SS.templates || []).map((x) => [x.name, x.text])].map(([n, t]) => h('button', { class: 'chip', title: t, onclick: () => { const ta = $('#composer-text'); ta.value = t; ta.focus(); } }, n))));
+    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:640px;margin-top:10px' }, [...SUGGEST.map((t) => [t, t]), ...GUIDED, ...(SS.templates || []).map((x) => [x.name, x.text])].map(([n, t]) => h('button', { class: 'chip', title: t, onclick: () => { const ta = $('#composer-text'); ta.value = t; ta.focus(); } }, n)).concat([h('button', { class: 'chip ghost', title: 'Keep what is in the message box as a starting point for new chats', onclick: saveTemplate }, '+ Save the message as a template')])));
   loadTemplates();
 }
 

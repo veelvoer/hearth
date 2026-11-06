@@ -799,6 +799,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options", Alignment.CenterEnd, 40.dp) { options = !options } }
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.65f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than two thirds of the screen, so the typing bar always stays
+            ProjectLine(m, sess.cwd)
             Label("Permissions")
             ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; Store.setChatMode(appCtx, sess.id, v); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
@@ -837,7 +838,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {   // press and hold on any text to select and copy it
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty()) item { Txt(if (sess.kind == "talk") "What's on your mind?" else "What should we build in ${folder(sess.cwd)}?", T.title, modifier = Modifier.padding(top = 24.dp)) }
-            if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty() && !guest && sess.kind != "talk") item { StartIdeas { input = it } }
+            if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty() && !guest && sess.kind != "talk") item { StartIdeas(input) { input = it } }
             itemsIndexed(msgs) { idx, msg ->
               Box((if (settled.intValue in 0..idx) Modifier.appear() else Modifier).animateItem()) {
                 when (msg.role) {

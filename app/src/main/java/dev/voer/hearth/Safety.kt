@@ -136,8 +136,11 @@ fun RecapCard() {
 
 /** "Start with…": ready questions for a new chat, and the templates you saved. */
 @Composable
-fun StartIdeas(onPick: (String) -> Unit) {
+fun StartIdeas(current: String, onPick: (String) -> Unit) {
     val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var tplName by remember { mutableStateOf("") }
     val hub = remember { hubOf(c) }
     var saved by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     LaunchedEffect(Unit) { if (hub != null) saved = runCatching { withContext(Dispatchers.IO) { Relay.templates(hub) } }.getOrDefault(emptyList()) }
@@ -149,5 +152,26 @@ fun StartIdeas(onPick: (String) -> Unit) {
         "Review my changes" to "Look at the changes in this project and tell me what is risky or can be better.",
     )
     Label("Start with")
-    ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { (saved + guided).forEach { (n, t) -> Chip(n, false) { onPick(t) } } }
+    ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        (saved + guided).forEach { (n, t) -> Chip(n, false) { onPick(t) } }
+        if (current.isNotBlank() && hub != null) Chip("Save this as a template", false, "plus") { saving = true }
+    }
+    if (saving) androidx.compose.material3.AlertDialog(onDismissRequest = { saving = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        title = { Txt("Save as a template", T.h2) },
+        text = { Column { Field(tplName, { tplName = it.take(40) }, "Name, e.g. Review", selectAll = true); Spacer(Modifier.height(6.dp)); Txt("Your message is kept as a starting point for new chats on this server.", T.small, muted = true) } },
+        confirmButton = { TextAction("Save") { val n = tplName.trim(); if (n.isNotEmpty() && hub != null) scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.addTemplate(hub, n, current) } }.onSuccess { saved = saved.filter { it.first != n } + (n to current); Toast.makeText(c, "Template saved", Toast.LENGTH_SHORT).show() }.onFailure { Toast.makeText(c, "Could not save: " + (it.message ?: ""), Toast.LENGTH_LONG).show() } }; saving = false; tplName = "" } },
+        dismissButton = { TextAction("Cancel") { saving = false } })
+}
+
+/** One line about the project of this chat: its chats, what they cost and what changed. */
+@Composable
+fun ProjectLine(m: Machine, cwd: String) {
+    if (cwd.isBlank()) return
+    var line by remember(cwd) { mutableStateOf("") }
+    LaunchedEffect(cwd) {
+        line = runCatching { withContext(Dispatchers.IO) { JSONObject(Relay.get(m, "/projects/summary?cwd=" + java.net.URLEncoder.encode(cwd, "UTF-8"))) } }.getOrNull()?.let { o ->
+            listOfNotNull("${o.optInt("chats")} chats", "$%.2f".format(o.optDouble("cost")) + " so far", if (o.isNull("changed")) null else "${o.optInt("changed")} changed file${if (o.optInt("changed") == 1) "" else "s"}", o.optString("branch").takeIf { it.isNotBlank() && !it.startsWith("No commits") }).joinToString(" · ")
+        } ?: ""
+    }
+    if (line.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) { Glyph("home", 16.dp); Spacer(Modifier.width(8.dp)); Txt(line, T.small, muted = true) }
 }

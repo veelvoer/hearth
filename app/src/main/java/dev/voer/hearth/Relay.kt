@@ -131,6 +131,7 @@ object Relay {
         val a = JSONObject(getJson(m, "/admin/decisions?tail=12")).optJSONArray("decisions") ?: return emptyList()
         return (0 until a.length()).map { val o = a.getJSONObject(it); Triple(o.optLong("at"), o.optString("result"), o.optString("text")) }
     }
+    fun get(m: Machine, path: String): String = getJson(m, path)
     fun recap(m: Machine): JSONObject = JSONObject(getJson(m, "/recap?days=7"))
     fun templates(m: Machine): List<Pair<String, String>> {
         val a = JSONObject(getJson(m, "/templates")).optJSONArray("templates") ?: return emptyList()
