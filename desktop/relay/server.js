@@ -15,6 +15,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
+const safety = require('./safety');
 const core = require('./core');
 const chathub = require('./chathub');
 const filehub = require('./filehub');
@@ -135,6 +136,21 @@ function start(opts) {
     } catch { fixingOwner = false; }
   }
   const noteRootCwd = (cwd) => { if (!cwd) return; const l = (readCfg().rootCwds || []).filter((x) => x !== cwd); l.unshift(cwd); writeCfg({ rootCwds: l.slice(0, 40) }); };
+  // ── safety: a snapshot before every run (with undo), a budget, nightly backups ──
+  const budgetCfg = () => { const b = readCfg().budget || {}; return { perDay: Math.max(0, Number(b.perDay) || 0), perChat: Math.max(0, Number(b.perChat) || 0) }; };
+  let costCache = { at: 0, v: 0 };
+  const costLastDay = () => { if (Date.now() - costCache.at > 30000) { try { costCache = { at: Date.now(), v: (core.report(1).totals || {}).cost || 0 }; } catch { costCache = { at: Date.now(), v: 0 }; } } return costCache.v; };
+  /** Is this run allowed to start? null when yes, otherwise { error, message }. */
+  function budgetBlock(sidParam) {
+    const b = budgetCfg(); if (!b.perDay && !b.perChat) return null;
+    if (b.perDay && costLastDay() >= b.perDay) return { error: 429, message: `Your daily budget of $${b.perDay} is used up ($${costLastDay().toFixed(2)} in the last 24 hours). Raise it in Settings > Server, or wait.` };
+    if (b.perChat && sidParam !== 'new') { try { const f = core.findSession(sidParam); const c = f ? core.summarize(f).cost || 0 : 0; if (c >= b.perChat) return { error: 429, message: `This chat reached its budget of $${b.perChat} ($${c.toFixed(2)} so far). Start a new chat, or raise the budget in Settings > Server.` }; } catch { /* unknown cost: let it run */ } }
+    return null;
+  }
+  const snapshotsOn = () => readCfg().snapshots !== false;
+  const backupsOn = () => readCfg().backups === true;
+  const runBackup = () => { const r = safety.createBackup({ dir, chatsDir: core.projectsDir() }); if (r.ok) onLog('chat backup made: ' + r.name); else onLog('chat backup: ' + r.error); return r; };
+  const backupTimer = setInterval(() => { try { if (!backupsOn()) return; const last = safety.listBackups(dir)[0]; const h = new Date().getHours(); if ((!last || Date.now() - last.at > 23 * 3600e3) && h >= 2 && h <= 5) runBackup(); } catch { /* next hour */ } }, 3600e3); backupTimer.unref();
   let seenDenied = 0;
   const allowRules = () => (Array.isArray(readCfg().allowRules) ? readCfg().allowRules : []);
   const addRule = (r) => { if (!r) return null; const all = allowRules(); const ex = all.find((x) => x.tool === r.tool && x.prefix === r.prefix); if (ex) return ex; const n = { id: crypto.randomBytes(4).toString('hex'), tool: r.tool, prefix: r.prefix, label: r.label, at: Date.now() }; writeCfg({ allowRules: [...all, n] }); return n; };
@@ -197,7 +213,7 @@ function start(opts) {
       if (!claude || Date.now() - lastCheck < 60000) return resolve(usage);
       lastCheck = Date.now();
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--model', 'haiku'];
-      const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
+    const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
       const child = process.env.FLATPAK_ID
         ? spawn('flatpak-spawn', ['--host', 'bash', '-lc', 'exec claude "$@"', 'claude', ...args], { stdio: ['pipe', 'pipe', 'ignore'] })
         : spawn(useShell ? `"${claude}"` : claude, args, { cwd: os.tmpdir(), shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
@@ -500,6 +516,8 @@ function start(opts) {
       if (mode === 'bypassPermissions' && mi >= 0) args[mi + 1] = 'acceptEdits';   // Claude Code itself refuses its bypass mode as root; Hearth's own Full auto answers the approvals instead
       const ai = args.indexOf('--append-system-prompt'); if (ai >= 0) args[ai + 1] += ' ' + ROOT_PROMPT;
     }
+      { const blocked = budgetBlock(sidParam); if (blocked) return blocked; }
+    if (snapshotsOn() && cwd && okDir(cwd)) { try { const sn = safety.takeSnapshot({ dir, cwd, label: 'before a run', sid: sidParam === 'new' ? '' : sidParam, text: body.text, maxFiles: 4000 }); if (sn.skipped) onLog('no snapshot: ' + sn.skipped); else onLog('snapshot ' + sn.id); } catch (e) { onLog('snapshot: ' + e.message); } }
     const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
     const envPass = Object.entries(process.env).filter(([k]) => /^(ANTHROPIC_|CLAUDE_|HTTPS?_PROXY|NO_PROXY)/i.test(k)).map(([k, v]) => `${k}=${v}`);
     const child = process.env.FLATPAK_ID
@@ -1087,10 +1105,13 @@ function start(opts) {
           try { const st = fs.statfsSync(pr), freeGb = st.bavail * st.bsize / 1e9; add('Disk space', freeGb > 1, freeGb.toFixed(1) + ' GB free', freeGb > 1 ? '' : 'Free some disk space: Claude cannot save chats without it.'); } catch { /* not available */ }
           const denied = (() => { core.listFiles(); return core.deniedCount(); })(); add('Chats readable', denied === 0, denied === 0 ? 'Every chat file can be read' : denied + ' chat file(s) cannot be read (made with root rights)', denied === 0 ? '' : (rootAllowed() ? 'They are given back automatically within seconds.' : 'Run: sudo chown -R ' + os.userInfo().username + ' ~/.claude'));
           if (rootAllowed()) { const rr = rootReady(true); add('Root chats', !!rr.ok, rr.ok ? rr.how : String(rr.why || 'Not possible').slice(0, 200), rr.ok ? '' : rr.fix || ''); }
+          if (root) { const sc = safety.scanSecrets({ root, days: 30, maxFiles: 1500 }); add('Secrets in projects', sc.findings.length === 0, sc.findings.length === 0 ? 'None found in ' + sc.scanned + ' recently changed files' : sc.findings.length + ' possible secret(s): ' + sc.findings.slice(0, 3).map((x) => x.kind + ' in ' + x.file).join('; '), sc.findings.length === 0 ? '' : 'Move them out of the files (use an environment variable) and change the keys: Claude can read them.'); }
           const probs = logRing.filter((l) => /problem|error|Error/.test(l)).length; add('Recent problems', probs === 0, probs === 0 ? 'None in the log' : probs + ' line(s) with a problem in the last log lines', probs === 0 ? '' : 'Open the details of an error in a chat to read them.');
           add('Server', true, 'Hearth ' + require('./version') + ' · up ' + Math.round(process.uptime() / 60) + ' min · ' + Math.round(process.memoryUsage().rss / 1048576) + ' MB');
           return json(res, 200, { checks });
         }
+        if (parts[0] === 'admin' && parts[1] === 'safety') return json(res, 200, { snapshots: snapshotsOn(), backups: { on: backupsOn(), list: safety.listBackups(dir) }, budget: { ...budgetCfg(), usedDay: Math.round(costLastDay() * 100) / 100 } });
+        if (parts[0] === 'sessions' && parts[2] === 'snapshots') { const f = core.findSession(parts[1]); const cwd = f ? core.summarize(f).cwd : ''; return json(res, 200, cwd && okDir(cwd) ? safety.listSnapshots({ dir, cwd }).map((x) => ({ id: x.id, at: x.at, label: x.label, text: x.text, files: x.files, bytes: x.bytes })) : []); }
         if (parts[0] === 'admin' && parts[1] === 'logs') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
         if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
@@ -1323,6 +1344,26 @@ function start(opts) {
           if (cur.pin || cur.name) { cur.t = Date.now(); tags[id] = cur; } else delete tags[id];
           if (Object.keys(tags).length > 2000) return json(res, 400, { error: 'too many' });
           writeCfg({ chatTags: tags }); return json(res, 200, { tags });
+        }
+        if (parts[0] === 'admin' && parts[1] === 'safety') {
+          if (b.snapshots !== undefined) writeCfg({ snapshots: !!b.snapshots });
+          if (b.backups !== undefined) writeCfg({ backups: !!b.backups });
+          if (b.budget && typeof b.budget === 'object') writeCfg({ budget: { perDay: Math.max(0, Math.min(100000, Number(b.budget.perDay) || 0)), perChat: Math.max(0, Math.min(100000, Number(b.budget.perChat) || 0)) } });
+          let result = {};
+          if (b.backupNow) result = runBackup();
+          if (b.restoreBackup) result = safety.restoreBackup({ dir, chatsDir: core.projectsDir(), name: String(b.restoreBackup) });
+          costCache.at = 0;
+          return json(res, result.error ? 400 : 200, { ...result, snapshots: snapshotsOn(), backups: { on: backupsOn(), list: safety.listBackups(dir) }, budget: { ...budgetCfg(), usedDay: Math.round(costLastDay() * 100) / 100 } });
+        }
+        if (parts[0] === 'sessions' && parts[2] === 'undo' && parts.length === 3) {   // put the project back the way it was before a run
+          const f = core.findSession(parts[1]); if (!f) return json(res, 404, { error: 'no such session' });
+          const cwd = core.summarize(f).cwd; if (!cwd || !okDir(cwd)) return json(res, 403, { error: 'that project is outside the projects folder' });
+          const j = jobs.get(parts[1]); if (j && !j.done) return json(res, 409, { error: 'Claude is still working on this chat. Stop it first.' });
+          const snaps = safety.listSnapshots({ dir, cwd }), pick = b.snap ? snaps.find((x) => x.id === String(b.snap)) : snaps.find((x) => x.label === 'before a run');
+          if (!pick) return json(res, 404, { error: 'There is no snapshot of this project to go back to.' });
+          const r = safety.restoreSnapshot({ dir, cwd, id: pick.id }); onLog('undo of ' + cwd + ' to ' + new Date(pick.at).toISOString());
+          try { bumpChats(); } catch { /* not ready */ }
+          return json(res, r.error ? 500 : 200, r);
         }
         if (parts[0] === 'admin' && parts[1] === 'options') {   // switches for the server owner
           if (b.outside !== undefined) writeCfg({ outside: !!b.outside });

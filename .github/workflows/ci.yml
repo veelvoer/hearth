@@ -37,6 +37,10 @@ jobs:
         run: node desktop/test/rootfiles.test.js
       - name: Screens use only names that exist
         run: node scripts/lint-renderer.js
+      - name: Safety test (snapshots, backups, secrets)
+        run: node desktop/test/safety.test.js
+      - name: Safety through the server
+        run: node desktop/test/safety-server.test.js
       - name: Checklist test
         run: node desktop/test/checklist.test.js
       - name: Delete chats test
