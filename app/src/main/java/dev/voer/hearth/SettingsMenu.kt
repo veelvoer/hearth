@@ -23,6 +23,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** One entry of the settings menu: where it goes, what it looks like, and the words the search looks in. */
@@ -288,4 +291,40 @@ private fun DashBar(label: String, frac: Double, value: String) {
     Spacer(Modifier.height(10.dp))
     Row { Txt(label, T.body, modifier = Modifier.weight(1f), maxLines = 1); Spacer(Modifier.width(8.dp)); Txt(value, T.body, muted = true) }
     Meter((frac * 100).toFloat().coerceIn(1f, 100f), height = 5.dp)
+}
+
+/** A quick health check of the server: what works, what does not, and what to do about it. */
+@Composable
+fun DoctorCard() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var rows by remember { mutableStateOf<List<List<Any>>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf("") }
+    Card {
+        Head("shield", "Health check", "Looks at Claude Code, the projects folder, disk space and the chat files of your server, and says what to do about anything that is wrong.") {
+            TextAction("Check") {
+                if (busy) return@TextAction
+                val ms = Store.machines(c); val m = ms.firstOrNull { it.secure } ?: ms.firstOrNull()
+                if (m == null) { err = "Connect a server first."; return@TextAction }
+                busy = true; err = ""
+                scope.launch { runCatching { withContext(kotlinx.coroutines.Dispatchers.IO) { Relay.doctor(m) } }.onSuccess { rows = it }.onFailure { err = if ((it.message ?: "").let { x -> x.contains("404") || x.contains("unknown", true) || x.contains("not found", true) }) "This server is too old for the health check. Update it first." else friendlyError(it, m.name) }; busy = false }
+            }
+        }
+        if (busy) { Spacer(Modifier.height(10.dp)); Skeleton(48.dp, radius = 14.dp) }
+        if (err.isNotBlank()) { Spacer(Modifier.height(8.dp)); Txt(err, T.small, color = MaterialTheme.colorScheme.primary) }
+        rows?.forEach { r ->
+            val ok = r[1] as Boolean
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.Top) {
+                Box(Modifier.padding(top = 3.dp).size(22.dp).clip(RoundedCornerShape(50)).background(if (ok) Color(0xFF4CAF7D).copy(alpha = .18f) else MaterialTheme.colorScheme.primary.copy(alpha = .18f)), contentAlignment = Alignment.Center) { Glyph(if (ok) "check" else "x", 14.dp, if (ok) Color(0xFF2E8B57) else MaterialTheme.colorScheme.primary) }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Txt(r[0] as String, T.body.copy(fontWeight = FontWeight.SemiBold))
+                    Txt(r[2] as String, T.small, muted = true)
+                    if ((r[3] as String).isNotBlank()) Txt(r[3] as String, T.small, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
 }

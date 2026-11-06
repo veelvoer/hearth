@@ -1108,6 +1108,7 @@ fun SettingsScreen() {
         SyncCard()
         MemoryCard()
         LimitCard()
+        DoctorCard()
                 }
                 "tools" -> {
         SkillsCard()

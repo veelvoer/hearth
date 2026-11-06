@@ -116,6 +116,11 @@ object Relay {
         val a = o.optJSONArray("lines")
         return "Server ${o.optString("version")}\n" + (0 until (a?.length() ?: 0)).joinToString("\n") { a!!.getString(it) }.ifBlank { "(nothing logged)" }
     }
+    /** The server's own health check: (name, ok, what it found, what to do). */
+    fun doctor(m: Machine): List<List<Any>> {
+        val a = JSONObject(getJson(m, "/admin/doctor")).optJSONArray("checks") ?: return emptyList()
+        return (0 until a.length()).map { val o = a.getJSONObject(it); listOf(o.optString("name"), o.optBoolean("ok"), o.optString("text"), o.optString("fix")) }
+    }
     fun chatTags(m: Machine): JSONObject = JSONObject(getJson(m, "/chat-tags")).optJSONObject("tags") ?: JSONObject()
     fun setChatTag(m: Machine, id: String, pin: Boolean?, name: String?) { val b = JSONObject().put("id", id); if (pin != null) b.put("pin", pin); if (name != null) b.put("name", name); postJson(m, "/chat-tags", b) }
 

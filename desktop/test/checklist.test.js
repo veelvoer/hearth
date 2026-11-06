@@ -47,6 +47,8 @@ const req = (method, url, tok, body) => new Promise((res) => { const d = body ? 
   const lg = await req('GET', '/admin/logs?tail=5', tok);
   ok('14 the server log can be read by its owner, with the version', lg.code === 200 && Array.isArray(lg.j.lines) && /^\d+\.\d+\.\d+/.test(lg.j.version));
   ok('15 a guest key cannot read the log', (await req('GET', '/admin/logs', 'share.abcd.abcdefghijklmnop')).code === 401);
+  const dr = await req('GET', '/admin/doctor', tok);
+  ok('16 the health check lists what works and what does not', dr.code === 200 && Array.isArray(dr.j.checks) && dr.j.checks.some((x) => x.name === 'Projects folder' && x.ok) && dr.j.checks.some((x) => x.name === 'Claude Code starts' && x.ok === false && x.fix), JSON.stringify((dr.j.checks || []).map((x) => x.name + ':' + x.ok)).slice(0, 200));
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

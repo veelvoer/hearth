@@ -1077,6 +1077,19 @@ function start(opts) {
         }
         if (parts[0] === 'search' && parts.length === 1) return json(res, 200, { results: core.search(u.searchParams.get('q') || '') });   // words inside the chats
         if (parts[0] === 'chat-tags' && parts.length === 1) return json(res, 200, { tags: readCfg().chatTags || {} });   // pins and names of chats, shared by the phone and the computer
+        if (parts[0] === 'admin' && parts[1] === 'doctor') {   // a quick health check of this server: what works, what does not, and what to do about it
+          const checks = [], add = (name, ok, text, fix) => checks.push({ name, ok, text, ...(fix ? { fix } : {}) });
+          const cl = findClaude(); add('Claude Code', !!cl, cl ? 'Found at ' + cl : 'Not found on this server', cl ? '' : 'Install it: https://claude.com/claude-code');
+          if (cl) { const v = spawnSync(cl, ['--version'], { timeout: 6000, encoding: 'utf8' }); add('Claude Code starts', v.status === 0, v.status === 0 ? String(v.stdout).trim() : 'It did not start (' + String(v.stderr || v.error && v.error.message || 'no answer').slice(0, 120) + ')', v.status === 0 ? '' : 'Run "claude" once on the server and sign in.'); }
+          const pr = root || os.homedir(); let canWrite = false; try { fs.accessSync(pr, fs.constants.W_OK); canWrite = true; } catch { /* no */ }
+          add('Projects folder', canWrite, canWrite ? pr : pr + ' is not writable by this server', canWrite ? '' : 'Give the user of this server write access to the folder.');
+          try { const st = fs.statfsSync(pr), freeGb = st.bavail * st.bsize / 1e9; add('Disk space', freeGb > 1, freeGb.toFixed(1) + ' GB free', freeGb > 1 ? '' : 'Free some disk space: Claude cannot save chats without it.'); } catch { /* not available */ }
+          const denied = (() => { core.listFiles(); return core.deniedCount(); })(); add('Chats readable', denied === 0, denied === 0 ? 'Every chat file can be read' : denied + ' chat file(s) cannot be read (made with root rights)', denied === 0 ? '' : (rootAllowed() ? 'They are given back automatically within seconds.' : 'Run: sudo chown -R ' + os.userInfo().username + ' ~/.claude'));
+          if (rootAllowed()) { const rr = rootReady(true); add('Root chats', !!rr.ok, rr.ok ? rr.how : String(rr.why || 'Not possible').slice(0, 200), rr.ok ? '' : rr.fix || ''); }
+          const probs = logRing.filter((l) => /problem|error|Error/.test(l)).length; add('Recent problems', probs === 0, probs === 0 ? 'None in the log' : probs + ' line(s) with a problem in the last log lines', probs === 0 ? '' : 'Open the details of an error in a chat to read them.');
+          add('Server', true, 'Hearth ' + require('./version') + ' · up ' + Math.round(process.uptime() / 60) + ' min · ' + Math.round(process.memoryUsage().rss / 1048576) + ' MB');
+          return json(res, 200, { checks });
+        }
         if (parts[0] === 'admin' && parts[1] === 'logs') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
         if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work

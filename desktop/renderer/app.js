@@ -332,9 +332,22 @@ function settingsView(only) {
   p.append(only ? h('div') : permsCard());
   p.append(h('div', { class: 'card stack' }, ch('support', 'Support', 'Found a bug, have a question or an idea? Write to us. We answer by email. If sending from here does not work, write to hearth.support1@gmail.com yourself.', h('button', { class: 'primary sm', onclick: () => openSupport() }, 'Contact')),
     h('div', { class: 'warnnote' }, h('b', {}, 'If support does not work from here: '), 'write an email yourself to ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); cm.openExternal('mailto:hearth.support1@gmail.com'); } }, 'hearth.support1@gmail.com'), '. Say what you did and what you saw.')));
+  p.append(only ? h('div') : doctorCard());
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
   if (only) return p;
   return withSettingsMenu(p);
+}
+/** A quick health check of the server: what works, what does not, and what to do about it. */
+function doctorCard() {
+  const list = h('div', { class: 'stack', style: 'gap:8px' }), btn = h('button', { class: 'ghost sm', onclick: () => run() }, 'Check now');
+  const run = async () => {
+    const m = (await cm.machines()).find((x) => x.secure) || (await cm.machines())[0]; if (!m) { list.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    btn.disabled = true; btn.textContent = 'Checking…'; list.replaceChildren();
+    try { const r = await cm.relay(m.id, 'GET', '/admin/doctor'); (r.checks || []).forEach((c) => list.append(h('div', { class: 'row', style: 'align-items:flex-start;gap:10px' }, h('span', { class: 'pill ' + (c.ok ? 'ok' : 'warn'), style: 'padding:2px 9px;flex:none' }, h('i'), c.ok ? 'OK' : 'Check'), h('div', { class: 'grow' }, h('div', {}, c.name), h('div', { class: 'small muted' }, c.text), c.fix ? h('div', { class: 'small', style: 'margin-top:2px' }, c.fix) : null)))); }
+    catch (e) { list.append(h('div', { class: 'small err' }, /404|unknown|not found/i.test(clean(e)) ? 'This server is too old for the health check. Update it first.' : clean(e))); }
+    btn.disabled = false; btn.textContent = 'Check again';
+  };
+  return h('div', { class: 'card stack' }, ch('server', 'Health check', 'Looks at Claude Code, the projects folder, disk space and the chat files of this server, and says what to do about anything that is wrong.', btn), list);
 }
 /** Settings as pages: a list of groups on the left, the cards of the chosen group on the right, and About last. */
 const SX = { tab: 'connection', find: '', taps: 0, last: 0, ver: '' };
@@ -343,7 +356,7 @@ const SX_TABS = [
   ['updates', 'sync', 'Updates', 'Connection', /^updates/i],
   ['notifications', 'bell', 'Notifications and calls', 'App', /alerts|call me|notifications|calls from claude/i],
   ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
-  ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out/i],
+  ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check/i],
   ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions/i],
   ['help', 'support', 'Help and support', 'Help', /help|support/i],
 ];
