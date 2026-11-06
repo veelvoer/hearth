@@ -30,6 +30,12 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val app = applicationContext
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->   // the stack of a crash is kept, so the next start can offer to send it
+            runCatching { Store.setCrash(app, (e.javaClass.name + ": " + e.message + "\n" + e.stackTrace.take(14).joinToString("\n") { "  at $it" }).take(3500)) }
+            previous?.uncaughtException(t, e)
+        }
         enableEdgeToEdge()
         Store.purgeOldLogin(this)
         Ui.load(this)

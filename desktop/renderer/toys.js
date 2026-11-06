@@ -81,3 +81,16 @@ function workingEl() {
   if (playful) { const t = setInterval(() => { if (!el.isConnected) return clearInterval(t); word.classList.add('out'); setTimeout(() => { word.textContent = TOY_VERBS[Math.floor(Math.random() * TOY_VERBS.length)] + '…'; word.classList.remove('out'); }, 260); }, 2800); }
   return el;
 }
+
+/* ── Keyboard shortcuts: press ? (outside a text field) to see them ── */
+function showShortcuts() {
+  if (document.querySelector('.shortcuts')) return;
+  const rows = [['Ctrl/⌘ K', 'Find a chat'], ['Ctrl/⌘ N', 'New chat'], ['Ctrl/⌘ 1 – 4', 'Chats, Home, History, Settings'], ['Enter', 'Send a message'], ['Shift + Enter', 'New line'], ['/', 'Commands in a message'], ['Esc', 'Close a window'], ['?', 'This list']];
+  const over = h('div', { class: 'overlay shortcuts', onclick: (e) => { if (e.target === over) over.remove(); } },
+    h('div', { class: 'card', role: 'dialog', 'aria-label': 'Keyboard shortcuts', style: 'width:min(420px,92vw);display:flex;flex-direction:column;gap:6px' },
+      h('h3', { style: 'margin:0 0 6px' }, 'Keyboard shortcuts'), ...rows.map(([k, t]) => h('div', { class: 'row', style: 'min-height:34px' }, h('kbd', { class: 'kbd' }, k), h('div', { class: 'grow', style: 'margin-left:14px' }, t))),
+      h('div', { style: 'text-align:right;margin-top:6px' }, h('button', { class: 'ghost', onclick: () => over.remove() }, 'Close'))));
+  document.body.append(over);
+  const esc = (e) => { if (e.key === 'Escape') { over.remove(); document.removeEventListener('keydown', esc); } }; document.addEventListener('keydown', esc);
+}
+document.addEventListener('keydown', (e) => { const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); if (e.key === '?' && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); showShortcuts(); } });

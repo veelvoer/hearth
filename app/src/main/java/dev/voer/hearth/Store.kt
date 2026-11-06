@@ -107,6 +107,8 @@ object Store {
     fun setFullDashboard(c: Context, v: Boolean) = sp(c).edit().putBoolean("fulldash", v).apply()
     fun holidayShown(c: Context): String = sp(c).getString("holshown", "") ?: ""
     fun setHolidayShown(c: Context, v: String) = sp(c).edit().putString("holshown", v).apply()
+    fun crash(c: Context): String = sp(c).getString("crash", "") ?: ""
+    fun setCrash(c: Context, v: String) = sp(c).edit().putString("crash", v).commit().let { }
     fun betaUnlocked(c: Context) = sp(c).getBoolean("beta", false)
     fun setBetaUnlocked(c: Context, v: Boolean) = sp(c).edit().putBoolean("beta", v).apply()
     fun betaOn(c: Context, id: String) = sp(c).getBoolean("beta_$id", false)

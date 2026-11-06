@@ -388,6 +388,17 @@ fun NowScreen() {
         Ui.error?.let {
             Card { Txt(it, T.small, color = MaterialTheme.colorScheme.primary) }
         }
+        var crash by remember { mutableStateOf(Store.crash(c)) }
+        if (crash.isNotBlank()) Card {   // the app closed by itself last time: one tap sends what happened
+            Txt("Hearth closed unexpectedly last time", T.h2)
+            Spacer(Modifier.height(4.dp))
+            Txt("Sorry about that. Send the details, and it gets fixed.", T.small, muted = true)
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextAction("Report") { Ui.supportDraft = "Hearth closed by itself.\n\nPhone app: ${Updates.current(c)} · Android ${Build.VERSION.RELEASE} · ${Build.MANUFACTURER} ${Build.MODEL}\n\n$crash"; Ui.openSupport = true; Ui.tab = 3; Store.setCrash(c, ""); crash = "" }
+                TextAction("Close") { Store.setCrash(c, ""); crash = "" }
+            }
+        }
         LaunchedEffect(Unit) { if (Toys.holiday() != null && Store.holidayShown(c) != java.time.LocalDate.now().toString()) { Store.setHolidayShown(c, java.time.LocalDate.now().toString()); Ui.burst++ } }
         if (Store.betaOn(c, "pep")) Txt(Toys.daily(Toys.PEP), T.body, muted = true)
         if (Store.betaOn(c, "ember")) Ember()

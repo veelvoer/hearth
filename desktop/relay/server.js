@@ -1077,6 +1077,7 @@ function start(opts) {
         }
         if (parts[0] === 'search' && parts.length === 1) return json(res, 200, { results: core.search(u.searchParams.get('q') || '') });   // words inside the chats
         if (parts[0] === 'chat-tags' && parts.length === 1) return json(res, 200, { tags: readCfg().chatTags || {} });   // pins and names of chats, shared by the phone and the computer
+        if (parts[0] === 'admin' && parts[1] === 'logs') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
         if (parts[0] === 'admin' && parts[1] === 'options') return json(res, 200, { outside: outsideOk(), outsideAvailable: !!root, bypass: bypassOk(), bypassFixed: allowBypass, root: rootAllowed(), autoContinue: readCfg().autoContinue === true, googleTasks: !!(readCfg().googleTasks && readCfg().googleTasks.refreshToken), rootReady: rootReady(), rules: allowRules().map(({ id, tool, prefix, label }) => ({ id, tool, prefix, label })) });
         if (parts[0] === 'fs') {   // browse this server's folders (only folders): the new-chat screen uses it to pick or make a place to work
           const want = String(u.searchParams.get('path') || '') || root || os.homedir();
@@ -1539,7 +1540,6 @@ function start(opts) {
           if (!hubFiles) return json(res, 404, { error: 'this is not the server' });
           return json(res, 200, hubFiles.remove(String(b.rel || '')));
         }
-        if (parts[0] === 'admin' && parts[1] === 'logs' && req.method === 'GET') return json(res, 200, { version: require('./version'), lines: logRing.slice(-Math.max(1, Math.min(300, Number(u.searchParams.get('tail')) || 40))) });
         if (parts[0] === 'admin' && parts[1] === 'restart') {   // a plain restart of this server, from the app (the service manager starts it again)
           if (!opts.selfUpdate) return json(res, 400, { error: 'This one restarts together with its app.' });
           if (!b.force && [...jobs.values()].some((j) => !j.done)) return json(res, 409, { error: 'Claude is working on this server right now.', busy: true });
