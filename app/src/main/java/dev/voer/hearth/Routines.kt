@@ -66,7 +66,7 @@ fun RoutinesPage() {
         }
     }
     LaunchedEffect(Unit) { while (true) { load(); delay(10_000) } }
-    Txt("Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit.", T.small, muted = true)
+    Txt("Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit.", T.small, muted = true, maxLines = 6)
     if (err.isNotBlank()) Txt(err, T.small, color = MaterialTheme.colorScheme.primary)
     val list = routines
     if (list == null && err.isBlank()) { Skeleton(72.dp); Skeleton(72.dp) }
@@ -86,8 +86,8 @@ fun RoutinesPage() {
     }
     Label("Add a routine")
     ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        READY.forEach { (n, g, s) -> Chip(n, false, "plus") { load(JSONObject().put("add", JSONObject().put("name", n).put("goal", g).put("schedule", s).put("mode", "plan"))) } }
-        Chip("My own", adding, "sliders") { adding = !adding }
+        READY.forEach { (n, g, s) -> Chip(n, false) { load(JSONObject().put("add", JSONObject().put("name", n).put("goal", g).put("schedule", s).put("mode", "plan"))) } }
+        Chip("My own", adding) { adding = !adding }
     }
     if (adding) Card {
         Field(name, { name = it.take(60) }, "Name, e.g. Morning check")
@@ -119,7 +119,7 @@ fun RoutinesPage() {
                     Txt(r.name, T.body.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1f))
                     Txt(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(r.at)), T.small, muted = true)
                 }
-                Txt(if (r.status == "running") "Working on it…" else r.summary.ifBlank { if (r.status == "failed") "It did not finish." else "Done." }, T.small, muted = true, maxLines = 4)
+                Txt(if (r.status == "running") "Working on it…" else r.summary.replace("**", "").replace("`", "").replace(Regex("(^|\\s)- "), "$1· ").trim().ifBlank { if (r.status == "failed") "It did not finish." else "Done." }, T.small, muted = true, maxLines = 4)
             }
         }
     }

@@ -383,7 +383,7 @@ function routinesCard() {
       t.length ? h('div', { class: 'small muted', style: 'margin-top:6px;text-transform:uppercase;letter-spacing:.06em' }, 'What it did') : null,
       ...t.map((x) => h('button', { class: 'spitem', style: 'text-align:left', onclick: () => { if (x.session) { setTab('sessions'); openSession({ id: x.session, title: x.name, cwd: '', mid: m.id, mtime: Date.now(), live: false }); } } },
         h('div', { class: 'row' }, h('i', { class: 'pdot', style: 'background:' + (x.status === 'done' ? '#4CAF7D' : x.status === 'failed' ? 'var(--clay)' : 'var(--muted)') }), h('b', { class: 'grow ellip', style: 'margin-left:8px' }, x.name), h('span', { class: 'small muted' }, new Date(x.at).toLocaleString())),
-        h('div', { class: 'small muted' }, x.status === 'running' ? 'Working on it…' : (x.summary || (x.status === 'failed' ? 'It did not finish.' : 'Done.'))))));
+        h('div', { class: 'small muted' }, x.status === 'running' ? 'Working on it…' : (String(x.summary || '').replace(/\*\*|`/g, '').replace(/(^|\s)- /g, '$1· ').trim() || (x.status === 'failed' ? 'It did not finish.' : 'Done.'))))));
   };
   load(); const iv = setInterval(() => { if (body.isConnected) load(); else if (iv && body.dataset.seen) clearInterval(iv); else body.dataset.seen = '1'; }, 15000);   // stops by itself once the card is gone
   return h('div', { class: 'card stack' }, ch('now', 'Routines', 'Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit files.'), body);

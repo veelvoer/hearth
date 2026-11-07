@@ -201,17 +201,17 @@ fun BetaPage() {
     }
 }
 
-private fun fmtN(v: Double): String = if (v >= 1e9) "%.1fB".format(v / 1e9) else if (v >= 1e6) "%.1fM".format(v / 1e6) else if (v >= 1e3) "%.1fk".format(v / 1e3) else v.toInt().toString()
+private fun fmtN(v: Double): String = if (v >= 1e9) "%.1fB".format(java.util.Locale.US, v / 1e9) else if (v >= 1e6) "%.1fM".format(java.util.Locale.US, v / 1e6) else if (v >= 1e3) "%.1fk".format(java.util.Locale.US, v / 1e3) else v.toInt().toString()
 
 /** What a beta feature says about the last 30 days: (big value, small line), or null when there is nothing to say yet. */
 fun funLine(id: String, o: JSONObject): Pair<String, String>? {
     val t = o.optJSONObject("totals") ?: return null
     val out = t.optDouble("out", 0.0)
     return when (id) {
-        "water" -> out.takeIf { it > 0 }?.let { val ml = it / 1000 * 2; ("≈ " + (if (ml < 1000) "${ml.toInt()} ml" else "%.1f L".format(ml / 1000))) to "A rough guess: about 2 ml per 1,000 tokens written" }
-        "energy" -> out.takeIf { it > 0 }?.let { val wh = it / 1000 * 0.3; ("≈ " + (if (wh < 1000) "%.0f Wh".format(wh) else "%.1f kWh".format(wh / 1000))) to "About ${"%.1f".format(wh / 15)} phone charges" }
-        "coffee" -> t.optDouble("cost", 0.0).takeIf { it > 0 }?.let { "≈ ${"%.0f".format(it / 4)} cups" to "At API prices of \$${"%,.0f".format(it)}, a coffee at \$4" }
-        "words" -> out.takeIf { it > 0 }?.let { val w = it * 0.75; ("≈ " + fmtN(w) + " words") to "About ${"%,.0f".format(w / 300)} book pages" }
+        "water" -> out.takeIf { it > 0 }?.let { val ml = it / 1000 * 2; ("≈ " + (if (ml < 1000) "${ml.toInt()} ml" else "%.1f L".format(java.util.Locale.US, ml / 1000))) to "A rough guess: about 2 ml per 1,000 tokens written" }
+        "energy" -> out.takeIf { it > 0 }?.let { val wh = it / 1000 * 0.3; ("≈ " + (if (wh < 1000) "%.0f Wh".format(java.util.Locale.US, wh) else "%.1f kWh".format(java.util.Locale.US, wh / 1000))) to "About ${"%.1f".format(java.util.Locale.US, wh / 15)} phone charges" }
+        "coffee" -> t.optDouble("cost", 0.0).takeIf { it > 0 }?.let { "≈ ${"%.0f".format(java.util.Locale.US, it / 4)} cups" to "At API prices of \$${"%,.0f".format(java.util.Locale.US, it)}, a coffee at \$4" }
+        "words" -> out.takeIf { it > 0 }?.let { val w = it * 0.75; ("≈ " + fmtN(w) + " words") to "About ${"%,.0f".format(java.util.Locale.US, w / 300)} book pages" }
         "streak" -> t.optInt("currentStreak", 0).let { "$it day${if (it == 1) "" else "s"}" to "Best streak: ${t.optInt("longestStreak", 0)} days" }
         "favorite" -> o.optString("favorite").takeIf { it.isNotBlank() }?.let { it to "Did most of your work" }
         "busiest" -> o.optJSONArray("days")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.maxByOrNull { it.optDouble("tokens", 0.0) }?.takeIf { it.optDouble("tokens", 0.0) > 0 }?.let { d ->
@@ -220,14 +220,14 @@ fun funLine(id: String, o: JSONObject): Pair<String, String>? {
             var we = 0.0; var all = 0.0
             for (i in 0 until a.length()) { val d = a.getJSONObject(i); val tk = d.optDouble("tokens", 0.0); all += tk; val dow = runCatching { java.time.LocalDate.parse(d.getString("date")).dayOfWeek.value }.getOrDefault(1); if (dow >= 6) we += tk }
             if (all > 0) "${(we / all * 100).toInt()}%" to "Of your work is on a Saturday or Sunday" else null }
-        "longest" -> t.optLong("longestSessionMs", 0).takeIf { it > 0 }?.let { ms -> val m = ms / 60000; (if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m") to "Your longest session in one go" }
-        "co2" -> out.takeIf { it > 0 }?.let { val g = it / 1000 * 0.3 * 0.4; (if (g < 1000) "≈ ${"%.0f".format(g)} g" else "≈ ${"%.1f".format(g / 1000)} kg") to "Like driving ${"%,.0f".format(g / 0.12)} meters in a car" }
-        "timesaved" -> out.takeIf { it > 0 }?.let { val h = it * 0.75 / 40 / 60; (if (h < 1) "≈ ${"%.0f".format(h * 60)} min" else "≈ ${"%.1f".format(h)} hours") to "Of typing, at 40 words a minute" }
-        "bulb" -> out.takeIf { it > 0 }?.let { val hrs = it / 1000 * 0.3 / 10; (if (hrs < 1) "≈ ${"%.0f".format(hrs * 60)} min" else "≈ ${"%.1f".format(hrs)} hours") to "Of a 10 watt LED bulb" }
-        "bottles" -> out.takeIf { it > 0 }?.let { val b = it / 1000 * 2 / 500; "≈ ${"%.1f".format(b)} bottles" to "Of half a litre each" }
-        "pizza" -> t.optDouble("cost", 0.0).takeIf { it > 0 }?.let { "≈ ${"%.1f".format(it / 15)} pizzas" to "At \$15 a pizza" }
-        "perprompt" -> if (t.optInt("prompts", 0) > 0 && t.optDouble("cost", 0.0) > 0) "\$${"%.2f".format(t.optDouble("cost", 0.0) / t.optInt("prompts", 1))}" to "Per prompt, on average, at API prices" else null
-        "cache" -> t.optDouble("cacheSaved", 0.0).takeIf { it > 0 }?.let { "\$${"%,.0f".format(it)}" to "Saved by caching, at API prices" }
+        "longest" -> t.optLong("longestSessionMs", 0).takeIf { it > 0 }?.let { ms -> val m = ms / 60000; (if (m >= 1440) "${m / 1440}d ${m % 1440 / 60}h" else if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m") to "Your longest session in one go" }
+        "co2" -> out.takeIf { it > 0 }?.let { val g = it / 1000 * 0.3 * 0.4; (if (g < 1000) "≈ ${"%.0f".format(java.util.Locale.US, g)} g" else "≈ ${"%.1f".format(java.util.Locale.US, g / 1000)} kg") to "Like driving ${"%,.0f".format(java.util.Locale.US, g / 0.12)} meters in a car" }
+        "timesaved" -> out.takeIf { it > 0 }?.let { val h = it * 0.75 / 40 / 60; (if (h < 1) "≈ ${"%.0f".format(java.util.Locale.US, h * 60)} min" else "≈ ${"%.1f".format(java.util.Locale.US, h)} hours") to "Of typing, at 40 words a minute" }
+        "bulb" -> out.takeIf { it > 0 }?.let { val hrs = it / 1000 * 0.3 / 10; (if (hrs < 1) "≈ ${"%.0f".format(java.util.Locale.US, hrs * 60)} min" else "≈ ${"%.1f".format(java.util.Locale.US, hrs)} hours") to "Of a 10 watt LED bulb" }
+        "bottles" -> out.takeIf { it > 0 }?.let { val b = it / 1000 * 2 / 500; "≈ ${"%.1f".format(java.util.Locale.US, b)} bottles" to "Of half a litre each" }
+        "pizza" -> t.optDouble("cost", 0.0).takeIf { it > 0 }?.let { "≈ ${"%.1f".format(java.util.Locale.US, it / 15)} pizzas" to "At \$15 a pizza" }
+        "perprompt" -> if (t.optInt("prompts", 0) > 0 && t.optDouble("cost", 0.0) > 0) "\$${"%.2f".format(java.util.Locale.US, t.optDouble("cost", 0.0) / t.optInt("prompts", 1))}" to "Per prompt, on average, at API prices" else null
+        "cache" -> t.optDouble("cacheSaved", 0.0).takeIf { it > 0 }?.let { "\$${"%,.0f".format(java.util.Locale.US, it)}" to "Saved by caching, at API prices" }
         else -> null
     }
 }
@@ -248,7 +248,7 @@ fun FunFactsCard(raw: JSONObject?) {
                     Spacer(Modifier.height(8.dp))
                     Txt(v.first, T.h2.copy(fontSize = 20.sp))
                     Txt(f.title, T.small.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
-                    Txt(v.second, T.small.copy(fontSize = 12.sp), muted = true)
+                    Txt(v.second, T.small.copy(fontSize = 12.sp, lineHeight = 16.sp), muted = true)
                 }
             }
             if (pair.size == 1) Spacer(Modifier.weight(1f))

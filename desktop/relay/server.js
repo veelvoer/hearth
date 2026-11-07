@@ -1223,7 +1223,8 @@ function start(opts) {
           const gone = new Set(readCfg().deleted || []);
           const stubs = readStubs(), seenIds = new Set([...own, ...away].map((x) => x.id));
           const lost = Object.entries(stubs).filter(([id, v]) => !seenIds.has(id) && !core.findSession(id) && !jobs.has(id) && (!root || !v.cwd || under(v.cwd, root))).map(([id, v]) => ({ id, title: v.text.replace(/\s+/g, ' ').slice(0, 70) || 'Interrupted chat', cwd: v.cwd, mtime: Math.floor(v.at), live: false, busy: false, running: false, kind: 'code', interrupted: true }));
-          return json(res, 200, [...own, ...away, ...lost].filter((x) => !gone.has(x.id)).sort((x, y) => y.mtime - x.mtime));
+          const byRoutine = new Set(readRuns().map((x) => x.session).filter(Boolean));   // chats a routine made live in the Routines tab, not here
+          return json(res, 200, [...own, ...away, ...lost].filter((x) => !gone.has(x.id) && !byRoutine.has(x.id)).sort((x, y) => y.mtime - x.mtime));
         }
         if (parts[0] === 'sessions' && parts[2] === 'messages') {
           const ew = hubSync && hubSync.findElsewhere(parts[1]);

@@ -154,7 +154,7 @@ fun StartIdeas(current: String, onPick: (String) -> Unit) {
     Label("Start with")
     ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         (saved + guided).forEach { (n, t) -> Chip(n, false) { onPick(t) } }
-        if (current.isNotBlank() && hub != null) Chip("Save this as a template", false, "plus") { saving = true }
+        if (current.isNotBlank() && hub != null) Chip("Save this as a template", false) { saving = true }
     }
     if (saving) androidx.compose.material3.AlertDialog(onDismissRequest = { saving = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
         title = { Txt("Save as a template", T.h2) },

@@ -25,6 +25,7 @@ const until = async (fn, ms) => { const t = Date.now(); while (Date.now() - t < 
   const ran = await until(async () => ((await req('GET', '/routines/timeline', tok)).j.runs || []).some((r) => r.name === 'Digest' && r.status === 'done'), 12000);
   const runs = (await req('GET', '/routines/timeline', tok)).j.runs;
   ok('4 a routine that is due runs by itself, and the timeline has what it found', ran && /Found 3 things\. Digest/.test(runs.find((r) => r.status === 'done').summary) && runs.find((r) => r.status === 'done').session.startsWith('sid-'), JSON.stringify(runs[0]).slice(0, 160));
+  { const sid = runs.find((r) => r.status === 'done').session; const l = (await req('GET', '/sessions', tok)).j; ok('4b chats made by a routine are not in the main chat list', Array.isArray(l) && !l.some((x) => x.id === sid), String(sid)); }
   ok('5 a routine that is switched off never runs', !runs.some((r) => r.name === 'Off'));
   ok('6 it does not start again while the last run is still going', (() => { const d = runs.filter((r) => r.name === 'Digest').sort((a, b) => a.at - b.at); return d.every((r, i) => i === 0 || r.at - d[i - 1].at >= 1400); })());
   const id = on.j.routines.find((r) => r.name === 'Digest').id; await req('POST', '/routines', tok, { update: { id, enabled: false } });
