@@ -413,6 +413,7 @@ function safetyCard() {
     const b = d.budget || {}, bk = d.backups || {}, last = (bk.list || [])[0];
     const chips = (vals, cur, key) => h('div', { class: 'row wrap' }, ...vals.map((v) => chip(v === 0 ? 'Off' : '$' + v, cur === v, () => load({ budget: { perDay: key === 'perDay' ? v : b.perDay, perChat: key === 'perChat' ? v : b.perChat } }))));
     body.replaceChildren(
+      h('div', { class: 'row', title: 'Claude explains in everyday words, without jargon or code unless you ask.' }, h('div', { class: 'grow' }, 'Plain language'), toggle(!!d.plain, () => load({ plain: !d.plain }))),
       h('div', { class: 'row', title: 'A copy of the project folder, kept for the last 8 runs. In a chat: the undo button at the top.' }, h('div', { class: 'grow' }, 'Snapshot before every run'), toggle(d.snapshots !== false, () => load({ snapshots: d.snapshots === false }))),
       h('div', { class: 'small muted' }, 'Spending limit per day · used $' + (b.usedDay || 0).toFixed(2)), chips([0, 5, 10, 25, 50, 100], b.perDay || 0, 'perDay'),
       h('div', { class: 'small muted' }, 'Limit per chat'), chips([0, 2, 5, 10, 25], b.perChat || 0, 'perChat'),

@@ -48,6 +48,7 @@ fun SafetyCard() {
         if (err.isNotBlank()) { Spacer(Modifier.height(8.dp)); Txt(err, T.small, color = MaterialTheme.colorScheme.primary) }
         val d = data
         if (d == null) { Spacer(Modifier.height(10.dp)); Skeleton(56.dp, radius = 14.dp); return@Card }
+        Row2("Plain language", "Claude explains in everyday words, without jargon or code unless you ask.") { Switch(d.optBoolean("plain", false), { call(JSONObject().put("plain", it)) }) }
         Row2("Snapshot before every run", "A copy of the project folder, kept for the last 8 runs. In a chat: Options, Undo this run.") { Switch(d.optBoolean("snapshots", true), { call(JSONObject().put("snapshots", it)) }) }
         val b = d.optJSONObject("budget") ?: JSONObject()
         Spacer(Modifier.height(6.dp))
