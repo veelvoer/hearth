@@ -338,6 +338,7 @@ function settingsView(only) {
   p.append(only ? h('div') : doctorCard());
   p.append(only ? h('div') : toolCatalogCard());
   p.append(only ? h('div') : routinesCard());
+  p.append(only ? h('div') : memoryCard());
   p.append(only ? h('div') : safetyCard());
   p.append(only ? h('div') : rulesCard());
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
@@ -387,6 +388,21 @@ function routinesCard() {
   };
   load(); const iv = setInterval(() => { if (body.isConnected) load(); else if (iv && body.dataset.seen) clearInterval(iv); else body.dataset.seen = '1'; }, 15000);   // stops by itself once the card is gone
   return h('div', { class: 'card stack' }, ch('now', 'Routines', 'Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit files.'), body);
+}
+/** Short notes about you that Claude gets in every chat and routine. */
+function memoryCard() {
+  const body = h('div', { class: 'stack', style: 'gap:8px' });
+  const load = async (patch) => {
+    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let r; try { r = await cm.relay(m.id, patch ? 'POST' : 'GET', '/memory', patch); } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    const add = async () => { const t = await askText('Something to remember', 'One short fact or preference. Claude sees it in every chat.', { placeholder: 'e.g. I use metric units and short answers', ok: 'Remember' }); if (t && t.trim()) load({ add: t.trim() }); };
+    body.replaceChildren(
+      ...(r.notes || []).map((x) => h('div', { class: 'row spwrap', style: 'padding:8px 12px;gap:8px' }, h('div', { class: 'grow small' }, x.text), h('button', { class: 'ghost sm', onclick: () => load({ remove: x.id }) }, 'Forget'))),
+      (r.notes || []).length ? null : h('div', { class: 'small muted' }, 'Nothing yet. Add a note and Claude will know it from the next message on.'),
+      h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: add }, 'Add a note')));
+  };
+  load();
+  return h('div', { class: 'card stack' }, ch('sparkle', 'What Claude remembers', 'Short notes about you or how you like things. Claude gets them in every chat and routine.'), body);
 }
 /** Safety: a snapshot before every run, a spending limit and nightly backups of the chats. */
 function safetyCard() {
@@ -441,7 +457,7 @@ const SX_TABS = [
   ['updates', 'sync', 'Updates', 'Connection', /^updates/i],
   ['notifications', 'bell', 'Notifications and calls', 'App', /alerts|call me|notifications|calls from claude/i],
   ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
-  ['routines', 'now', 'Routines', 'Server and tools', /^routines|^what it did/i],
+  ['routines', 'now', 'Routines', 'Server and tools', /^routines|^what it did|^what claude remembers/i],
   ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check|^safety|never allow/i],
   ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions|add a tool/i],
   ['help', 'support', 'Help and support', 'Help', /help|support/i],

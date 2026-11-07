@@ -123,4 +123,39 @@ fun RoutinesPage() {
             }
         }
     }
+    MemoryNotes()
+}
+
+/** Short notes about the user that Claude gets in every chat and routine. */
+@Composable
+private fun MemoryNotes() {
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val hub = remember { Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } }
+    var notes by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    var text by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf("") }
+    fun load(patch: JSONObject? = null) {
+        if (hub == null) return
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { if (patch != null) Shares.postJson(hub, "/memory", patch) else JSONObject(Relay.get(hub, "/memory")) } }
+                .onSuccess { o -> val a = o.optJSONArray("notes") ?: JSONArray(); notes = (0 until a.length()).map { a.getJSONObject(it) }.map { it.optString("id") to it.optString("text") }; err = "" }
+                .onFailure { err = "This server is too old for notes. Update it first." }
+        }
+    }
+    LaunchedEffect(Unit) { load() }
+    if (hub == null) return
+    Label("What Claude remembers")
+    Txt("Short notes about you or how you like things. Claude gets them in every chat and routine.", T.small, muted = true, maxLines = 6)
+    if (err.isNotBlank()) Txt(err, T.small, color = MaterialTheme.colorScheme.primary)
+    notes?.forEach { (id, t) ->
+        Card {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Txt(t, T.small, modifier = Modifier.weight(1f))
+                IconAction("trash", "Forget this note", Alignment.CenterEnd, 40.dp) { load(JSONObject().put("remove", id)) }
+            }
+        }
+    }
+    Field(text, { text = it.take(300) }, "e.g. I use metric units and short answers")
+    Button("Remember this", Modifier.fillMaxWidth()) { if (text.isNotBlank()) { load(JSONObject().put("add", text.trim())); text = "" } }
 }

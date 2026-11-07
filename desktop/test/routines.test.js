@@ -38,6 +38,10 @@ const until = async (fn, ms) => { const t = Date.now(); while (Date.now() - t < 
   const d = new Date(Date.now() - 60e3), at = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   if (d.getDate() === new Date().getDate()) { const dly = await req('POST', '/routines', tok, { add: { name: 'Daily', goal: 'Check the disks.', cwd: proj, schedule: { type: 'daily', at } } }); await sleep(2500); await sleep(2500);
     const c = (await req('GET', '/routines/timeline', tok)).j.runs.filter((r) => r.name === 'Daily').length; ok('10 a daily routine whose time has passed runs once today, not again', c === 1, String(c)); } else ok('10 skipped just after midnight', true);
+  { const a = await req('POST', '/memory', tok, { add: '  I use   metric units ' }); await req('POST', '/memory', tok, { add: 'I use metric units' }); const l = (await req('GET', '/memory', tok)).j.notes;
+    ok('10b a memory note is saved once, tidied', a.code === 200 && l.length === 1 && l[0].text === 'I use metric units');
+    ok('10c an empty note is refused', (await req('POST', '/memory', tok, { add: '   ' })).code === 400);
+    ok('10d a memory note can be removed', (await req('POST', '/memory', tok, { remove: l[0].id })).j.notes.length === 0); }
   await req('POST', '/routines', tok, { remove: id });
   ok('11 a routine can be removed', !(await req('GET', '/routines', tok)).j.routines.some((r) => r.id === id));
   ok('12 a guest key cannot use routines', (await req('GET', '/routines', 'share.abcd.abcdefghijklmnop')).code === 401 && (await req('POST', '/routines', 'share.abcd.abcdefghijklmnop', { run: 'x' })).code === 401);
