@@ -342,6 +342,7 @@ function drawPane() {
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
     s.id && (guest || me.shared >= 0) ? h('button', { class: 'ghost sm', title: 'Whose usage do I use in this chat?', onclick: () => shOptions(s) }, 'Options') : null,
     s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
+    s.id && !guest ? ibtn('folder', 'See what changed in the project', () => showChanges(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('history', 'Undo the last run: put the project back the way it was before', () => undoRun(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
     s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
@@ -382,6 +383,21 @@ function drawPane() {
 }
 
 /** Leaves the new-chat screen: back to the chat you came from, or to the list of chats. */
+/** What is different in the project right now (git): the files, and the lines that changed, with an undo button. */
+async function showChanges(s) {
+  let r; try { r = await cm.relay(s.mid, 'GET', '/sessions/' + s.id + '/changes'); } catch (e) { toast(tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e)); return; }
+  const close = () => over.remove();
+  const line = (l) => h('div', { style: 'white-space:pre;color:' + (/^\+(?!\+\+)/.test(l) ? '#4CAF7D' : /^-(?!--)/.test(l) ? 'var(--clay)' : /^@@/.test(l) ? 'var(--muted)' : 'inherit') }, l);
+  const over = h('div', { class: 'overlay', onclick: (e) => { if (e.target === over) close(); } },
+    h('div', { class: 'card', role: 'dialog', 'aria-label': 'What changed', style: 'width:min(760px,94vw);max-height:84vh;display:flex;flex-direction:column;gap:10px' },
+      h('h3', { style: 'margin:0' }, 'What changed'),
+      !r.git ? h('div', { class: 'small muted' }, 'This project does not use git, so there is nothing to compare with. You can still undo the last run.')
+        : !r.files.length ? h('div', { class: 'small muted' }, 'Nothing is different from the last commit.')
+        : h('div', { class: 'small' }, r.files.map((f) => h('div', {}, h('b', {}, f.status === 'new' ? '+ ' : f.status === 'deleted' ? '− ' : '~ '), f.path))),
+      r.diff ? h('div', { class: 'mono small', style: 'overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px;min-height:80px' }, ...r.diff.split('\n').map(line)) : null,
+      h('div', { class: 'row', style: 'justify-content:flex-end;gap:8px' }, h('button', { class: 'ghost', onclick: () => { close(); undoRun(s); } }, 'Undo the last run'), h('button', { class: 'primary', onclick: close }, 'Close'))));
+  document.body.append(over);
+}
 /** Puts the project folder back the way it was before Claude's last run (a copy of how it is now is kept, so the undo can be undone). */
 async function undoRun(s) {
   if (!confirm('Undo the last run?\n\nEvery file of this project goes back to how it was before Claude’s last run: changed files come back, new files are removed. A copy of how it is now is kept, so you can undo the undo.')) return;

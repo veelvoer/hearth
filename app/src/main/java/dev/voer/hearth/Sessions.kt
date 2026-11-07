@@ -591,6 +591,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     var options by remember { mutableStateOf(false) }
     var delAsk by remember { mutableStateOf(false) }
     var undoAsk by remember { mutableStateOf(false) }
+    var changesOpen by remember { mutableStateOf(false) }
     var model by remember { mutableStateOf(Store.chatModel(appCtx, sess.id)) }
     var effort by remember { mutableStateOf(Store.chatEffort(appCtx, sess.id)) }
     // what you chose belongs to the chat: a new chat gets its choices saved under its id, and every chat comes back with its own mode, model and effort
@@ -600,6 +601,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         else Store.saveChatPrefs(appCtx, sess.id, mode, model, effort)
     }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
+    if (changesOpen) ChangesDialog(m, sess.id, onUndo = { changesOpen = false; undoAsk = true }, onClose = { changesOpen = false })
     if (undoAsk) androidx.compose.material3.AlertDialog(onDismissRequest = { undoAsk = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
         title = { Txt("Undo the last run?", T.h2) },
         text = { androidx.compose.foundation.text.selection.DisableSelection { Txt("Every file of this project goes back to how it was before Claude's last run: changed files come back, new files are removed. A copy of how it is now is kept, so you can undo the undo.", T.body) } },
@@ -831,6 +833,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             }
             if (sess.id.isNotEmpty() && !guest) {
                 Spacer(Modifier.height(4.dp))
+                TextAction("See what changed") { changesOpen = true }
                 TextAction("Undo this run") { undoAsk = true }   // puts the project folder back the way it was before the last run
                 TextAction("Delete this chat…") { delAsk = true }   // far from the send button and asks first, so it cannot happen by accident
             }

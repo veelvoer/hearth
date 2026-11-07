@@ -26,6 +26,10 @@ const req = (m, p, tok, body) => new Promise((res) => { const d = body ? Buffer.
   ok('1 the run changed the project', fs.readFileSync(path.join(proj, 'a.txt'), 'utf8') === 'CHANGED' && fs.existsSync(path.join(proj, 'b.txt')) && !fs.existsSync(path.join(proj, 'c.txt')), String(sid));
   const snaps = (await req('GET', `/sessions/${sid}/snapshots`, tok)).j;
   ok('2 a snapshot was taken before the run', Array.isArray(snaps) && snaps.length >= 1 && snaps[0].label === 'before a run' && snaps[0].text === 'change things', JSON.stringify(snaps).slice(0, 120));
+  const ch = (await req('GET', `/sessions/${sid}/changes`, tok)).j; ok('2b a folder without git says so', ch && ch.git === false && Array.isArray(ch.files));
+  { const g = path.join(T, 'gitproj'); fs.mkdirSync(g); const sh = (a) => require('child_process').spawnSync('git', ['-C', g, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a]); sh(['init', '-q']); fs.writeFileSync(path.join(g, 'x.txt'), 'one\n'); sh(['add', '.']); sh(['commit', '-qm', 'i']);
+    fs.writeFileSync(path.join(g, 'x.txt'), 'two\n'); fs.writeFileSync(path.join(g, 'new.txt'), 'n'); const r = require('../relay/safety').gitChanges(g);
+    ok('2c changes lists changed and new files with a diff', r.git && r.files.some((f) => f.path === 'x.txt' && f.status === 'changed') && r.files.some((f) => f.path === 'new.txt' && f.status === 'new') && /-one/.test(r.diff) && /\+two/.test(r.diff), JSON.stringify(r.files)); }
   const un = await req('POST', `/sessions/${sid}/undo`, tok, {});
   ok('3 undo puts everything back', un.code === 200 && fs.readFileSync(path.join(proj, 'a.txt'), 'utf8') === 'original a' && fs.existsSync(path.join(proj, 'c.txt')) && !fs.existsSync(path.join(proj, 'b.txt')), JSON.stringify(un.j).slice(0, 100));
   ok('4 a guest key cannot undo or read snapshots', (await req('POST', `/sessions/${sid}/undo`, 'share.abcd.abcdefghijklmnop', {})).code === 401);

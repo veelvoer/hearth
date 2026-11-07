@@ -1165,6 +1165,7 @@ function start(opts) {
           return json(res, 200, { checks });
         }
         if (parts[0] === 'admin' && parts[1] === 'safety') return json(res, 200, { snapshots: snapshotsOn(), backups: { on: backupsOn(), list: safety.listBackups(dir) }, budget: { ...budgetCfg(), usedDay: Math.round(costLastDay() * 100) / 100 } });
+        if (parts[0] === 'sessions' && parts[2] === 'changes') { const f = core.findSession(parts[1]); const cwd = f ? core.summarize(f).cwd : ''; return json(res, 200, cwd && okDir(cwd) ? safety.gitChanges(cwd) : { git: false, files: [], diff: '' }); }
         if (parts[0] === 'sessions' && parts[2] === 'snapshots') { const f = core.findSession(parts[1]); const cwd = f ? core.summarize(f).cwd : ''; return json(res, 200, cwd && okDir(cwd) ? safety.listSnapshots({ dir, cwd }).map((x) => ({ id: x.id, at: x.at, label: x.label, text: x.text, files: x.files, bytes: x.bytes })) : []); }
         if (parts[0] === 'admin' && parts[1] === 'decisions') return json(res, 200, { decisions: DECISIONS.slice(-Math.max(1, Math.min(200, Number(u.searchParams.get('tail')) || 50))).reverse() });
         if (parts[0] === 'recap') {   // a short look back: how the last days went

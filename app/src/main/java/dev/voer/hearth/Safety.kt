@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -205,4 +206,43 @@ fun ToolCatalogCard() {
         title = { Txt(t.second.substringBefore("|"), T.h2) },
         text = { Column { Txt("This tool needs ${t.third}. It is kept on your server, in the settings of Claude Code.", T.small, muted = true); Spacer(Modifier.height(8.dp)); Field(secret, { secret = it.trim() }, "Paste it here", mono = true) } },
         confirmButton = { TextAction("Add") { val s = secret; asking = null; add(t.first, s) } }, dismissButton = { TextAction("Cancel") { asking = null } }) }
+}
+
+/** What is different in the project right now (git): the files, and the lines that changed. */
+@Composable
+fun ChangesDialog(m: Machine, sid: String, onUndo: () -> Unit, onClose: () -> Unit) {
+    var data by remember { mutableStateOf<JSONObject?>(null) }
+    var err by remember { mutableStateOf("") }
+    LaunchedEffect(sid) {
+        runCatching { withContext(Dispatchers.IO) { JSONObject(Relay.get(m, "/sessions/$sid/changes")) } }
+            .onSuccess { data = it }.onFailure { err = if ((it.message ?: "").contains("404")) "This server is too old for this. Update it first." else "Could not read the changes." }
+    }
+    val cs = MaterialTheme.colorScheme
+    androidx.compose.material3.AlertDialog(onDismissRequest = onClose, containerColor = cs.surfaceVariant,
+        title = { Txt("What changed", T.h2) },
+        text = {
+            androidx.compose.foundation.text.selection.DisableSelection {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    val d = data
+                    if (err.isNotBlank()) Txt(err, T.small, color = cs.primary)
+                    else if (d == null) Skeleton(60.dp)
+                    else if (!d.optBoolean("git")) Txt("This project does not use git, so there is nothing to compare with. You can still undo the last run.", T.small)
+                    else {
+                        val files = d.optJSONArray("files") ?: org.json.JSONArray()
+                        if (files.length() == 0) Txt("Nothing is different from the last commit.", T.small)
+                        for (i in 0 until files.length()) { val f = files.getJSONObject(i); Txt((when (f.optString("status")) { "new" -> "+ "; "deleted" -> "− "; else -> "~ " }) + f.optString("path"), T.small) }
+                        val diff = d.optString("diff")
+                        if (diff.isNotBlank()) {
+                            Spacer(Modifier.height(10.dp))
+                            diff.lines().take(400).forEach { l ->
+                                val col = if (l.startsWith("+") && !l.startsWith("+++")) androidx.compose.ui.graphics.Color(0xFF4CAF7D) else if (l.startsWith("-") && !l.startsWith("---")) cs.primary else if (l.startsWith("@@")) cs.outline else cs.onSurface
+                                androidx.compose.material3.Text(l, color = col, style = T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextAction("Close") { onClose() } },
+        dismissButton = { TextAction("Undo the last run") { onUndo() } })
 }

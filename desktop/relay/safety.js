@@ -97,4 +97,16 @@ function scanSecrets({ root, days = 30, maxFiles = 2500 }) {
   };
   walk(root, 0); return { findings: out, scanned: seen };
 }
-module.exports = { takeSnapshot, listSnapshots, restoreSnapshot, createBackup, listBackups, restoreBackup, scanSecrets, filesOf, HEAVY };
+/** What is different in a project right now, from git: changed and new files plus the diff (cut to 60 KB). Folders without git say so. */
+function gitChanges(cwd) {
+  const run = (a) => spawnSync('git', ['-C', cwd, '-c', 'core.quotepath=off', ...a], { timeout: 15000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' });
+  const top = run(['rev-parse', '--is-inside-work-tree']);
+  if (top.error || top.status !== 0) return { git: false, files: [], diff: '' };
+  const st = run(['status', '--porcelain']);
+  const files = String(st.stdout || '').split('\n').filter(Boolean).slice(0, 200).map((l) => ({ status: l.slice(0, 2).trim() === '??' ? 'new' : /D/.test(l.slice(0, 2)) ? 'deleted' : 'changed', path: l.slice(3).replace(/^"|"$/g, '') }));
+  const hasHead = run(['rev-parse', '--verify', '-q', 'HEAD']).status === 0;
+  const df = run(hasHead ? ['diff', 'HEAD', '--no-color', '--stat=60', '-p'] : ['diff', '--no-color', '-p']);
+  let diff = String(df.stdout || ''); const cut = diff.length > 60000; if (cut) diff = diff.slice(0, 60000) + '\n… (cut)';
+  return { git: true, files, diff, cut };
+}
+module.exports = { gitChanges, takeSnapshot, listSnapshots, restoreSnapshot, createBackup, listBackups, restoreBackup, scanSecrets, filesOf, HEAVY };
