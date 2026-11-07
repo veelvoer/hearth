@@ -338,7 +338,7 @@ function settingsView(only) {
   p.append(only ? h('div') : doctorCard());
   p.append(only ? h('div') : toolCatalogCard());
   p.append(only ? h('div') : routinesCard());
-  p.append(only ? h('div') : memoryCard());
+  p.append(only ? h('div') : notesCard());
   p.append(only ? h('div') : safetyCard());
   p.append(only ? h('div') : rulesCard());
   [4, 5, 6, 7, 11].forEach((i, n) => { if (p.children[i]) p.children[i].dataset.live = 'l' + n; });   // the cards that show a setting
@@ -390,7 +390,7 @@ function routinesCard() {
   return h('div', { class: 'card stack' }, ch('now', 'Routines', 'Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit files.'), body);
 }
 /** Short notes about you that Claude gets in every chat and routine. */
-function memoryCard() {
+function notesCard() {
   const body = h('div', { class: 'stack', style: 'gap:8px' });
   const load = async (patch) => {
     const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
