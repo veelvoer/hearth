@@ -168,7 +168,7 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
     var checkErr by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val hub = remember { Store.machines(c).let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } }
-    fun checklist(body: JSONObject) { if (hub != null) scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(hub, "/support/checklist", body) } }.onSuccess { items = parseItems(it); checkErr = "" }.onFailure { checkErr = if ((it.message ?: "").let { m -> m.contains("unknown", true) || m.contains("404") || m.contains("not found", true) }) "Your server does not know the checklist yet. Update it in Settings, Updates, and this fills in by itself." else (it.message ?: "The checklist could not be loaded.") } } }
+    fun checklist(body: JSONObject) { if (hub != null) scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(hub, "/inbox/checklist", body) } }.onSuccess { items = parseItems(it); checkErr = "" }.onFailure { checkErr = if ((it.message ?: "").let { m -> m.contains("unknown", true) || m.contains("404") || m.contains("not found", true) }) "Your server does not know the checklist yet. Update it in Settings, Updates, and this fills in by itself." else (it.message ?: "The checklist could not be loaded.") } } }
     LaunchedEffect(tickets) {   // looks at every report: the open ones are listed, the ones that are fixed are ticked, and the list is kept in step as long as this screen is open
         val t = tickets ?: return@LaunchedEffect
         if (hub != null && t.any { it.theirs }) checklist(JSONObject().put("sync", JSONArray().also { a -> t.filter { it.theirs }.forEach { x -> a.put(JSONObject().put("id", x.id).put("title", x.title).put("email", x.email).put("last", x.last).put("text", x.thread.ifEmpty { x.last }).put("updatedAt", x.updatedAt).put("from", x.from).put("fixed", statusOf(x.status, x.from, x.last) == "fixed")) } }))
@@ -364,7 +364,7 @@ private fun SupportActions(id: String, title: String, category: String, from: St
         if (m == null) { msg = "Connect your server first."; return }
         msg = "$label…"
         scope.launch {
-            runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/support/act", JSONObject().put("id", id).put("title", title).put("category", category).put("from", from).put("text", text.take(5000)).put("action", action)) } }
+            runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/inbox/act", JSONObject().put("id", id).put("title", title).put("category", category).put("from", from).put("text", text.take(5000)).put("action", action)) } }
                 .onSuccess { msg = it.optString("text", "Done."); val sid = it.optString("session"); if (action == "claude" && it.optBoolean("ok", true) && sid.isNotEmpty()) { Ui.pendingOpen = PendingOpen(m.host, sid, title, it.optString("cwd"), false); Ui.tab = 0 } }.onFailure { msg = if ((it.message ?: "").contains("unknown", true)) "Update your server first." else it.message ?: "Didn't work" }
         }
     }

@@ -1082,7 +1082,7 @@ function start(opts) {
   // ── routes ──
   const server = http.createServer(async (req, res) => {
     try {
-      const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
+      const u = new URL(req.url, 'http://x'), parts = u.pathname.replace(/^\/|\/$/g, '').split('/'); if (parts[0] === 'inbox') parts[0] = 'support';   // the proxy sends /support/* to the support desk, so the apps say /inbox/*
       const ip = clientIp(req);
       const bearerKey = String(req.headers.authorization || '').replace(/^Bearer /, '');
       if (parts[0] === 'health' && parts.length === 1 && req.method === 'GET') return json(res, 200, { ok: true, boot: BOOT });   // for the watchdog of the program that started this one: nothing private in it

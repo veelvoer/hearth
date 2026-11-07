@@ -79,7 +79,7 @@ async function spChecklist(box, hub, body) {
     const row = (x) => h('div', { class: 'spwrap' }, h('div', { class: 'row', style: 'align-items:flex-start;gap:10px' },
       h('input', { type: 'checkbox', checked: x.done, 'aria-label': (x.done ? 'Mark not done: ' : 'Mark done: ') + x.title, style: 'margin-top:4px;width:18px;height:18px', onchange: (e) => act({ id: x.id, done: e.target.checked }) }),
       h('button', { class: 'spitem grow', style: 'text-align:left', onclick: () => { SP.open = x.id; SP.view = 'thread'; drawSupport(); } }, h('b', { class: 'ellip', style: x.done ? 'text-decoration:line-through;opacity:.6' : '' }, x.title), h('div', { class: 'small muted ellip' }, x.from + ' · ' + x.id + ' · ' + spAgo(x.at))),
-      x.done ? null : h('button', { class: 'ghost sm', title: 'Let Claude look into this', onclick: async (e) => { e.currentTarget.disabled = true; try { const r = await cm.relay(hub.id, 'POST', '/support/act', { id: x.id, title: x.title, from: x.from, text: x.text, action: 'claude' }); toast(r.text || 'Claude is looking into it.'); if (r.ok && r.session) { closeSupport(); setTab('sessions'); openSession({ id: r.session, title: x.title, cwd: r.cwd || '', mid: hub.id, mtime: Date.now(), live: true }); } } catch (er) { toast(clean(er)); } } }, 'Fix with Claude')));
+      x.done ? null : h('button', { class: 'ghost sm', title: 'Let Claude look into this', onclick: async (e) => { e.currentTarget.disabled = true; try { const r = await cm.relay(hub.id, 'POST', '/inbox/act', { id: x.id, title: x.title, from: x.from, text: x.text, action: 'claude' }); toast(r.text || 'Claude is looking into it.'); if (r.ok && r.session) { closeSupport(); setTab('sessions'); openSession({ id: r.session, title: x.title, cwd: r.cwd || '', mid: hub.id, mtime: Date.now(), live: true }); } } catch (er) { toast(clean(er)); } } }, 'Fix with Claude')));
     todo.forEach((x) => box.append(row(x)));
     if (done.length) {
       box.append(h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'link grow', style: 'text-align:left', onclick: () => { SP_DONE_OPEN = !SP_DONE_OPEN; draw(items); } }, (SP_DONE_OPEN ? '⌃ ' : '⌄ ') + 'Done · ' + done.length), SP_DONE_OPEN ? h('button', { class: 'ghost sm', onclick: () => act({ remove: 'done' }) }, 'Remove done') : null));
@@ -87,7 +87,7 @@ async function spChecklist(box, hub, body) {
     }
   };
   const act = async (b) => {
-    try { draw((await cm.relay(hub.id, 'POST', '/support/checklist', b)).items || []); }
+    try { draw((await cm.relay(hub.id, 'POST', '/inbox/checklist', b)).items || []); }
     catch (e) {   // the server could not give the checklist: say why, and still show the open reports so nothing is hidden
       box.innerHTML = ''; const m = clean(e);
       box.append(h('div', { class: 'obnote' }, h('div', { class: 'small err' }, /unknown|404|not found/i.test(m) ? 'Your server does not know the checklist yet. Update it in Settings, Updates, and this fills in by itself.' : m)));
@@ -171,7 +171,7 @@ function spActions(t, text) {
     msg.textContent = label + '…';
     try {
       const ms = await cm.machines(), m = ms.find((x) => x.secure) || ms[0]; if (!m) throw new Error('Connect your server first.');
-      const r = await cm.relay(m.id, 'POST', '/support/act', { id: t.id, title: t.title, category: t.category, from: t.email, text: String(text || '').slice(0, 5000), action });
+      const r = await cm.relay(m.id, 'POST', '/inbox/act', { id: t.id, title: t.title, category: t.category, from: t.email, text: String(text || '').slice(0, 5000), action });
       msg.textContent = r.text || 'Done.';
       if (action === 'claude' && r.ok && r.session) { closeSupport(); setTab('sessions'); openSession({ id: r.session, title: t.title, cwd: r.cwd || '', mid: m.id, mtime: Date.now(), live: true }); }
     } catch (e) { msg.textContent = clean(e).includes('unknown') ? 'Update your server first.' : clean(e); }

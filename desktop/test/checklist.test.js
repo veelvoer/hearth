@@ -13,7 +13,7 @@ let pass = 0, fail = 0; const ok = (n, c, x = '') => { c ? pass++ : fail++; cons
 const req = (method, url, tok, body) => new Promise((res) => { const d = body ? Buffer.from(JSON.stringify(body)) : null; const r = http.request({ host: '127.0.0.1', port: 47792, path: url, method, headers: { Authorization: 'Bearer ' + tok, ...(d ? { 'Content-Type': 'application/json', 'Content-Length': d.length } : {}) } }, (rs) => { let b = ''; rs.on('data', (x) => { b += x; }); rs.on('end', () => { let j = {}; try { j = JSON.parse(b); } catch { /* */ } res({ code: rs.statusCode, j }); }); }); r.on('error', () => res({ code: 0, j: {} })); if (d) r.write(d); r.end(); });
 (async () => {
   let tok = ''; for (let i = 0; i < 40 && !tok; i++) { await sleep(400); try { tok = JSON.parse(fs.readFileSync(path.join(T, 'd', 'relay.json'))).token; } catch { /* not yet */ } }
-  const ck = (b) => req('POST', '/support/checklist', tok, b);
+  const ck = (b) => req('POST', '/inbox/checklist', tok, b);
   const now = Date.now();
   let r = await ck({ sync: [{ id: 'HRT-1', title: 'Crash', email: 'a@x.nl', last: 'It crashes', updatedAt: now, from: 'user' }, { id: 'HRT-2', title: 'Idea', email: 'b@x.nl', last: 'More icons', updatedAt: now - 5, from: 'user' }, { id: 'HRT-3', title: 'Old', email: 'c@x.nl', last: 'Good news', updatedAt: now - 9, from: 'support', fixed: true }] });
   ok('1 open reports become items, fixed ones are not added', r.j.items.map((x) => x.id).join() === 'HRT-1,HRT-2' && r.j.items.every((x) => !x.done), JSON.stringify(r.j).slice(0, 120));

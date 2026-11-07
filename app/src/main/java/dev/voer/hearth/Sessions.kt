@@ -865,7 +865,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
               }
             }
             itemsIndexed(parts) { _, p -> if (p.tool) { if (!Store.simpleView(c)) ToolCard(p.name, p.detail, p.result, p.err, p.at) } else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
-            queued.forEachIndexed { qi, q -> item("q$qi") { Txt("Queued · " + q.take(80), T.small, muted = true) } }
+            queued.forEachIndexed { qi, q -> item("q$qi") { Column {
+                Txt("Queued · " + q.take(80), T.small, muted = true)
+                if (working && sess.id.isNotEmpty() && !guest) TextAction("Add it now") {   // Claude stops what it is doing, takes this in, and carries on with the same chat
+                    queued.removeAt(qi); queued.add(0, "Wait, one more thing before you continue what you were doing: $q")
+                    scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) } }
+                }
+            } } }
             if (working) item { WorkingIndicator() }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
