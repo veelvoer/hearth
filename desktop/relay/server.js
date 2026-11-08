@@ -577,9 +577,9 @@ function start(opts) {
     const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
     const envPass = Object.entries(process.env).filter(([k]) => /^(ANTHROPIC_|CLAUDE_|HTTPS?_PROXY|NO_PROXY)/i.test(k)).map(([k, v]) => `${k}=${v}`);
     const child = process.env.FLATPAK_ID
-      ? spawn('flatpak-spawn', ['--host', `--directory=${cwd}`, 'bash', '-lc', 'exec claude "$@"', 'claude', ...args], { stdio: ['pipe', 'pipe', 'ignore'] })
-      : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
-      : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      ? spawn('flatpak-spawn', ['--host', `--directory=${cwd}`, 'bash', '-lc', 'exec claude "$@"', 'claude', ...args], { stdio: ['pipe', 'pipe', 'pipe'] })
+      : rootLaunch ? spawn('sudo', ['-n', 'env', `HOME=${os.homedir()}`, `PATH=${process.env.PATH}`, ...envPass, claude, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+      : spawn(useShell ? `"${claude}"` : claude, useShell ? args.map((a) => (/[\s]/.test(a) ? `"${a}"` : a)) : args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdin.on('error', () => {});   // Claude may exit before it has read the prompt: that is the run's problem, it must never take the whole server down
     child.stdout.on('error', () => {});
     child.stdin.end(String(body.text || ''));  // the prompt goes in on stdin, never on the command line
@@ -640,7 +640,14 @@ function start(opts) {
       try { fs.unlinkSync(mcpFile); } catch { /* gone */ }
       setTimeout(() => { for (const [k, v] of jobs) if (v === job) jobs.delete(k); }, 120000).unref();
     };
-    child.on('close', () => finish());
+    let errTail = ''; try { child.stderr.on('data', (d) => { errTail = (errTail + d).slice(-600); }); } catch { /* no stderr */ }
+    child.on('close', (code) => {
+      if (!job.done && !job.events.some((x) => x.t === 'done')) {   // Claude ended without an answer: say why instead of showing nothing
+        const why = errTail.replace(/\s+/g, ' ').trim().slice(-300);
+        onLog('run ended without an answer (exit ' + code + ')' + (why ? ': ' + why : ''));
+        finish(new Error('Claude stopped without answering' + (why ? ': ' + why : ' (exit ' + code + ')') + '. Send it again.'));
+      } else finish();
+    });
     child.on('error', (e) => finish(e));
     return { job };
   }
