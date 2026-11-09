@@ -687,6 +687,26 @@ function start(opts) {
     if (text.length > 400000) return { error: 'the request is too long (400,000 characters at most)' };
     return { text, sys, all: text + ' ' + sys };
   }
+  /** A side question while a run goes on (like /btw): answered from what the chat already knows, by a copy of the chat, with no tools, and it leaves no trace in the chat. */
+  function btwRun(sid, cwd, question) {
+    return new Promise((resolve) => {
+      const claude = findClaude(); if (!claude) return resolve({ error: 'Claude Code was not found on this server.', code: 500 });
+      const args = ['-p', '--output-format', 'json', '--resume', sid, '--fork-session', '--no-session-persistence', '--model', 'haiku', '--tools', '', '--strict-mcp-config'];
+      const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(claude);
+      const child = spawn(useShell ? `"${claude}"` : claude, args, { cwd, shell: useShell, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let out = '', err = '', done = false;
+      const end = (r) => { if (done) return; done = true; clearTimeout(timer); resolve(r); };
+      const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } end({ error: 'That took too long.', code: 504 }); }, 90000);
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { err += d; });
+      child.on('error', (e) => end({ error: 'Could not start Claude: ' + e.message, code: 500 }));
+      child.on('close', () => { let j = null; try { j = JSON.parse(out); } catch { /* not json */ }
+        if (!j || j.is_error) return end({ error: String((j && j.result) || err || 'No answer.').replace(/\s+/g, ' ').slice(0, 300), code: 502 });
+        end({ text: String(j.result || '').trim() }); });
+      child.stdin.on('error', () => {});
+      child.stdin.end('A side question, asked while you are busy with the task above. Answer it briefly from what you already know in this conversation. You cannot use tools or change anything, and you should not continue the task.\n\n' + question);
+    });
+  }
   const apiQueues = new Map();   // one call at a time per remembered session
   function apiRun(model, effort, sys, text, ses) {
     return new Promise((resolve) => {
@@ -1470,6 +1490,12 @@ function start(opts) {
           if (b.restoreBackup) result = safety.restoreBackup({ dir, chatsDir: core.projectsDir(), name: String(b.restoreBackup) });
           costCache.at = 0;
           return json(res, result.error ? 400 : 200, { ...result, plain: !!readCfg().plain, snapshots: snapshotsOn(), backups: { on: backupsOn(), list: safety.listBackups(dir) }, budget: { ...budgetCfg(), usedDay: Math.round(costLastDay() * 100) / 100 } });
+        }
+        if (parts[0] === 'sessions' && parts[2] === 'btw' && parts.length === 3 && req.method === 'POST') {   // a side question, answered while the run goes on
+          const q = String(b.text || '').trim().slice(0, 2000); if (!q) return json(res, 400, { error: 'Write a question.' });
+          const f = core.findSession(parts[1]); if (!f) return json(res, 404, { error: 'no such session' });
+          const cwd = core.summarize(f).cwd; if (!cwd || !okDir(cwd)) return json(res, 403, { error: 'that project is outside the projects folder' });
+          const r = await btwRun(parts[1], cwd, q); return json(res, r.error ? (r.code || 502) : 200, r.error ? { error: r.error } : { text: r.text });
         }
         if (parts[0] === 'sessions' && parts[2] === 'undo' && parts.length === 3) {   // put the project back the way it was before a run
           const f = core.findSession(parts[1]); if (!f) return json(res, 404, { error: 'no such session' });

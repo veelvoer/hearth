@@ -692,6 +692,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     val total = msgs.size + parts.size
     LaunchedEffect(total, parts.lastOrNull()?.text?.length) { if (total > 0) list.scrollToItem(total) }
 
+    val side = remember { mutableStateListOf<Triple<String, String, Boolean>>() }   // side questions (like /btw): question, answer, failed. They answer while Claude keeps working and are not part of the chat
     val queued = remember { mutableStateListOf<String>() }   // messages written while Claude is busy: they go out one by one when it is free
     fun doSend(text: String) {
         sending = true; parts.clear(); err = null
@@ -867,10 +868,25 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             itemsIndexed(parts) { _, p -> if (p.tool) { if (!Store.simpleView(c)) ToolCard(p.name, p.detail, p.result, p.err, p.at) } else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
             queued.forEachIndexed { qi, q -> item("q$qi") { Column {
                 Txt("Queued · " + q.take(80), T.small, muted = true)
+                if (working && sess.id.isNotEmpty() && !guest) TextAction("Ask on the side") {   // answered now, from what the chat knows, without stopping Claude
+                    queued.removeAt(qi); side.add(0, Triple(q, "", false))
+                    scope.launch {
+                        val r = runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/sessions/${sess.id}/btw", JSONObject().put("text", q)).optString("text") } }
+                        val i = side.indexOfFirst { it.first == q && it.second.isEmpty() && !it.third }
+                        if (i >= 0) side[i] = r.fold({ Triple(q, it.ifBlank { "No answer." }, false) }, { Triple(q, if ((it.message ?: "").contains("404")) "This server is too old for side questions. Update it first." else (it.message ?: "Could not answer."), true) })
+                    }
+                }
                 if (working && sess.id.isNotEmpty() && !guest) TextAction("Add it now") {   // Claude stops what it is doing, takes this in, and carries on with the same chat
                     queued.removeAt(qi); queued.add(0, "Wait, one more thing before you continue what you were doing: $q")
                     scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) } }
                 }
+            } } }
+            side.forEachIndexed { si, sq -> item("side$si") { Card {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Txt("On the side · " + sq.first.take(80), T.small, muted = true, modifier = Modifier.weight(1f))
+                    IconAction("x", "Dismiss", Alignment.CenterEnd, 40.dp) { side.removeAt(si) }
+                }
+                if (sq.second.isEmpty()) Skeleton(24.dp) else if (sq.third) Txt(sq.second, T.small, color = MaterialTheme.colorScheme.primary) else MarkdownText(sq.second)
             } } }
             if (working) item { WorkingIndicator() }
             if (!working && sess.id.isNotEmpty() && msgs.lastOrNull { it.role != "meta" }?.role == "assistant" && parts.any { it.tool && it.name in setOf("Edit", "Write", "MultiEdit", "NotebookEdit") }) item {
