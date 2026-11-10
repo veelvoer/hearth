@@ -819,7 +819,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (sess.kind != "talk") {
                 Label("Model")
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, sess.id, v) } }
+                    listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku", "Fable" to "fable").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, sess.id, v) } }
                 }
                 Label("Effort")
                 ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

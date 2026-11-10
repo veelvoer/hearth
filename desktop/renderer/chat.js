@@ -473,7 +473,7 @@ function composer() {
   const box = h('div', { class: 'composer' }, h('div', { class: 'cbox' }, menu, h('div', { id: 'files', class: 'files' }), ta,
     h('div', { class: 'row cfoot' },
       ...(isGuestMid(s.mid) ? [] : [sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; saveChatPrefs(s.id); drawPane(); setChatAuto(v === 'bypassPermissions'); }),
-      sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']], SS.model, (v) => { SS.model = v; saveChatPrefs(s.id); }),
+      sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']], SS.model, (v) => { SS.model = v; saveChatPrefs(s.id); }),
       sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; saveChatPrefs(s.id); })]),
       h('div', { class: 'grow' }),
       SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,

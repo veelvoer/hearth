@@ -242,7 +242,7 @@ function start(opts) {
   const usageFile = path.join(dir, 'usage.json');
   let usage = (() => { try { return JSON.parse(fs.readFileSync(usageFile, 'utf8')); } catch { return {}; } })();
   noteWeek(usage);   // the reading we start with counts too
-  const WINDOWS = { five_hour: 'session', seven_day: 'week', seven_day_opus: 'opus', seven_day_sonnet: 'sonnet' };
+  const WINDOWS = { five_hour: 'session', seven_day: 'week', seven_day_opus: 'opus', seven_day_sonnet: 'sonnet', seven_day_fable: 'fable' };
   function noteRateLimit(info) {
     if (!info) return;
     const wins = info.unifiedWindows || (info.rateLimitType && info.utilization != null ? { [info.rateLimitType]: { utilization: info.utilization, resetsAt: info.resetsAt } } : {});
@@ -528,7 +528,7 @@ function start(opts) {
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', mode, '--settings', settingsFile];
     const kind = body.kind === 'talk' || (sidParam !== 'new' && getPrefs(sidParam).kind === 'talk') ? 'talk' : 'code';
     if (kind === 'talk') args.push('--model', 'haiku', '--disallowedTools', TALK_DENY);   // talking sessions always use the cheap model and cannot touch files
-    else if (['opus', 'sonnet', 'haiku'].includes(body.model)) args.push('--model', body.model);
+    else if (['opus', 'sonnet', 'haiku', 'fable'].includes(body.model)) args.push('--model', body.model === 'fable' ? 'claude-fable-5-1' : body.model);
     if (kind !== 'talk' && ['low', 'medium', 'high', 'xhigh', 'max'].includes(body.effort)) args.push('--effort', body.effort);
     let cwd, key;
     if (sidParam === 'new') {
