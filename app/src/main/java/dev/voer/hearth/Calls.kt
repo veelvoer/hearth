@@ -200,7 +200,7 @@ class CallService : Service() {
     /** Every 30 s the widgets are redrawn (so countdowns are live); usage is refetched every few minutes. */
     private fun ticker(g: Int) {
         while (g == gen) {
-            runCatching { WidgetUpdater.updateAll(this); refreshIfStale(this, 1) }
+            runCatching { WidgetUpdater.updateAll(this); refreshIfStale(this, if (getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == true) 15 else 5) }   // on mobile data only every 15 minutes
             Thread.sleep(30_000)
         }
     }

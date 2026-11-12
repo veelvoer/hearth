@@ -45,6 +45,8 @@ jobs:
         run: node desktop/test/silent-exit.test.js
       - name: Side question test
         run: node desktop/test/btw.test.js
+      - name: Compression test
+        run: node desktop/test/gzip.test.js
       - name: Rules and decisions test
         run: node desktop/test/rules.test.js
       - name: Extras test (recap, templates, project summary)

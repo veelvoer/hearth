@@ -463,7 +463,11 @@ function start(opts) {
   }
 
   // ── http plumbing ──
-  const json = (res, code, obj) => { const b = Buffer.from(JSON.stringify(obj)); res.writeHead(code, { 'Content-Type': 'application/json', 'Content-Length': b.length }); res.end(b); };
+  const json = (res, code, obj) => {
+    let b = Buffer.from(JSON.stringify(obj)); const h = { 'Content-Type': 'application/json' };
+    if (b.length > 1024 && /\bgzip\b/.test(String((res.req && res.req.headers['accept-encoding']) || ''))) { try { b = zlib.gzipSync(b, { level: 6 }); h['Content-Encoding'] = 'gzip'; h.Vary = 'Accept-Encoding'; } catch { /* send it plain */ } }   // a long list of chats is mostly repeated words: a phone on mobile data should not pay for them
+    h['Content-Length'] = b.length; res.writeHead(code, h); res.end(b);
+  };
   const readBody = (req, max = 10e6) => new Promise((resolve, reject) => {
     const chunks = []; let n = 0;
     req.on('data', (d) => { n += d.length; if (n > max) { reject(new Error('too large')); req.destroy(); } else chunks.push(d); });

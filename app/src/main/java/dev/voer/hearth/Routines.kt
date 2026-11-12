@@ -65,7 +65,7 @@ fun RoutinesPage() {
                 .onFailure { err = if ((it.message ?: "").let { x -> x.contains("404") || x.contains("unknown", true) || x.contains("not found", true) }) "This server is too old for routines. Update it first." else friendlyError(it, hub.name).substringBefore(" Your message") }
         }
     }
-    LaunchedEffect(Unit) { while (true) { load(); delay(10_000) } }
+    LaunchedEffect(Unit) { while (true) { load(); pollDelay(10_000) } }
     Txt("Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit.", T.small, muted = true, maxLines = 6)
     if (err.isNotBlank()) Txt(err, T.small, color = MaterialTheme.colorScheme.primary)
     val list = routines

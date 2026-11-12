@@ -34,7 +34,7 @@ fun WorkflowPanel(m: Machine, sid: String) {
     var msg by remember { mutableStateOf("") }
     var edit by remember { mutableStateOf(false) }
     fun load() { scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.workflow(m, sid) } }.onSuccess { st = it }.onFailure { msg = "This server has no workflows yet. Update it first." } } }
-    LaunchedEffect(sid) { while (sid.isNotEmpty()) { load(); delay(10_000) } }
+    LaunchedEffect(sid) { while (sid.isNotEmpty()) { load(); pollDelay(10_000) } }
     fun act(a: String) { scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/sessions/$sid/workflow", JSONObject().put("action", a)) } }.onSuccess { st = it; msg = "" }.onFailure { msg = it.message ?: "Didn't work" } } }
     Label("Workflow")
     val s = st; val state = s?.optString("state") ?: "none"

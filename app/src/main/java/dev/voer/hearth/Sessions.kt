@@ -163,7 +163,7 @@ fun SessionsScreen() {
     // the shared chats of friends: kept on your own server too, so every device of yours has the same ones
     var guests by remember { mutableStateOf(Shares.guests(c)) }
     var joinOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(Ui.machinesRev) { while (true) { machines.firstOrNull { it.secure }?.let { m -> runCatching { withContext(Dispatchers.IO) { Shares.sync(c, m) } } }; val before = guests; guests = Shares.guests(c); if (before.map { it.share + it.token } != guests.map { it.share + it.token }) CallService.sync(c); delay(8_000) } }
+    LaunchedEffect(Ui.machinesRev) { while (true) { machines.firstOrNull { it.secure }?.let { m -> runCatching { withContext(Dispatchers.IO) { Shares.sync(c, m) } } }; val before = guests; guests = Shares.guests(c); if (before.map { it.share + it.token } != guests.map { it.share + it.token }) CallService.sync(c); pollDelay(15_000) } }
     LaunchedEffect(Ui.shareRev) { if (Ui.pendingJoin != null) joinOpen = true }
     if (joinOpen) JoinDialog(Ui.pendingJoin ?: "", { joinOpen = false; Ui.pendingJoin = null }) { g -> joinOpen = false; Ui.pendingJoin = null; guests = Shares.guests(c); view = View.Home; CallService.sync(c) }
     LaunchedEffect(Ui.startNew) { if (Ui.startNew) { Ui.startNew = false; view = View.New } }
@@ -201,7 +201,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             val f = withContext(Dispatchers.IO) { Relay.discover() }
             val moved = current.map { mm -> if (mm.secure) mm else f.firstOrNull { it.name == mm.name && it.host != mm.host }?.let { mm.copy(host = it.host, port = it.port) } ?: mm }
             if (moved != current) save(moved)
-            delay(30_000)
+            pollDelay(30_000)
         }
     }
     var refreshing by remember { mutableStateOf(false) }
@@ -216,7 +216,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
                     if (!Store.tagsSynced(c)) { Store.localTags(c).forEach { (id, v) -> if (!t.has(id)) Relay.setChatTag(hm, id, v.first.takeIf { it }, v.second.takeIf { it.isNotBlank() }) }; Store.markTagsSynced(c); Relay.chatTags(hm) } else t
                 } }.onSuccess { t -> if (Store.replaceTags(c, t)) Ui.chatPrefsRev++ }
             }
-            delay(6_000)
+            pollDelay(12_000)
         }
     }
     var query by remember { mutableStateOf("") }
@@ -687,7 +687,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             if (guest) launch { runCatching { withContext(Dispatchers.IO) { Shares.guestInfo(m, sess.id) } }.onSuccess { gInfo = it } }
             else if (isShared) launch { runCatching { withContext(Dispatchers.IO) { Shares.hostInfo(m, sess.id) } }.onSuccess { gInfo = it; if (it == null) isShared = false } }
             if (!sending) reload()
-            delay(3_000)
+            pollDelay(3_000)
         }
     }
     val total = msgs.size + parts.size

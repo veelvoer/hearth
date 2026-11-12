@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
 
     private var liveJob: kotlinx.coroutines.Job? = null
 
-    override fun onPause() { liveJob?.cancel(); super.onPause() }
+    override fun onPause() { Visible.now = false; liveJob?.cancel(); super.onPause() }
 
     /** While the app is open the numbers follow the computer: read them every 20 s, and when they are over 5 minutes old ask the computer to read the limits again (at most every 5 minutes). */
     private fun keepUsageLive() {
@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() {
-        super.onResume()
+        super.onResume(); Visible.now = true
         Ui.load(this)
         keepUsageLive()
         if (Build.VERSION.SDK_INT >= 33 && !askedNotif && Store.signedIn(this) &&

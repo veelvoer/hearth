@@ -63,6 +63,12 @@ import java.util.Locale
 
 data class PendingOpen(val host: String, val session: String, val title: String, val cwd: String, val voice: Boolean = false)
 
+/** Background polling stops while the app is not on screen: one flag, set by the activity. */
+object Visible { @Volatile var now = true }
+
+/** Wait [ms], then keep waiting while the app is in the background, so a loop that polls the computer costs no data when you are not looking. */
+suspend fun pollDelay(ms: Long) { kotlinx.coroutines.delay(ms); while (!Visible.now) kotlinx.coroutines.delay(500) }
+
 object Ui {
     /** From another app (Share) or a shortcut: a new chat should open, maybe with text and pictures already in it. */
     var startNew by mutableStateOf(false)
@@ -334,7 +340,7 @@ private fun WeekPlanCard() {
         while (true) {
             val m = machine()
             if (m == null) err = "No computer connected." else runCatching { withContext(Dispatchers.IO) { Relay.weekPlan(m, tz) } }.onSuccess { plan = it; err = null }.onFailure { err = "Can't reach your computer right now." }
-            delay(30_000)
+            pollDelay(30_000)
         }
     }
     fun save(day: PlanDay, pct: Double?) {
@@ -380,7 +386,7 @@ fun NowScreen() {
             val ms = Store.machines(c)
             val m = ms.firstOrNull { it.secure } ?: ms.firstOrNull()
             if (m != null) runCatching { withContext(Dispatchers.IO) { Relay.cost(m) } }.onSuccess { cost = it }
-            delay(60_000)
+            pollDelay(60_000)
         }
     }
     Screen {
@@ -525,7 +531,7 @@ fun HistoryScreen() {
         while (true) {
             val got = Store.machines(c).flatMap { m -> runCatching { withContext(Dispatchers.IO) { Relay.sessions(m) } }.getOrDefault(emptyList()) }
             if (got.isNotEmpty() || chats.isEmpty()) chats = got.groupBy { it.id }.values.map { g -> g.maxByOrNull { it.mtime }!! }
-            delay(20_000)
+            pollDelay(20_000)
         }
     }
     Screen {
@@ -683,7 +689,7 @@ private fun SyncCard() {
         while (true) {
             val ms = Store.machines(c); val m = ms.firstOrNull { it.secure } ?: ms.firstOrNull()
             text = if (m == null) "Connect a computer or server first." else runCatching { withContext(Dispatchers.IO) { "${m.name}: " + Relay.syncText(m) } }.getOrElse { "${m.name} can't be reached right now." }
-            delay(30_000)
+            pollDelay(30_000)
         }
     }
     Card { Head("sync", "Sync", "Chats and project files that the server keeps the same on all your computers."); Spacer(Modifier.height(8.dp)); Txt(text, T.small, muted = true) }

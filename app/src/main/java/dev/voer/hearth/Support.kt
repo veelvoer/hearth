@@ -178,7 +178,7 @@ private fun SupportHome(email: String, newRequest: () -> Unit, openTicket: (Stri
             runCatching { withContext(Dispatchers.IO) { JSONArray(SupportApi.call(c, "GET", "/tickets")) } }
                 .onSuccess { a -> tickets = (0 until a.length()).map { a.getJSONObject(it) }.map { Ticket(it.getString("id"), it.getString("title"), it.getString("status"), it.optString("last"), it.optString("from"), it.optLong("updatedAt"), it.optString("email"), it.optBoolean("theirs"), it.optString("category", "other"), it.optString("thread")) }; err = "" }
                 .onFailure { err = it.message ?: "" }
-            delay(20_000)
+            pollDelay(20_000)
         }
     }
     Screen {
@@ -284,7 +284,7 @@ private fun SupportThread(id: String, back: () -> Unit) {
             .onSuccess { o -> title = o.getString("title"); theirs = if (o.optBoolean("theirs")) o.optString("email") else ""; val a = o.getJSONArray("messages"); msgs = (0 until a.length()).map { a.getJSONObject(it) }.map { TMsg(it.getString("from"), it.getString("text"), it.optLong("at"), it.optJSONArray("files")?.let { f -> (0 until f.length()).map { i -> f.getJSONObject(i).optString("name") } } ?: emptyList()) }; status = o.optString("status"); err = "" }
             .onFailure { err = it.message ?: "" }
     }
-    LaunchedEffect(id) { while (true) { load(); delay(15_000) } }
+    LaunchedEffect(id) { while (true) { load(); pollDelay(15_000) } }
     Screen {
         BackLink("All requests", back)
         Txt(title, T.h2)
