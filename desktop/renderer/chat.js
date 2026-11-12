@@ -650,7 +650,7 @@ function renderMsgs() {
     if (m.role === 'tool') { if (!tools) { tools = h('div', { class: 'tools' + fresh }); col.append(tools); } tools.append(toolCard(m, 'm' + i)); return; }
     tools = null;
     if (m.role === 'meta') { col.append(h('div', { class: 'meta' }, m.text)); return; }
-    if (m.role === 'user') col.append(m.own ? h('div', { class: 'rmmsg' }, h('div', { class: 'small muted' }, m.name), h('div', { class: 'msg user' + fresh, style: 'align-self:auto;max-width:100%' }, m.text, tsEl(m.ts))) : h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, m.text, tsEl(m.ts)));
+    if (m.role === 'user') col.append(m.own ? h('div', { class: 'rmmsg' }, h('div', { class: 'small muted' }, m.name), h('div', { class: 'msg user' + fresh, style: 'align-self:auto;max-width:100%' }, m.text, tsEl(m.ts))) : h('div', { class: 'msg user' + (m.pending ? ' pending' : '') + fresh }, ...userBody(m.text), tsEl(m.ts)));
     else { const el = assistantEl(m.text); if (m.ts) el.append(tsEl(m.ts)); if (fresh) el.classList.add('fresh'); if (m.own) { const w = h('div', { class: 'rmmsg claude' }, h('div', { class: 'small muted' }, m.name + ' · own account'), el); col.append(w); } else col.append(el); }
   });
   SS.shown = { key, n: SS.msgs.length };
@@ -694,9 +694,16 @@ function sendMsg(text) {
   drawPane();
   const viewing = () => sameChat(SS.sel, s) && SS.sel.id === s.id;
   const unqueue = () => { SS.unsent = (SS.unsent || []).filter((u) => u !== mine); SS.msgs = SS.msgs.filter((m) => !(m.pending && m.text === text)); };
-  const finish = async (busy) => {
+  let gotAny = false;
+  /** It did not go through: the message leaves the chat, comes back into the box (when the box is empty) and the reason shows. */
+  const giveBack = (why) => {
+    unqueue();
+    if (viewing()) { SS.chatErr = why; setTimeout(() => { const t = $('#composer-text'); if (t && !t.value) { t.value = text; t.dispatchEvent(new Event('input')); } }, 0); }
+  };
+  const finish = async (busy, failed) => {
     if (!chatHandlers[sid]) return;
     delete chatHandlers[sid];
+    if (failed) giveBack(failed);
     if (s.id && RUNS.get(s.id) === run) RUNS.delete(s.id);
     if (busy) { qOf(s).unshift(text); unqueue(); }   // Claude is working on this chat from somewhere else: wait for it, then send
     if (viewing()) {
@@ -713,18 +720,19 @@ function sendMsg(text) {
   };
   chatHandlers[sid] = (ev) => {
     const live = viewing();
+    if (ev.t !== 'end') gotAny = true;
     if (ev.t === 'queued') { toast(ev.online ? `Sent to ${ev.to}. It runs there now.` : 'Queued. It runs on your laptop when it is online.'); return; }
     if (ev.t === 'session') { if (!s.id) { s.id = ev.id; s.isNew = false; saveChatPrefs(ev.id); s.title = text.slice(0, 70); RUNS.set(ev.id, run); { const nq = QUEUES.get('new') || []; QUEUES.set(ev.id, nq); if (QUEUES.get('new') === nq) QUEUES.delete('new'); } (SS.unsent || []).forEach((u) => { if (u.sel === s) u.id = ev.id; }); drawSide(); } return; }
     if (ev.t === 'delta') { const last = run.parts[run.parts.length - 1]; if (last && last.type === 'text') last.text += ev.text; else run.parts.push({ type: 'text', text: ev.text }); }
     else if (ev.t === 'tool') run.parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, text: ev.text });
     else if (ev.t === 'result') { const t = run.parts.find((p) => p.type === 'tool' && p.id === ev.id); if (t) { t.result = ev.text; t.error = ev.error; } }
     else if (ev.t === 'done') { if (live) { SS.lastRun = { sid: s.id, ms: ev.ms, error: ev.error }; if (ev.error && ev.text) SS.chatErr = ev.text; } }
-    else if (ev.t === 'fail') { if (/still working on this chat/i.test(ev.text || '')) { finish(true); return; } if (live) SS.chatErr = ev.text; finish(); return; }
-    else if (ev.t === 'end') { finish(); return; }
+    else if (ev.t === 'fail') { if (/still working on this chat/i.test(ev.text || '')) { finish(true); return; } finish(false, (ev.text || 'It did not go through.') + ' Your message is back in the box.'); return; }
+    else if (ev.t === 'end') { finish(false, gotAny ? undefined : 'The server did not answer. Your message is back in the box, send it again.'); return; }
     if (live) scheduleLive();
   };
   cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, root: s.isNew && s.root ? true : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
-    .catch((e) => { if (viewing()) SS.chatErr = clean(e); finish(); });
+    .catch((e) => { finish(false, clean(e) + ' Your message is back in the box.'); });
 }
 
 function startVoice() {
@@ -830,11 +838,20 @@ cm.on('event', ({ machine, ev }) => {
 });
 
 // ───────── attachments ─────────
+const THUMBS = new Map();   // path on the computer -> a small preview of a picture you attached (kept while the app is open)
+/** A sent prompt without its "@/path" lines: the text, and the attachments as pictures or file names. */
+function userBody(text) {
+  const att = [], rest = [];
+  for (const l of String(text || '').split('\n')) { const t = l.trim(); if (/^@\//.test(t) && !/\s/.test(t)) att.push(t.slice(1)); else rest.push(l); }
+  if (!att.length) return [text];
+  const said = rest.join('\n').trim();
+  return [h('div', { class: 'attached' }, ...att.map((p) => THUMBS.has(p) ? h('img', { class: 'thumb', src: THUMBS.get(p), alt: p.split('/').pop(), title: p.split('/').pop() }) : h('span', { class: 'fchip' }, p.split('/').pop().slice(-28)))), said ? h('div', {}, said) : null];
+}
 function renderFiles() {
   const box = $('#files');
   if (!box) return;
   box.innerHTML = '';
-  SS.files.forEach((f) => box.append(h('span', { class: 'fchip' }, f.name, h('button', { class: 'x', title: 'Remove', onclick: () => { SS.files = SS.files.filter((x) => x !== f); renderFiles(); } }, '×'))));
+  SS.files.forEach((f) => { const rm = h('button', { class: 'x', title: 'Remove', onclick: () => { SS.files = SS.files.filter((x) => x !== f); renderFiles(); } }, '×'); box.append(THUMBS.has(f.path) ? h('span', { class: 'fthumb' }, h('img', { class: 'thumb', src: THUMBS.get(f.path), alt: f.name, title: f.name }), rm) : h('span', { class: 'fchip' }, f.name, rm)); });
   if (SS.uploading) box.append(h('span', { class: 'small muted' }, 'Uploading…'));
 }
 /** Files on this computer are referenced in place; anything else (or any file for another computer) is uploaded into the project. */
@@ -843,13 +860,14 @@ async function addFile(f) {
   if (!s) return;
   const mach = SS.machines.find((m) => m.id === s.mid) || {};
   const local = mach.local && cm.filePath(f);
-  if (local) { SS.files.push({ name: f.name, path: cm.filePath(f) }); return renderFiles(); }
+  const thumb = (path) => { if (/^image\//.test(f.type || '')) { try { THUMBS.set(path, URL.createObjectURL(f)); } catch { /* no preview */ } } };
+  if (local) { const lp = cm.filePath(f); thumb(lp); SS.files.push({ name: f.name, path: lp }); return renderFiles(); }
   if (!s.id && !s.cwd) { SS.chatErr = 'Choose the project folder first, then attach files.'; return renderMsgs(); }
   if (f.size > 25e6) { SS.chatErr = 'That file is over 25 MB.'; return renderMsgs(); }
   SS.uploading = true; renderFiles();
   try {
     const path = await cm.upload(s.mid, s.id || null, s.cwd, f.name && f.name !== 'image.png' ? f.name : 'pasted-' + Date.now() + '.png', await f.arrayBuffer());
-    SS.files.push({ name: f.name || 'image.png', path });
+    thumb(path); SS.files.push({ name: f.name || 'image.png', path });
   } catch (e) { SS.chatErr = clean(e); renderMsgs(); }
   SS.uploading = false; renderFiles();
 }
