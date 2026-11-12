@@ -634,7 +634,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                     val name = ctx.contentResolver.query(uri, null, null, null, null)?.use { cur -> val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if (cur.moveToFirst() && i >= 0) cur.getString(i) else null } ?: ("file-" + System.currentTimeMillis())
                     val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw ApiException(0, "Couldn't read that file")
                     if (bytes.size > 25_000_000) throw ApiException(0, "That file is over 25 MB")
-                    name to Relay.upload(m, sess.id, sess.cwd, name, bytes)
+                    val path = Relay.upload(m, sess.id, sess.cwd, name, bytes); Thumbs.make(bytes)?.let { Thumbs.map[path] = it }; name to path
                 }
             }.onSuccess { files.add(it) }.onFailure { err = it.message ?: "Upload failed" }
             uploading = false
@@ -848,7 +848,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 when (msg.role) {
                     "user" -> if (msg.own) Column(Modifier.fillMaxWidth()) { Txt(msg.name, T.small.copy(fontSize = 12.sp), muted = true); Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp)).background(softFill()).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }; if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true) } else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                         Column(horizontalAlignment = Alignment.End) {
-                        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(softFill()).padding(horizontal = 14.dp, vertical = 11.dp)) { Txt(msg.text, T.body) }
+                        val (said, att) = splitAttachments(msg.text)
+                        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)).background(softFill()).padding(horizontal = 14.dp, vertical = 11.dp)) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { AttachedRow(att); if (said.isNotBlank()) Txt(said, T.body) } }
                         if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
                         }
                     }
@@ -918,7 +919,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }
         asks.filter { it.kind != "permission" && it.kind != "request" }.forEach { a -> AskCard(m, a) { asks = asks - a } }
         if (files.isNotEmpty() || uploading) Row(Modifier.padding(horizontal = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            files.toList().forEach { f -> Chip("${f.first.takeLast(24)}  ×", true) { files.remove(f) } }
+            files.toList().forEach { f ->
+                val th = Thumbs.map[f.second]
+                if (th != null) Box(Modifier.size(64.dp)) {
+                    androidx.compose.foundation.Image(th.asImageBitmap(), f.first, Modifier.matchParentSize().clip(RoundedCornerShape(12.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                    Box(Modifier.align(Alignment.TopEnd).size(24.dp).clip(RoundedCornerShape(50)).background(androidx.compose.ui.graphics.Color(0xB3000000)).pressable { files.remove(f) }, contentAlignment = Alignment.Center) { Glyph("x", 14.dp, androidx.compose.ui.graphics.Color.White) }
+                } else Chip("${f.first.takeLast(24)}  ×", true) { files.remove(f) }
+            }
             if (uploading) Txt("Uploading…", T.small, muted = true, modifier = Modifier.padding(vertical = 8.dp))
         }
         val perm = asks.firstOrNull { it.kind == "permission" }
