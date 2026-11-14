@@ -54,5 +54,6 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.5")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("com.google.android.gms:play-services-wearable:19.0.0")   // only to hand your servers to the watch app
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")   // play services brings an old Fragment that release lint refuses   // only to hand your servers to the watch app
 }
