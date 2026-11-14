@@ -99,6 +99,13 @@ private fun NotPaired() {
     }
 }
 
+/** Errors in a few plain words: a watch has no room for stack traces. */
+private fun friendly(e: Throwable?, name: String): String = when {
+    e is java.io.IOException && (e.message ?: "").let { it.contains("connect again") || it.contains("busy") || it.contains(" said ") } -> e.message ?: ""
+    e is java.net.UnknownHostException || e is java.net.SocketTimeoutException || e is java.net.ConnectException -> "Can't reach $name"
+    else -> "Can't reach $name right now"
+}
+
 private fun pct(v: Double?) = v?.let { "${it.toInt()}%" } ?: "–"
 
 private fun ago(ms: Long): String {
@@ -116,7 +123,7 @@ private fun Home(servers: List<Server>, onOpen: (Chat) -> Unit) {
             val r = withContext(Dispatchers.IO) {
                 val u = servers.firstNotNullOfOrNull { s -> runCatching { Api.usage(s) }.getOrNull() }
                 val l = servers.map { s -> runCatching { Api.chats(s) } }
-                Triple(u, l.flatMap { it.getOrDefault(emptyList()) }.sortedByDescending { it.mtime }.take(8), l.firstOrNull { it.isFailure }?.exceptionOrNull()?.message.takeIf { l.all { x -> x.isFailure } })
+                Triple(u, l.flatMap { it.getOrDefault(emptyList()) }.sortedByDescending { it.mtime }.take(8), (if (l.all { it.isFailure }) friendly(l.first().exceptionOrNull(), servers.first().name) else null))
             }
             usage = r.first ?: usage; chats = r.second; err = r.third ?: ""
             pause(if (r.second.any { it.busy }) 6_000 else 20_000)
@@ -160,7 +167,7 @@ private fun ChatScreen(ch: Chat) {
     LaunchedEffect(ch.id, tick) {
         while (true) {
             withContext(Dispatchers.IO) { runCatching { Api.lastTurn(ch.server, ch.id) to Api.chats(ch.server).firstOrNull { it.id == ch.id }?.busy } }
-                .onSuccess { (t, b) -> turn = t; busy = b ?: false; note = "" }.onFailure { note = it.message ?: "Can't reach ${ch.server.name}" }
+                .onSuccess { (t, b) -> turn = t; busy = b ?: false; note = "" }.onFailure { note = friendly(it, ch.server.name) }
             pause(if (busy) 4_000 else 15_000)
         }
     }
@@ -169,7 +176,7 @@ private fun ChatScreen(ch: Chat) {
         if (said.isNotEmpty()) scope.launch {
             note = "Sending…"
             withContext(Dispatchers.IO) { runCatching { Api.send(ch.server, ch.id, said) } }
-                .onSuccess { busy = true; note = ""; turn = Turn(said, ""); delay(1500); tick++ }.onFailure { note = it.message ?: "Not sent" }
+                .onSuccess { busy = true; note = ""; turn = Turn(said, ""); delay(1500); tick++ }.onFailure { note = "Not sent. " + friendly(it, ch.server.name) }
         }
     }
     val state = rememberScalingLazyListState()
