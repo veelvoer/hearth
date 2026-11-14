@@ -109,7 +109,7 @@ object Updates {
             val o = JSONObject(c.inputStream.bufferedReader().readText())
             val assets = o.optJSONArray("assets")
             var apk: String? = null
-            if (assets != null) for (i in 0 until assets.length()) { val a = assets.getJSONObject(i); if (a.getString("name").endsWith(".apk")) apk = a.getString("browser_download_url") }
+            if (assets != null) for (i in 0 until assets.length()) { val a = assets.getJSONObject(i); val n = a.getString("name"); if (n.endsWith(".apk") && !n.contains("watch", true)) apk = a.getString("browser_download_url") }
             return Release(o.getString("tag_name"), o.getString("tag_name").removePrefix("v"), o.optString("body"), apk)
         } finally { c.disconnect() }
     }

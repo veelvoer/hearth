@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() {
-        super.onResume(); Visible.now = true
+        super.onResume(); Visible.now = true; WearSync.push(this)
         Ui.load(this)
         keepUsageLive()
         if (Build.VERSION.SDK_INT >= 33 && !askedNotif && Store.signedIn(this) &&

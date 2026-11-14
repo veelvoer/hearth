@@ -49,6 +49,7 @@ let S = { signedIn: false, settings: {}, history: [] };
 let tab = 'sessions';
 const content = $('#content');
 const ICONS = {
+  terminal: '<path d="M4 6l5 5-5 5"/><path d="M12 18h8"/>',
   dashboard: '<path d="M3.5 11L12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-6h4v6"/>',
   now: '<path d="M12 21a9 9 0 1 1 9-9"/><path d="M12 12l4-4"/>',
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>', shared: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M17 14c2.4 0 4.2 1.6 4.2 4.2"/>',

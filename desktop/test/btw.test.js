@@ -23,5 +23,7 @@ const post = (p, tok, body) => new Promise((res) => { const d = Buffer.from(JSON
   ok('3 an empty question is refused', (await post(`/sessions/${sid}/btw`, tok, { text: ' ' })).code === 400);
   ok('4 an unknown chat is refused', (await post('/sessions/nope/btw', tok, { text: 'hi' })).code === 404);
   ok('5 a guest key cannot ask', (await post(`/sessions/${sid}/btw`, 'share.abcd.abcdefghijklmnop', { text: 'hi' })).code === 401);
+  const rs = await new Promise((res) => http.get({ host: '127.0.0.1', port: 47798, path: `/sessions/${sid}/resume`, headers: { Authorization: 'Bearer ' + tok } }, (r) => { let b = ''; r.on('data', (x) => { b += x; }); r.on('end', () => res({ code: r.statusCode, j: JSON.parse(b || '{}') })); }));
+  ok('6 a chat says how to carry on in Claude Code: its folder and claude --resume', rs.code === 200 && rs.j.cwd === proj && rs.j.rel === 'app' && rs.j.command === `cd ${JSON.stringify(proj)} && claude --resume ${sid}`, JSON.stringify(rs.j).slice(0, 200));
   console.log(`\n${pass} passed, ${fail} failed`); relay.kill(); try { fs.rmSync(T, { recursive: true, force: true }); } catch { /* */ } process.exit(fail ? 1 : 0);
 })();

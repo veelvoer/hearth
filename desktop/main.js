@@ -731,6 +731,26 @@ h('upload', async (e, id, session, cwd, name, buf) => {
   return (safeJson(b) || {}).path;
 });
 h('openPath', (e, p) => { if (p) shell.openPath(String(p)); return true; });
+/** Opens a terminal on this computer in the chat's folder, running `claude --resume <id>`: the same Claude Code session, outside Hearth. */
+h('terminal:open', (e, cwd0, sid0) => {
+  const cwd = String(cwd0 || ''), sid = String(sid0 || '');
+  if (!/^[A-Za-z0-9-]{6,80}$/.test(sid)) return { error: 'That is not a chat id.' };
+  try { if (!fs.statSync(cwd).isDirectory()) throw new Error(); } catch { return { error: 'That project folder is not on this computer.' }; }
+  const q = (x) => "'" + x.replace(/'/g, "'\\''") + "'";
+  try {
+    if (process.platform === 'win32') spawn('cmd.exe', ['/c', 'start', 'Claude Code', 'cmd.exe', '/k', `cd /d "${cwd}" && claude --resume ${sid}`], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
+    else if (process.platform === 'darwin') spawn('osascript', ['-e', `tell application "Terminal" to do script ${JSON.stringify(`cd ${q(cwd)} && claude --resume ${sid}`)}`, '-e', 'tell application "Terminal" to activate'], { detached: true, stdio: 'ignore' }).unref();
+    else {
+      const inner = `cd ${q(cwd)} && claude --resume ${sid}; exec "\${SHELL:-bash}"`;
+      const pick = 'for t in x-terminal-emulator kgx gnome-terminal konsole kitty alacritty foot wezterm ptyxis xfce4-terminal tilix xterm; do command -v "$t" >/dev/null 2>&1 || continue; case "$t" in '
+        + 'kgx|gnome-terminal|ptyxis) exec "$t" -- bash -lc "$0";; kitty|foot) exec "$t" bash -lc "$0";; wezterm) exec wezterm start -- bash -lc "$0";; xfce4-terminal|tilix) exec "$t" -x bash -lc "$0";; *) exec "$t" -e bash -lc "$0";; esac; done; exit 9';
+      const args = ['-c', pick, inner];
+      const c = process.env.FLATPAK_ID ? spawn('flatpak-spawn', ['--host', 'sh', ...args], { detached: true, stdio: 'ignore' }) : spawn('sh', args, { detached: true, stdio: 'ignore' });
+      c.unref();
+    }
+    return { ok: true };
+  } catch (err) { return { error: 'No terminal could be opened: ' + err.message }; }
+});
 h('pickFolder', async () => { const r = await dialog.showOpenDialog(main, { properties: ['openDirectory'] }); return r.canceled ? null : r.filePaths[0]; });
 h('stop', async (e, id, session) => { const m = machineById(id); return m ? relayJson(m, 'POST', '/stop', { session }) : false; });
 h('openExternal', (e, url) => { if (/^https?:\/\//.test(String(url))) shell.openExternal(url); });

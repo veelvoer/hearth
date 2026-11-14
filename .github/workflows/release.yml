@@ -49,13 +49,20 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
           printf "storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n" "$RUNNER_TEMP/release.jks" "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" "hearth" "${{ secrets.ANDROID_KEY_PASSWORD }}" > "$RUNNER_TEMP/keys.properties"
-      - run: ./gradlew :app:assembleRelease
+      - run: ./gradlew :app:assembleRelease :wear:assembleRelease
         env:
           CM_KEYSTORE_PROPS: ${{ runner.temp }}/keys.properties
       - name: Name the file
-        run: cp app/build/outputs/apk/release/app-release.apk "Hearth-${GITHUB_REF_NAME#v}.apk"
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "Hearth-${GITHUB_REF_NAME#v}.apk"
+          # the watch app goes out zipped: older phone apps take any .apk of a release as their own update
+          cp wear/build/outputs/apk/release/wear-release.apk "Hearth-watch-${GITHUB_REF_NAME#v}.apk" && zip -q "Hearth-watch-${GITHUB_REF_NAME#v}.zip" "Hearth-watch-${GITHUB_REF_NAME#v}.apk" && rm "Hearth-watch-${GITHUB_REF_NAME#v}.apk"
       - uses: actions/upload-artifact@v4
-        with: { name: android, path: Hearth-*.apk }
+        with:
+          name: android
+          path: |
+            Hearth-*.apk
+            Hearth-watch-*.zip
   publish:
     needs: [desktop, android]
     runs-on: ubuntu-latest
