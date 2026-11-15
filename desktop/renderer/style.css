@@ -848,3 +848,8 @@ details.rcard.fold > summary::after { transition: transform .25s cubic-bezier(.2
 .fthumb .thumb { width: 56px; height: 56px; }
 .fthumb .x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .65); color: #fff; border: 0; font-size: 14px; line-height: 1; cursor: pointer; }
 .attached { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.popmenu { position: fixed; z-index: 60; min-width: 220px; padding: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); display: flex; flex-direction: column; animation: popin .16s cubic-bezier(.33, 1, .68, 1); transform-origin: top right; }
+.popitem { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 9px; background: none; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer; }
+.popitem:hover, .popitem:focus-visible { background: var(--bg); outline: none; }
+.popitem .ic { color: var(--muted); display: inline-flex; }
+@keyframes popin { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }

@@ -25,79 +25,18 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Small line icons, drawn here so the app needs no icon library. */
+private val GLYPH_PATHS = HashMap<String, Path>()   // parsed once, drawn many times
+
+/** Line icons from Lucide (lucide.dev, ISC license), drawn from their path data so the app needs no icon library. */
 @Composable
 fun Glyph(name: String, size: Dp = 20.dp, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Canvas(Modifier.size(size)) {
         val u = this.size.width / 24f
-        val st = Stroke(width = 1.8f * u, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
-        fun line(a: Float, b: Float, c: Float, d: Float) = drawLine(color, Offset(a * u, b * u), Offset(c * u, d * u), 1.8f * u, StrokeCap.Round)
-        fun svg(d: String, fill: Boolean = false) = withTransform({ scale(u, u, Offset.Zero) }) {
-            drawPath(PathParser().parsePathString(d).toPath(), color, style = if (fill) Fill else Stroke(1.8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        fun svg(d: String) = withTransform({ scale(u, u, Offset.Zero) }) {
+            drawPath(GLYPH_PATHS.getOrPut(d) { PathParser().parsePathString(d).toPath() }, color, style = Stroke(2f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         }
-        when (name) {
-            "pin" -> svg("M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z")
-            "edit" -> svg("M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z")
-            "send" -> svg("M12 19V5 M5 12l7-7 7 7")
-            "stop" -> drawRoundRect(color, Offset(7 * u, 7 * u), Size(10 * u, 10 * u), CornerRadius(2f * u))
-            "drop" -> svg("M12 2.7s6 6.1 6 10.8a6 6 0 0 1-12 0C6 8.8 12 2.7 12 2.7z")
-            "flask" -> svg("M9 3h6 M10 3v6.5L4.6 18.4A2 2 0 0 0 6.3 21.5h11.4a2 2 0 0 0 1.7-3.1L14 9.5V3 M7.5 15h9")
-            "book" -> svg("M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z M4 21V5 M8 7h6")
-            "bolt" -> svg("M13 2L4 14h7l-1 8 9-12h-7z")
-            "cup" -> svg("M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z M17 10h2a2 2 0 0 1 0 4h-2 M7 2v3 M11 2v3")
-            "fire" -> svg("M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-10z")
-            "party" -> svg("M4 20l4-12 8 8z M14 4v2 M19 9h2 M17 5l1.5-1.5 M13 8l3 3")
-            "volume" -> svg("M4 9v6h4l5 4V5L8 9z M16 9a4 4 0 0 1 0 6 M19 6a8 8 0 0 1 0 12")
-            "heart" -> svg("M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 6-8 11-8 11z")
-            "globe" -> svg("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18")
-            "cloud" -> svg("M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9z")
-            "bulb" -> svg("M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z")
-            "pizza" -> svg("M12 3L3 19c5-3 13-3 18 0z M10 11h.01 M13 14h.01 M9 15h.01")
-            "coin" -> svg("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v10 M9.5 9.5c0-1 1-1.5 2.5-1.5s2.5.8 2.5 1.8-1 1.4-2.5 1.7-2.5.7-2.5 1.8 1 1.7 2.5 1.7 2.5-.5 2.5-1.5")
-            "camera" -> svg("M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z")
-            "chevd" -> svg("M6 9l6 6 6-6")
-            "chevu" -> svg("M6 15l6-6 6 6")
-            "chevr" -> svg("M9 6l6 6-6 6")
-            "key" -> svg("M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4")
-            "shield" -> svg("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z")
-            "chip" -> svg("M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3")
-            "plug" -> svg("M12 22v-5 M9 8V2 M15 8V2 M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z")
-            "sparkle" -> svg("M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z")
-            "gauge" -> svg("M12 14l4-4 M3.34 19a10 10 0 1 1 17.32 0")
-            "contrast" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); svg("M12 3a9 9 0 0 1 0 18z", fill = true) }
-            "clip" -> svg("M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48")
-            "info" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); line(12f, 11f, 12f, 17f); line(12f, 7.6f, 12f, 7.7f) }
-            "phone" -> { drawRoundRect(color, Offset(7 * u, 2 * u), Size(10 * u, 20 * u), CornerRadius(2.5f * u), style = st); line(11f, 18.5f, 13f, 18.5f) }
-            "server" -> { drawRoundRect(color, Offset(3 * u, 4 * u), Size(18 * u, 6 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(3 * u, 14 * u), Size(18 * u, 6 * u), CornerRadius(1.5f * u), style = st) }
-            "bell" -> { val p = Path().apply { moveTo(6 * u, 16 * u); lineTo(6 * u, 11 * u); cubicTo(6 * u, 4 * u, 18 * u, 4 * u, 18 * u, 11 * u); lineTo(18 * u, 16 * u); lineTo(20 * u, 18 * u); lineTo(4 * u, 18 * u); close() }; drawPath(p, color, style = st); line(10f, 21f, 14f, 21f) }
-            "mic" -> { drawRoundRect(color, Offset(9 * u, 3 * u), Size(6 * u, 11 * u), CornerRadius(3 * u), style = st); line(12f, 18f, 12f, 21f); val p = Path().apply { moveTo(5 * u, 11 * u); cubicTo(5 * u, 20 * u, 19 * u, 20 * u, 19 * u, 11 * u) }; drawPath(p, color, style = st) }
-            "sync" -> { val p = Path().apply { moveTo(4 * u, 9 * u); cubicTo(7 * u, 1 * u, 17 * u, 2 * u, 20 * u, 8 * u) }; drawPath(p, color, style = st); val q = Path().apply { moveTo(20 * u, 15 * u); cubicTo(17 * u, 23 * u, 7 * u, 22 * u, 4 * u, 16 * u) }; drawPath(q, color, style = st); line(20f, 4f, 20f, 8f); line(20f, 8f, 16f, 8f); line(4f, 20f, 4f, 16f); line(4f, 16f, 8f, 16f) }
-            "support" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); line(12f, 14f, 12f, 14.5f); val p = Path().apply { moveTo(9.5f * u, 9.5f * u); cubicTo(9.5f * u, 6.5f * u, 14.5f * u, 6.5f * u, 14.5f * u, 9.5f * u); cubicTo(14.5f * u, 11.5f * u, 12 * u, 11.5f * u, 12 * u, 13 * u) }; drawPath(p, color, style = st) }
-            "paint" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); drawCircle(color, 1.2f * u, Offset(8 * u, 11 * u)); drawCircle(color, 1.2f * u, Offset(12 * u, 7.5f * u)); drawCircle(color, 1.2f * u, Offset(16 * u, 10 * u)) }
-            "tour" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); val p = Path().apply { moveTo(15.5f * u, 8.5f * u); lineTo(13.5f * u, 13.5f * u); lineTo(8.5f * u, 15.5f * u); lineTo(10.5f * u, 10.5f * u); close() }; drawPath(p, color, style = st) }
-            "voice" -> { line(4f, 10f, 4f, 14f); line(8f, 6f, 8f, 18f); line(12f, 3f, 12f, 21f); line(16f, 7f, 16f, 17f); line(20f, 10f, 20f, 14f) }
-            "clock" -> { drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st); line(12f, 7f, 12f, 12f); line(12f, 12f, 15.5f, 14f) }
-            "widget" -> { drawRoundRect(color, Offset(3 * u, 3 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(14 * u, 3 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(3 * u, 14 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st); drawRoundRect(color, Offset(14 * u, 14 * u), Size(7 * u, 7 * u), CornerRadius(1.5f * u), style = st) }
-            "share" -> { drawCircle(color, 2.6f * u, Offset(18 * u, 5.5f * u), style = st); drawCircle(color, 2.6f * u, Offset(6 * u, 12 * u), style = st); drawCircle(color, 2.6f * u, Offset(18 * u, 18.5f * u), style = st); line(8.3f, 10.8f, 15.7f, 6.7f); line(8.3f, 13.2f, 15.7f, 17.3f) }
-            "sliders" -> { line(4f, 7f, 20f, 7f); line(4f, 17f, 20f, 17f); drawCircle(color, 2.4f * u, Offset(9 * u, 7 * u), style = st); drawCircle(color, 2.4f * u, Offset(15 * u, 17 * u), style = st) }
-            "trash" -> { line(4f, 7f, 20f, 7f); line(9f, 7f, 9f, 4f); line(9f, 4f, 15f, 4f); line(15f, 4f, 15f, 7f); line(6f, 7f, 7f, 20f); line(7f, 20f, 17f, 20f); line(17f, 20f, 18f, 7f) }
-            "plus" -> { line(12f, 5f, 12f, 19f); line(5f, 12f, 19f, 12f) }
-            "x" -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
-            "check" -> { val p = Path().apply { moveTo(5 * u, 12.5f * u); lineTo(10 * u, 17.5f * u); lineTo(19 * u, 7 * u) }; drawPath(p, color, style = st) }
-            "back" -> { val p = Path().apply { moveTo(15 * u, 5 * u); lineTo(8 * u, 12 * u); lineTo(15 * u, 19 * u) }; drawPath(p, color, style = st) }
-            "mail" -> { drawRoundRect(color, Offset(3 * u, 5 * u), Size(18 * u, 14 * u), CornerRadius(2.5f * u), style = st); val p = Path().apply { moveTo(3.5f * u, 7.5f * u); lineTo(12 * u, 13.5f * u); lineTo(20.5f * u, 7.5f * u) }; drawPath(p, color, style = st) }
-            "copy" -> { drawRoundRect(color, Offset(8.5f * u, 8.5f * u), Size(11.5f * u, 11.5f * u), CornerRadius(2f * u), style = st); val p = Path().apply { moveTo(4.5f * u, 15.5f * u); lineTo(4.5f * u, 5.5f * u); cubicTo(4.5f * u, 4.5f * u, 5 * u, 4 * u, 6 * u, 4 * u); lineTo(15.5f * u, 4 * u) }; drawPath(p, color, style = st) }
-            "people" -> { drawCircle(color, 3.2f * u, Offset(9 * u, 8 * u), style = st); val p = Path().apply { moveTo(3 * u, 19 * u); cubicTo(3 * u, 13 * u, 15 * u, 13 * u, 15 * u, 19 * u) }; drawPath(p, color, style = st); drawCircle(color, 2.6f * u, Offset(17 * u, 8.5f * u), style = st); val q = Path().apply { moveTo(17 * u, 13.5f * u); cubicTo(20 * u, 13.5f * u, 21 * u, 16 * u, 21 * u, 18.5f * u) }; drawPath(q, color, style = st) }
-            "chat" -> { val p = Path().apply { moveTo(5 * u, 5 * u); lineTo(19 * u, 5 * u); cubicTo(20.5f * u, 5 * u, 21 * u, 5.5f * u, 21 * u, 7 * u); lineTo(21 * u, 14 * u); cubicTo(21 * u, 15.5f * u, 20.5f * u, 16 * u, 19 * u, 16 * u); lineTo(11 * u, 16 * u); lineTo(7 * u, 20 * u); lineTo(7 * u, 16 * u); lineTo(5 * u, 16 * u); cubicTo(3.5f * u, 16 * u, 3 * u, 15.5f * u, 3 * u, 14 * u); lineTo(3 * u, 7 * u); cubicTo(3 * u, 5.5f * u, 3.5f * u, 5 * u, 5 * u, 5 * u); close() }; drawPath(p, color, style = st) }
-            "home" -> { val p = Path().apply { moveTo(3.5f * u, 11 * u); lineTo(12 * u, 4 * u); lineTo(20.5f * u, 11 * u); moveTo(6 * u, 9.5f * u); lineTo(6 * u, 20 * u); lineTo(18 * u, 20 * u); lineTo(18 * u, 9.5f * u); moveTo(10 * u, 20 * u); lineTo(10 * u, 14 * u); lineTo(14 * u, 14 * u); lineTo(14 * u, 20 * u) }; drawPath(p, color, style = st) }
-            "history" -> svg("M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2")
-            "gear" -> { svg("M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"); drawCircle(color, 3f * u, Offset(12 * u, 12 * u), style = st) }
-            "link" -> { val p = Path().apply { moveTo(10 * u, 14 * u); cubicTo(8 * u, 12 * u, 8 * u, 9.5f * u, 10 * u, 7.5f * u); lineTo(13 * u, 4.5f * u); cubicTo(15 * u, 2.5f * u, 18 * u, 3.5f * u, 19 * u, 5.5f * u); moveTo(14 * u, 10 * u); cubicTo(16 * u, 12 * u, 16 * u, 14.5f * u, 14 * u, 16.5f * u); lineTo(11 * u, 19.5f * u); cubicTo(9 * u, 21.5f * u, 6 * u, 20.5f * u, 5 * u, 18.5f * u) }; drawPath(p, color, style = st) }
-            "play" -> { val p = Path().apply { moveTo(8 * u, 5 * u); lineTo(19 * u, 12 * u); lineTo(8 * u, 19 * u); close() }; drawPath(p, color, style = st) }
-            "download" -> { line(12f, 4f, 12f, 15f); val p = Path().apply { moveTo(7 * u, 11 * u); lineTo(12 * u, 16 * u); lineTo(17 * u, 11 * u) }; drawPath(p, color, style = st); line(5f, 20f, 19f, 20f) }
-            "lock" -> { drawRoundRect(color, Offset(5 * u, 11 * u), Size(14 * u, 9 * u), CornerRadius(2f * u), style = st); val p = Path().apply { moveTo(8 * u, 11 * u); lineTo(8 * u, 8 * u); cubicTo(8 * u, 3 * u, 16 * u, 3 * u, 16 * u, 8 * u); lineTo(16 * u, 11 * u) }; drawPath(p, color, style = st) }
-            else -> drawCircle(color, 9f * u, Offset(12 * u, 12 * u), style = st)
-        }
+        if (name == "stop") { drawRoundRect(color, Offset(7 * u, 7 * u), Size(10 * u, 10 * u), CornerRadius(2f * u)); return@Canvas }   // the stop button is a solid square
+        svg(LUCIDE[name] ?: LUCIDE.getValue("circle"))
     }
 }
 
@@ -132,7 +71,7 @@ fun IconAction(glyph: String, desc: String, align: Alignment = LocalIconAlign.cu
 /** The familiar icon that goes with a one-word button. */
 /** These buttons show only their icon (the words stay as the screen reader label); every other button keeps its words. */
 val ICON_ONLY = setOf("Cancel", "Close", "Not now", "Got it", "Done", "Save", "Back", "Copy", "Share", "Attach", "Tour", "Setup", "What changed", "Look again", "Refresh", "Check for updates", "Check again", "Remove", "Add", "Read", "Stop reading")
-val ACTION_ICONS = mapOf("Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
+val ACTION_ICONS = mapOf("Share this chat" to "share", "See what changed" to "file", "Undo this run" to "history", "Delete this chat…" to "trash", "Share" to "share", "Talk" to "mic", "Options" to "sliders", "Done" to "check", "Remove" to "trash", "Add" to "plus", "Look again" to "sync", "Refresh" to "sync",
     "Check for updates" to "sync", "Check again" to "sync", "Test call" to "phone", "Cancel" to "x", "Close" to "x", "Not now" to "x", "Got it" to "check", "Back" to "back", "Tour" to "tour",
     "Write an email" to "mail", "Contact" to "mail", "Attach" to "clip", "Copy" to "copy", "Run now" to "play", "Read" to "volume", "Stop reading" to "stop", "Undo" to "history", "Undo this run" to "history", "Back up now" to "download", "Restore the last backup" to "sync", "Report" to "mail", "Details" to "info", "Share" to "share", "Pin to top" to "pin", "Unpin" to "pin", "Rename" to "edit", "Pin" to "lock", "Allow" to "check", "Deny" to "x", "Connect" to "plus", "Update" to "download",
     "Make invite link" to "share", "Share link" to "share", "Stop sharing" to "trash", "Join" to "people", "Enter the address myself" to "link", "What changed" to "history", "Restart" to "sync", "Delete" to "trash", "Delete this chat…" to "trash", "Revoke" to "x", "Look again" to "sync", "Show all" to "plus", "Remove step" to "trash", "Open folder" to "folder", "Set up a workflow" to "sliders", "Add to tasks" to "check", "Fix with Claude" to "tour", "Save" to "check", "Install" to "download", "Continue" to "play", "Setup" to "play", "Background access" to "clock", "Full-screen calls" to "phone")

@@ -247,35 +247,3 @@ fun ChangesDialog(m: Machine, sid: String, onUndo: () -> Unit, onClose: () -> Un
         confirmButton = { TextAction("Close") { onClose() } },
         dismissButton = { TextAction("Undo the last run") { onUndo() } })
 }
-
-/** The same chat as a real Claude Code session: the command to carry on with it in a terminal, when Hearth is not an option. */
-@Composable
-fun ResumeDialog(m: Machine, sid: String, onClose: () -> Unit) {
-    val c = LocalContext.current
-    var data by remember { mutableStateOf<JSONObject?>(null) }
-    var err by remember { mutableStateOf("") }
-    LaunchedEffect(sid) {
-        runCatching { withContext(Dispatchers.IO) { JSONObject(Relay.get(m, "/sessions/$sid/resume")) } }
-            .onSuccess { data = it }.onFailure { err = if ((it.message ?: "").contains("404")) "Update the server first: it does not know this yet." else "Could not reach ${m.name}." }
-    }
-    val cs = MaterialTheme.colorScheme
-    androidx.compose.material3.AlertDialog(onDismissRequest = onClose, containerColor = cs.surfaceVariant,
-        title = { Txt("Continue in Claude Code", T.h2) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Txt("Every Hearth chat is a real Claude Code session, and your computers keep each other's chats up to date. If Hearth is not working, open a terminal on ${m.name} or on your computer and carry on with the same chat. Hearth picks it up again afterwards.", T.small, muted = true, maxLines = 10)
-                val d = data
-                if (err.isNotBlank()) Txt(err, T.small, color = cs.primary)
-                else if (d == null) Skeleton(48.dp)
-                else {
-                    Txt(if (d.optString("rel").isNotEmpty()) "In the folder ${d.optString("rel")} of your projects:" else "On ${d.optString("machine")}:", T.small, maxLines = 3)
-                    androidx.compose.foundation.text.selection.SelectionContainer {
-                        androidx.compose.material3.Text(d.optString("command"), Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(cs.surface).padding(10.dp),
-                            style = T.small.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 12.sp, lineHeight = 17.sp), color = cs.onSurface)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextAction("Copy") { data?.optString("command")?.let { (c.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Claude Code", it)); Toast.makeText(c, "Copied", Toast.LENGTH_SHORT).show() }; onClose() } },
-        dismissButton = { TextAction("Close") { onClose() } })
-}

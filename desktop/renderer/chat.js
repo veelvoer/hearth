@@ -341,12 +341,12 @@ function drawPane() {
     h('div', { class: 'small muted ellip', title: s.cwd }, [s.cwd ? folderName(s.cwd) : '', modelLabel(me.model), me.root || s.root ? 'root' : '', multi() ? mach.name : '', SS.call && SS.call !== 'off' ? 'will call you' : '', working ? 'working now' : ''].filter(Boolean).join(' · '))),
     working ? h('i', { class: 'pdot big', title: 'Claude is working' }) : null,
     s.id && (guest || me.shared >= 0) ? h('button', { class: 'ghost sm', title: 'Whose usage do I use in this chat?', onclick: () => shOptions(s) }, 'Options') : null,
-    s.id && !guest ? ibtn('shared', s.id && me.shared >= 0 ? 'Shared: who can open this chat' : 'Share this chat with a friend', () => shOpenShare(s), 'ghost sm') : null,
-    s.id && !guest ? ibtn('folder', 'See what changed in the project', () => showChanges(s), 'ghost sm') : null,
-    s.id && !guest ? ibtn('terminal', 'Continue this chat in Claude Code', () => continueInCode(s), 'ghost sm') : null,
-    s.id && !guest ? ibtn('history', 'Undo the last run: put the project back the way it was before', () => undoRun(s), 'ghost sm') : null,
     s.id && !guest ? ibtn('mic', 'Talk with your voice', startVoice, 'ghost sm') : null,
-    s.id && !guest ? ibtn('addons', 'Add-ons: skills, plugins, connections, changes', () => openTools(s, 'skills'), 'ghost sm') : null,
+    s.id && !guest ? ibtn('more', 'More', (e) => popMenu(e.currentTarget, [
+      ['shared', me.shared >= 0 ? 'Who can open this chat' : 'Share with a friend', () => shOpenShare(s)],
+      ['diff', 'What changed', () => showChanges(s)],
+      ['undo', 'Undo the last run', () => undoRun(s)],
+      ['addons', 'Skills, plugins and connections', () => openTools(s, 'skills')]]), 'ghost sm') : null,
     s.id ? ibtn('panel', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : '0'); drawPane(); }, 'ghost sm') : null));
   main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
   if (guest || me.shared >= 0) main.append(h('div', { id: 'shin', class: 'shin' }), h('div', { id: 'shstatus', class: 'shstatus' }));
@@ -384,26 +384,6 @@ function drawPane() {
 }
 
 /** Leaves the new-chat screen: back to the chat you came from, or to the list of chats. */
-/** The same chat as a real Claude Code session: open it in a terminal on this computer, or copy the command for the server. */
-async function continueInCode(s) {
-  const local = SS.machines.find((x) => x.local);
-  const ask = async (mid) => { try { return await cm.relay(mid, 'GET', '/sessions/' + s.id + '/resume'); } catch { return null; } };
-  const here = local ? await ask(local.id) : null, there = !here || s.mid !== (local && local.id) ? await ask(s.mid) : null;
-  if (!here && !there) { toast('Update the server first: it does not know this yet.'); return; }
-  const close = () => over.remove();
-  const copy = (t) => { navigator.clipboard.writeText(t); toast('Copied'); };
-  const cmdBox = (r, label) => h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small muted' }, label),
-    h('div', { class: 'row', style: 'gap:8px' }, h('code', { class: 'mono small grow', style: 'padding:8px 10px;border:1px solid var(--line);border-radius:8px;overflow-x:auto;white-space:nowrap' }, r.command), h('button', { class: 'ghost sm', onclick: () => copy(r.command) }, 'Copy')));
-  const over = h('div', { class: 'overlay', onclick: (e) => { if (e.target === over) close(); } },
-    h('div', { class: 'card', role: 'dialog', 'aria-label': 'Continue in Claude Code', style: 'width:min(620px,94vw);display:flex;flex-direction:column;gap:12px' },
-      h('h3', { style: 'margin:0' }, 'Continue in Claude Code'),
-      h('div', { class: 'small muted' }, 'Every Hearth chat is a real Claude Code session, and your computers keep each other’s chats up to date. If Hearth is not working, carry on in Claude Code with the same chat, and Hearth picks it up again afterwards.'),
-      here ? cmdBox(here, 'On this computer') : h('div', { class: 'small muted' }, 'This chat is not on this computer yet. It arrives within a minute when this computer syncs chats with the server.'),
-      there ? cmdBox(there, 'On ' + (there.machine || 'the server') + ' (in a terminal there, e.g. over SSH)') : null,
-      h('div', { class: 'row', style: 'justify-content:flex-end;gap:8px' }, h('button', { class: 'ghost', onclick: close }, 'Close'),
-        here ? h('button', { class: 'primary', onclick: async () => { const r = await cm.openTerminal(here.cwd, s.id); if (r && r.error) toast(r.error); else close(); } }, 'Open in a terminal') : null)));
-  document.body.append(over);
-}
 /** What is different in the project right now (git): the files, and the lines that changed, with an undo button. */
 async function showChanges(s) {
   let r; try { r = await cm.relay(s.mid, 'GET', '/sessions/' + s.id + '/changes'); } catch (e) { toast(tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e)); return; }

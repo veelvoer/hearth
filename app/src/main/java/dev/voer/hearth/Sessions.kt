@@ -593,7 +593,6 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
     var delAsk by remember { mutableStateOf(false) }
     var undoAsk by remember { mutableStateOf(false) }
     var changesOpen by remember { mutableStateOf(false) }
-    var resumeOpen by remember { mutableStateOf(false) }
     var model by remember { mutableStateOf(Store.chatModel(appCtx, sess.id)) }
     var effort by remember { mutableStateOf(Store.chatEffort(appCtx, sess.id)) }
     // what you chose belongs to the chat: a new chat gets its choices saved under its id, and every chat comes back with its own mode, model and effort
@@ -603,7 +602,6 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         else Store.saveChatPrefs(appCtx, sess.id, mode, model, effort)
     }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
-    if (resumeOpen) ResumeDialog(m, sess.id) { resumeOpen = false }
     if (changesOpen) ChangesDialog(m, sess.id, onUndo = { changesOpen = false; undoAsk = true }, onClose = { changesOpen = false })
     if (undoAsk) androidx.compose.material3.AlertDialog(onDismissRequest = { undoAsk = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
         title = { Txt("Undo the last run?", T.h2) },
@@ -800,7 +798,6 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 }
             }
             if (sess.id.isNotEmpty() && sharedChat) { IconAction("people", "Shared chat settings", Alignment.CenterEnd, 40.dp) { optionsOpen = true } }
-            if (sess.id.isNotEmpty() && !guest) { IconAction("share", "Share", Alignment.CenterEnd, 40.dp) { shareOpen = true } }
             if (sess.id.isNotEmpty() && !guest) { IconAction("mic", "Talk", Alignment.CenterEnd, 40.dp) { voice = true } }
             if (!guest) { IconAction(if (options) "check" else "sliders", if (options) "Done" else "Options", Alignment.CenterEnd, 40.dp) { options = !options } }
         }
@@ -837,10 +834,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             }
             if (sess.id.isNotEmpty() && !guest) {
                 Spacer(Modifier.height(4.dp))
+                androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) {
+                TextAction("Share this chat") { shareOpen = true }
                 TextAction("See what changed") { changesOpen = true }
-                TextAction("Continue in Claude Code") { resumeOpen = true }
                 TextAction("Undo this run") { undoAsk = true }   // puts the project folder back the way it was before the last run
                 TextAction("Delete this chat…") { delAsk = true }   // far from the send button and asks first, so it cannot happen by accident
+                }
             }
         } }
         androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {   // press and hold on any text to select and copy it
