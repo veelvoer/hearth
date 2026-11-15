@@ -14,7 +14,7 @@ const folderName = (p) => (p || '').replace(/\/$/, '').split('/').pop() || p || 
 /** When something happened: the time today, weekday + time this week, else the date. */
 const clockTime = (ms) => { if (!ms) return ''; const t = new Date(ms), n = new Date(), hm = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); if (t.toDateString() === n.toDateString()) return hm; return Date.now() - ms < 6 * 864e5 ? t.toLocaleDateString([], { weekday: 'short' }) + ' ' + hm : t.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + hm; };
 const tsEl = (ms) => ms ? h('span', { class: 'ts', title: new Date(ms).toLocaleString() }, clockTime(ms)) : null;
-const relTime = (ms) => { const d = Date.now() - ms; return d < 90e3 ? 'now' : CMW.dur(d); };
+const relTime = (ms) => { const d = Date.now() - ms; if (d < 90e3) return 'now'; if (d < 3600e3) return Math.round(d / 60e3) + 'm'; if (d < 86400e3) return Math.round(d / 3600e3) + 'h'; if (d < 7 * 86400e3) return Math.round(d / 86400e3) + 'd'; return new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short' }); };
 const rand = () => Math.random().toString(36).slice(2);
 
 // ───────── sidebar ─────────
@@ -103,10 +103,10 @@ function chatItem(s) {
   const on = SS.sel && SS.sel.id === s.id;
   return h('div', { class: 'item' + (on ? ' on' : ''), style: 'view-transition-name: ci-' + String(s.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24), onclick: () => openSession(s), oncontextmenu: (e) => chatMenu(e, s), title: 'Right-click to pin or rename' },
     h('div', { class: 'ititle' }, (s.running || s.busy) ? h('span', { class: 'dot' }) : null, chatTag(s.id).pin ? h('span', { class: 'ic', html: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>' }) : null, h('span', { class: 'ellip' }, s.title)),
-    h('div', { class: 'small muted' }, (SS.projKey === '__all' && !s.guest ? (s.talk ? 'Talk' : folderName(s.cwd || 'Other')) + ' · ' : '') + ((s.running || s.busy) ? 'working now' : s.interrupted ? 'interrupted · ' + relTime(s.mtime) : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
+    h('div', { class: 'small muted' }, (SS.projKey === '__all' && !s.guest ? ((s.talk || s.kind === 'talk') ? 'Talk' : folderName(s.cwd || 'Other')) + ' · ' : '') + ((s.running || s.busy) ? 'working now' : s.interrupted ? 'interrupted · ' + relTime(s.mtime) : relTime(s.mtime)) + (s.guest ? ' · shared by ' + (s.guestHost || 'a friend') : s.shared > 0 ? ' · shared' + (s.shared ? ' with ' + s.shared : '') : '') + (s.elsewhere ? ' · only on ' + s.elsewhere : '')));
 }
 
-const groupKey = (s) => (s.guest || s.shared > 0 ? 'Shared' : s.talk ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
+const groupKey = (s) => (s.guest || s.shared > 0 ? 'Shared' : (s.talk || s.kind === 'talk') ? 'Talks' : (s.cwd || 'Other'));   // shared chats are kept apart from the others
 /** The projects as tabs along the top, and the chats of the open project in the column beside the chat. Searching looks through every project. */
 let SIDE_SIG = '';
 /** Redraws the chat list. When the order or the set of chats changed, the rows glide to their new places instead of jumping. */
@@ -131,7 +131,7 @@ function drawSideNow() {
     SS.tabsEl.innerHTML = '';
     const label = SS.projKey === '__all' ? 'All chats' : folderName(SS.projKey), busy = SS.projKey === '__all' ? all.some((x) => x.running || x.busy) : (groups.get(SS.projKey) || []).some((x) => x.running || x.busy);
     SS.tabsEl.append(h('button', { class: 'ptab on', title: 'Show the chats of one project, or all of them', onclick: (e) => projectPicker(e.currentTarget, ordered) }, h('span', { class: 'ellip', style: 'max-width:240px' }, label), busy ? h('i', { class: 'pdot' }) : null, h('span', { style: 'opacity:.6' }, '▾')),
-      h('button', { class: 'ptab add', title: 'Start a chat in another project', onclick: newChat }, '+ project'), h('button', { class: 'ptab add', title: 'Open a chat a friend shared with you', onclick: shJoinDialog }, 'Join a shared chat'));
+      ibtn('more', 'More', (e) => popMenu(e.currentTarget, [['plus', 'New chat in a project', newChat], ['shared', 'Join a shared chat', shJoinDialog]]), 'ghost sm ptabmore'));
   }
   side.innerHTML = '';
   side.append(h('input', { id: 'chat-search', placeholder: 'Search chats', value: SS.search, oninput: (e) => { SS.search = e.target.value; scheduleContentSearch(); drawSide(); } }));
@@ -480,7 +480,6 @@ function composer() {
       SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,
       (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
   if (SS.mode === 'bypassPermissions') box.append(h('div', { class: 'small err', style: 'margin-top:6px' }, 'Full auto lets Claude run any command on this computer without asking.'));
-  box.append(h('div', { class: 'small muted', style: 'margin-top:6px;text-align:center' }, 'Enter to send · Shift+Enter for a new line · drop or paste files and images'));
   box.ondragover = (e) => e.preventDefault();
   box.ondrop = (e) => { e.preventDefault(); for (const f of e.dataTransfer.files) addFile(f); ta.focus(); };
   ta.onpaste = (e) => { const imgs = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => f.type.startsWith('image/')); if (imgs.length) { e.preventDefault(); imgs.forEach(addFile); } };
@@ -583,19 +582,21 @@ function serverIntro(s, info) {
   const so = serverOpts(s.mid);
   const nameIn = h('input', { placeholder: 'New project name, e.g. budget-app' }), err = h('div', { class: 'small err' });
   const go = async () => {
-    try { const r = await cm.relay(s.mid, 'POST', '/projects', { name: nameIn.value.trim() }); s.cwd = r.path; SS.lastCwd = r.path; SS.projects[s.mid] = null; err.textContent = ''; const t = $('#composer-text'); if (t) t.focus(); renderMsgs(); }
+    try { const r = await cm.relay(s.mid, 'POST', '/projects', { name: nameIn.value.trim() }); s.cwd = r.path; SS.lastCwd = r.path; SS.projects[s.mid] = null; SS.newProj = false; err.textContent = ''; const t = $('#composer-text'); if (t) t.focus(); renderMsgs(); }
     catch (e) { err.textContent = clean(e); }
   };
   nameIn.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+  const listed = info.projects.slice(0, 8), known = listed.some((p) => p.path === s.cwd);
   return h('div', { class: 'intro' }, h('div', { html: sparkSVG(46) }), h('h2', {}, 'What should we build?'), computerPicker(s), runOnPicker(s),
-    h('div', { class: 'muted small' }, 'Projects folder on ' + ((SS.machines.find((m) => m.id === s.mid) || {}).name || 'the server')),
-    h('div', { class: 'row', style: 'width:100%;max-width:560px' }, h('div', { class: 'grow' }, nameIn), h('button', { class: 'primary', onclick: go }, 'Create')), err,
-    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:560px' }, info.projects.slice(0, 8).map((p) => chip(p.name, s.cwd === p.path, () => { s.cwd = p.path; SS.lastCwd = p.path; renderMsgs(); }))),
-    h('div', { class: 'row wrap', style: 'justify-content:center' }, so && so.outside !== false ? h('button', { class: 'ghost sm', onclick: () => openServerBrowser(s) }, 'Browse the server…') : null,
+    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:620px' }, ...listed.map((p) => chip(p.name, s.cwd === p.path, () => { s.cwd = p.path; SS.lastCwd = p.path; SS.newProj = false; renderMsgs(); })),
+      chip('+ New project', !!SS.newProj, () => { SS.newProj = !SS.newProj; renderMsgs(); if (SS.newProj) setTimeout(() => nameIn.focus(), 0); }),
+      so && so.outside !== false ? chip('Other folder…', !!s.cwd && !known, () => openServerBrowser(s)) : null,
       so && so.root && so.rootReady && so.rootReady.ok ? chip('Run as root', !!s.root, () => { s.root = !s.root; renderMsgs(); }) : null),
+    SS.newProj ? h('div', { class: 'row', style: 'width:100%;max-width:460px' }, h('div', { class: 'grow' }, nameIn), h('button', { class: 'primary', onclick: go }, 'Create')) : null, err,
+    s.cwd && !known ? h('div', { class: 'small muted mono ellip', style: 'max-width:560px', title: s.cwd }, s.cwd) : null,
+    !s.cwd && !listed.length ? h('div', { class: 'small muted' }, 'Make a project first, then describe what you want.') : null,
     so && so.root && so.rootReady && !so.rootReady.ok ? h('div', { class: 'small err', style: 'max-width:520px;text-align:center' }, 'Root chats are switched on, but not possible yet: ' + so.rootReady.why) : null,
-    s.root ? h('div', { class: 'small err' }, 'Root chat: Claude gets full administrator rights on this server and knows it. Be sure of what you ask.') : null,
-    s.cwd ? h('div', { class: 'small muted' }, 'Starting in ' + s.cwd) : h('div', { class: 'small muted' }, 'Create a project or pick one, then describe what you want.'));
+    s.root ? h('div', { class: 'small err' }, 'Root chat: Claude gets full administrator rights on this server and knows it. Be sure of what you ask.') : null);
 }
 
 // ───────── messages ─────────

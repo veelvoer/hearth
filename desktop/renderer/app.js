@@ -119,7 +119,8 @@ const ICONS = {   // Lucide icons (lucide.dev, ISC license)
   file: '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>',
   camera: '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/>',
   clip: '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
-  diff: '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M9 10h6"/><path d="M12 13V7"/><path d="M9 17h6"/>'
+  diff: '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M9 10h6"/><path d="M12 13V7"/><path d="M9 17h6"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'
 };
 const icon = (n) => h('span', { class: 'ic', html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` });
 const TABS = [['sessions', 'Chats'], ['dashboard', 'Home'], ['history', 'History'], ['settings', 'Settings']];
@@ -504,14 +505,14 @@ function doctorCard() {
 /** Settings as pages: a list of groups on the left, the cards of the chosen group on the right, and About last. */
 const SX = { tab: 'connection', find: '', taps: 0, last: 0, ver: '' };
 const SX_TABS = [
-  ['connection', 'devices', 'Computers and devices', 'Connection', /your devices|computers and servers|^sync|connect your phone/i],
+  ['connection', 'devices', 'Devices', 'Connection', /your devices|computers and servers|^sync|connect your phone/i],
   ['updates', 'sync', 'Updates', 'Connection', /^updates/i],
-  ['notifications', 'bell', 'Notifications and calls', 'App', /alerts|call me|notifications|calls from claude/i],
-  ['look', 'paint', 'Look and feel', 'App', /appearance|voice|startup/i],
-  ['routines', 'now', 'Routines', 'Server and tools', /^routines|^what it did|^what claude remembers/i],
-  ['server', 'server', 'Server', 'Server and tools', /memory|usage runs out|health check|^safety|never allow/i],
-  ['tools', 'tool', 'API keys and permissions', 'Server and tools', /api keys|permissions|add a tool/i],
-  ['help', 'support', 'Help and support', 'Help', /help|support/i],
+  ['notifications', 'bell', 'Notifications', 'App', /alerts|call me|notifications|calls from claude/i],
+  ['look', 'paint', 'Appearance', 'App', /appearance|voice|startup/i],
+  ['routines', 'clock', 'Routines', 'Server', /^routines|^what it did|^what claude remembers/i],
+  ['server', 'server', 'Server', 'Server', /memory|usage runs out|health check|^safety|never allow/i],
+  ['tools', 'tool', 'Keys and permissions', 'Server', /api keys|permissions|add a tool/i],
+  ['help', 'support', 'Help', 'More', /help|support/i],
 ];
 function sxTabOf(name) { const t = SX_TABS.find((x) => x[4].test(name)); return t ? t[0] : 'help'; }
 const FUN_ICONS = {"co2": "cloud", "timesaved": "now", "bulb": "bulb", "bottles": "drop", "pizza": "pizza", "perprompt": "coin", "verbs": "sparkle", "water": "drop", "energy": "bolt", "coffee": "cup", "words": "book", "streak": "fire", "favorite": "sparkle", "busiest": "now", "weekend": "dashboard", "longest": "history", "cache": "chip", "confetti": "party", "sounds": "volume", "pep": "heart", "hello": "globe", "ember": "fire"};
@@ -570,7 +571,7 @@ function withSettingsMenu(p) {
   const head = p.querySelector(':scope > .head');
   const pane = h('div', { class: 'spane' }), nav = h('nav', { class: 'snav', 'aria-label': 'Settings' });
   const beta = !!st.betaUnlocked;
-  const tabs = [...SX_TABS.map((t) => ({ id: t[0], ic: t[1], label: t[2], group: t[3] })), ...(beta ? [{ id: 'beta', ic: 'tour', label: 'Beta features', group: 'About' }] : []), { id: 'about', ic: 'info', label: 'About', group: 'About' }];
+  const tabs = [...SX_TABS.map((t) => ({ id: t[0], ic: t[1], label: t[2], group: t[3] })), ...(beta ? [{ id: 'beta', ic: 'tour', label: 'Beta features', group: 'More' }] : []), { id: 'about', ic: 'info', label: 'About', group: 'More' }];
   if (!tabs.some((t) => t.id === SX.tab)) SX.tab = 'connection';
   const aboutCard = () => {
     const logo = h('button', { class: 'about-logo', 'aria-label': 'Hearth logo', onclick: () => {

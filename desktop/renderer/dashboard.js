@@ -242,9 +242,7 @@ function dashboardView() {
   const root = h('div', { class: 'dash' });
 
   const pills = h('div', { class: 'row wrap' },
-    h('span', { class: 'pill ' + (D.stats ? 'ok' : D.err ? 'warn' : '') }, h('i'), D.stats ? 'Relay online' : D.err === 'norelay' ? 'No relay' : D.err ? 'Relay unreachable' : 'Connecting…'),
-    h('span', { class: 'pill ' + (D.voice && D.voice.stt && D.voice.tts ? 'ok' : '') }, h('i'), D.voice && D.voice.stt && D.voice.tts ? 'Voice ready' : 'Voice not installed'),
-    h('span', { class: 'pill ' + (S.settings.callMe ? 'ok' : '') }, h('i'), S.settings.callMe ? 'Calls on' : 'Calls off'),
+    D.err ? h('span', { class: 'pill warn' }, h('i'), D.err === 'norelay' ? 'No server connected' : 'Server unreachable') : null,   // only what needs attention; the top bar already says when all is well
     u ? h('span', { class: 'small muted', 'data-ago': u.at }, 'Usage updated ' + ago(u.at, now)) : null);
   root.append(h('div', { class: 'hero' }, h('div', { class: 'grow' }, h('h1', {}, toyHoliday() || (toyOn('hello') ? toyDaily(TOY_HELLO) + '!' : greeting()) + (toyHoliday() || toyOn('hello') || (S.profile && S.profile.email) ? '' : '.')),
     h('div', { class: 'muted' }, new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }) + (S.profile && S.profile.plan ? '  ·  Claude ' + S.profile.plan : ''))),
@@ -253,7 +251,7 @@ function dashboardView() {
   root.append(pills);
   if (S.error) root.append(h('div', { class: 'card err small' }, S.error));
 
-  root.append(h('div', { class: 'g2' }, limitPanel('Session', '5-hour window', u && u.session, CMW.SESSION_MS), limitPanel('Week', '7-day window', u && u.week, CMW.WEEK_MS)));
+  root.append(h('div', { class: 'g2' }, limitPanel('Session', '', u && u.session, CMW.SESSION_MS), limitPanel('Week', '', u && u.week, CMW.WEEK_MS)));
   root.append(weekPlanCard());
 
   if (typeof usageSection === 'function' && D.machineId) root.append(usageSection());
