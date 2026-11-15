@@ -1,6 +1,6 @@
 [package]
 name = "hearth-relay"
-version = "1.34.0"
+version = "1.34.1"
 edition = "2021"
 description = "Hearth relay front: the fast Rust part, in front of the Node relay it is replacing one route at a time"
 

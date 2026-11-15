@@ -681,7 +681,7 @@ function syncCard() {
 }
 
 function computersCard() {
-  const card = h('div', { class: 'card stack' });
+  const card = h('div', { class: 'card stack' }, ch('server', 'Computers and servers'));   // the heading must be there at once: the settings menu sorts the cards by it before the list below has loaded
   let found = [], pairing = null;
   const draw = async () => {
     const ms = await cm.machines();
