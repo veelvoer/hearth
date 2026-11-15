@@ -63,7 +63,9 @@
   "terminal": "square-terminal",
   "file": "file",
   "stopline": "square",
-  "circle": "circle"
+  "circle": "circle",
+  "devices": "monitor-smartphone",
+  "tool": "wrench"
  },
  "desktop": {
   "terminal": "square-terminal",

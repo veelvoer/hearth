@@ -32,13 +32,13 @@ import org.json.JSONObject
 private data class SPage(val id: String, val icon: String, val title: String, val sub: String, val words: String, val short: String = title)
 
 private val PAGES = listOf(
-    SPage("computers", "server", "Computers and servers", "Where your chats run", "connect add remove pair address token wifi", "Computers"),
+    SPage("computers", "devices", "Computers and servers", "Where your chats run", "connect add remove pair address token wifi", "Computers"),
     SPage("updates", "sync", "Updates", "Newest version, what changed", "update version download install release"),
     SPage("notifications", "bell", "Notifications and alerts", "Calls, usage alerts, background", "notify call alert battery background threshold refresh sound status bar", "Alerts"),
-    SPage("look", "contrast", "Look and feel", "Colors, Home, widgets, voice", "theme dark light color system glass animation widget voice language dashboard home", "Look"),
+    SPage("look", "paint", "Look and feel", "Colors, Home, widgets, voice", "theme dark light color system glass animation widget voice language dashboard home", "Look"),
     SPage("routines", "clock", "Routines", "Goals Claude works on by itself", "routine schedule agent automatic daily digest"),
-    SPage("server", "chip", "Server", "Sync, memory, usage limit, safety", "sync memory limit continue restart safety backup budget snapshot undo rules"),
-    SPage("tools", "sparkle", "Tools for Claude", "Skills, MCP, API keys, permissions", "skill mcp api key permission root", "Tools"),
+    SPage("server", "server", "Server", "Sync, memory, usage limit, safety", "sync memory limit continue restart safety backup budget snapshot undo rules"),
+    SPage("tools", "tool", "Tools for Claude", "Skills, MCP, API keys, permissions", "skill mcp api key permission root", "Tools"),
     SPage("help", "support", "Help and support", "Tour, setup, contact us", "tour tutorial setup support email contact bug", "Help"),
 )
 
