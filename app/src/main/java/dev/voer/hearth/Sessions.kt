@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.Alignment
@@ -52,20 +53,22 @@ import org.json.JSONObject
 @Composable
 fun Field(value: String, onChange: (String) -> Unit, hint: String, mono: Boolean = false, number: Boolean = false, singleLine: Boolean = true, modifier: Modifier = Modifier, bare: Boolean = false, selectAll: Boolean = false) {
     val cs = MaterialTheme.colorScheme
-    Box(if (bare) modifier.fillMaxWidth().padding(vertical = 10.dp) else modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceVariant)
-        .border(1.dp, cs.outlineVariant, RoundedCornerShape(16.dp)).padding(14.dp)) {
+    var focused by remember { mutableStateOf(false) }   // Material 3 outlined field: the line turns primary and thicker while you type
+    val fieldShape = RoundedCornerShape(if (Fx.m3) 4.dp else 16.dp)
+    Box(if (bare) modifier.fillMaxWidth().padding(vertical = 10.dp) else if (Fx.m3) modifier.fillMaxWidth().clip(fieldShape).border(if (focused) 2.dp else 1.dp, if (focused) cs.primary else cs.outlineVariant, fieldShape).padding(horizontal = 16.dp, vertical = 14.dp)
+        else modifier.fillMaxWidth().clip(fieldShape).background(cs.surfaceVariant).border(1.dp, cs.outlineVariant, fieldShape).padding(14.dp)) {
         if (value.isEmpty()) Txt(hint, T.body, muted = true)
         if (selectAll) {   // opens with the whole text selected and the keyboard up, so typing replaces it
             var tv by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(0, value.length))) }
             val fr = remember { androidx.compose.ui.focus.FocusRequester() }
             LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
             BasicTextField(tv, { tv = it; onChange(it.text) }, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
-                textStyle = T.body.copy(color = cs.onSurface), modifier = Modifier.fillMaxWidth().focusRequester(fr))
+                textStyle = T.body.copy(color = cs.onSurface), modifier = Modifier.fillMaxWidth().focusRequester(fr).onFocusChanged { focused = it.isFocused })
         } else
         BasicTextField(value, onChange, singleLine = singleLine, maxLines = if (singleLine) 1 else 6, cursorBrush = SolidColor(cs.primary),
             keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text),
             textStyle = T.body.copy(color = cs.onSurface, fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default),
-            modifier = Modifier.fillMaxWidth())
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused })
     }
 }
 
@@ -926,9 +929,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             handledInc.add(incoming.id); if (always) Shares.setAuto(c, gInfo!!.shareId, incoming.from, mode)
             scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(m, "/sessions/${sess.id}/requests/${incoming.id}", JSONObject().put("decision", "approve").put("text", text).put("mode", mode)) } }.onSuccess { runOwnShared(text, incoming.fromName, incoming.id, mode) }.onFailure { err = it.message } }
         }   // a person asks to use your Claude here
-        val boxShape = if (perm != null || reqAsk != null || incoming != null) RoundedCornerShape(0.dp, 0.dp, 24.dp, 24.dp) else RoundedCornerShape(24.dp)
+        val boxR = if (Fx.m3) 28.dp else 24.dp
+        val boxShape = if (perm != null || reqAsk != null || incoming != null) RoundedCornerShape(0.dp, 0.dp, boxR, boxR) else RoundedCornerShape(boxR)
         Box(Modifier.fillMaxWidth().background(cs.background).padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = if (perm != null || reqAsk != null || incoming != null) 0.dp else 8.dp)) {
-            Row(Modifier.fillMaxWidth().clip(boxShape).background(cs.surfaceVariant).border(1.dp, cs.outline, boxShape).padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
+            Row(Modifier.fillMaxWidth().clip(boxShape).background(if (Fx.m3) cs.surfaceContainerHigh else cs.surfaceVariant).let { if (Fx.m3) it else it.border(1.dp, cs.outline, boxShape) }.padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!guest) IconAction("clip", "Attach", Alignment.Center) { pick.launch("*/*") }
                 if (!guest) IconAction("camera", "Take a photo", Alignment.Center) { runCatching { val f = java.io.File(ctx.cacheDir, "shots").also { it.mkdirs() }.let { d -> java.io.File(d, "photo-" + System.currentTimeMillis() + ".jpg") }; val u = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f); photoUri = u; camera.launch(u) }.onFailure { err = "The camera could not be opened." } }

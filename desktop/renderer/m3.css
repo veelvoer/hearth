@@ -147,6 +147,7 @@
 :root[data-style="m3"] input:focus, :root[data-style="m3"] textarea:focus, :root[data-style="m3"] select:focus { border-color: var(--m3-primary); box-shadow: inset 0 0 0 1px var(--m3-primary); outline: none; }
 :root[data-style="m3"] .cbox textarea, :root[data-style="m3"] .cbox textarea:focus { border: 0; box-shadow: none; min-height: 0; padding: 6px 4px; }
 :root[data-style="m3"] .sfind, :root[data-style="m3"] .side input[type=search], :root[data-style="m3"] .side > input { border: 0; border-radius: 999px; background: var(--m3-surface-high) !important; padding: 0 20px; min-height: 48px; }
+:root[data-style="m3"] input[placeholder^="Search"], :root[data-style="m3"] input[type=search] { border: 0; border-radius: 999px; background: var(--m3-surface-high); padding: 0 20px; min-height: 48px; }
 :root[data-style="m3"] input[type=range] { accent-color: var(--m3-primary); min-height: 0; }
 
 /* ── settings ── */

@@ -73,6 +73,8 @@ window.cm = new Proxy({}, { get: (t, k) => {
     if (name === 'sessions') { await click('Chats'); }
     else if (name === 'chat') { await click('Chats'); const it = page.locator('.side .item').first(); if (await it.count()) { await it.click(); await page.waitForTimeout(700); } }
     else if (name === 'home') { await click('Home'); }
+    else if (name === 'history') { await click('History'); }
+    else if (name === 'newchat') { await click('Chats'); const b = page.locator('#nav button.newchat').first(); if (await b.count()) { await b.click(); await page.waitForTimeout(600); } }
     else if (name === 'settings') { await click('Settings'); if (sub) { const t = page.locator('.snavitem', { hasText: new RegExp(sub, 'i') }).first(); if (await t.count()) { await t.click(); await page.waitForTimeout(400); } } }
     await page.waitForTimeout(500);
     await page.screenshot({ path: path.join(OUT, `${STYLE}${DARK ? '-dark' : ''}-${name}${sub ? '-' + sub : ''}.png`) });
