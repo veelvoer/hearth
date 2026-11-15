@@ -142,12 +142,14 @@ function sendLink() {
   if (!relayProc || !relayProc.connected) return;
   try { relayProc.send({ t: 'link', link: srv ? { url: `https://${srv.host}${srv.port && srv.port !== 443 ? ':' + srv.port : ''}`, name: srv.name, token: srv.token } : null }); } catch { /* relay gone */ }
 }
-function startRelay() {
+let rustCore = null;   // the fast Rust reader of the chat logs, when it is installed (see rustcore.js)
+async function startRelay() {
+  try { rustCore = await require('./rustcore').start(); } catch { rustCore = null; }
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     const child = fork(path.join(__dirname, 'relay', 'embedded.js'), [], {
-      execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', CM_DIR: app.getPath('userData'), CM_MOVE_ROOT: path.join(os.homedir(), 'projects'), CM_ALLOW_REMOTE: S.settings.allowRemote ? '1' : '0' }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', CM_DIR: app.getPath('userData'), CM_MOVE_ROOT: path.join(os.homedir(), 'projects'), CM_ALLOW_REMOTE: S.settings.allowRemote ? '1' : '0', ...(rustCore ? rustCore.env : {}) }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     });
     relayProc = child;
     const info = { ok: false, pairCode: () => info.code || '', addresses: () => info.addrs || [], newPairCode: () => { child.send({ t: 'newcode' }); return info.code || ''; }, stop: () => { try { child.kill(); } catch { /* gone */ } } };
@@ -864,5 +866,5 @@ app.whenReady().then(async () => {
   startPolling();
   startEvents();
 });
-app.on('before-quit', () => { quitting = true; if (relayInfo && relayInfo.ok) relayInfo.stop(); });
+app.on('before-quit', () => { quitting = true; if (relayInfo && relayInfo.ok) relayInfo.stop(); if (rustCore) rustCore.stop(); });
 app.on('window-all-closed', () => { if (quitting || !keepRunning()) app.quit(); });

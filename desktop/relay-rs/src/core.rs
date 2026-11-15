@@ -18,8 +18,13 @@ const JSONL_TAIL: u64 = 48 * 1024 * 1024;
 #[derive(Clone)]
 pub struct FileInfo { pub id: String, pub file: PathBuf, pub mtime: f64, pub size: u64 }
 
+/// The home folder, like Node's `os.homedir()`: HOME, or USERPROFILE on Windows.
+fn home() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").ok().filter(|h| !h.is_empty()).or_else(|| std::env::var("USERPROFILE").ok()).unwrap_or_default())
+}
+
 pub fn projects_dir() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".claude").join("projects")
+    home().join(".claude").join("projects")
 }
 
 /// Every readable chat file, like `listFiles` of core.js.

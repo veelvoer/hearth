@@ -405,6 +405,7 @@ function report(days, extra = []) {
 
 /** Reads the titles of the chats a little at a time after start, newest first, so the first list a phone asks for is already quick. */
 function warm() {
+  if (RUST) return;   // Rust reads the titles
   let files = []; try { files = listFiles().sort((a, b) => b.mtime - a.mtime); } catch { return; }
   let i = 0;
   const step = () => {

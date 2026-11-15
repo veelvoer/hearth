@@ -92,11 +92,17 @@ fn bad_gateway(why: &str) -> Response<Body> {
     Response::builder().status(StatusCode::BAD_GATEWAY).header(header::CONTENT_TYPE, "application/json").body(Body::from(b)).unwrap()
 }
 
+#[cfg(unix)]
+async fn terminated() {
+    if let Ok(mut t) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) { t.recv().await; } else { std::future::pending::<()>().await }
+}
+#[cfg(not(unix))]
+async fn terminated() { std::future::pending::<()>().await }
+
 /// 32 random bytes from the system, as hex.
 fn random_hex() -> String {
-    use std::io::Read;
     let mut b = [0u8; 32];
-    if std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b)).is_err() {
+    if getrandom::fill(&mut b).is_err() {
         eprintln!("No system randomness: the Rust reads stay off.");
         std::process::exit(1);
     }
@@ -139,6 +145,8 @@ async fn main() {
     if args.iter().any(|a| a == "--core-only") {
         let port: u16 = flag(&args, "--port").and_then(|p| p.parse().ok()).unwrap_or(0);
         let l = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await.expect("port");
+        println!("listening {}", l.local_addr().map(|a| a.port()).unwrap_or(0));   // the program that started us reads the port from this line
+        let _ = std::io::Write::flush(&mut std::io::stdout());
         let _ = axum::serve(l, service::router(flag(&args, "--secret").unwrap_or_default())).await;
         return;
     }
@@ -192,7 +200,7 @@ async fn main() {
         r = serve => { if let Err(e) = r { eprintln!("server: {e}"); } }
         s = child.wait() => { std::process::exit(s.ok().and_then(|x| x.code()).unwrap_or(1)); }   // the Node relay ended: so do we, and the service manager starts us again
         _ = tokio::signal::ctrl_c() => {}
-        _ = async { if let Ok(mut t) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) { t.recv().await; } else { std::future::pending::<()>().await } } => {}
+        _ = terminated() => {}
     }
     // stop the Node relay the polite way, so its own watchdog stops the real server too
     #[cfg(unix)]
