@@ -588,7 +588,7 @@ function serverIntro(s, info) {
   nameIn.onkeydown = (e) => { if (e.key === 'Enter') go(); };
   const listed = info.projects.slice(0, 8), known = listed.some((p) => p.path === s.cwd);
   return h('div', { class: 'intro' }, h('div', { html: sparkSVG(46) }), h('h2', {}, 'What should we build?'), computerPicker(s), runOnPicker(s),
-    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:620px' }, ...listed.map((p) => chip(p.name, s.cwd === p.path, () => { s.cwd = p.path; SS.lastCwd = p.path; SS.newProj = false; renderMsgs(); })),
+    h('div', { class: 'row wrap', style: 'justify-content:center;max-width:620px' }, ...listed.map((p) => chip(p.name, s.cwd === p.path && !SS.newProj, () => { s.cwd = p.path; SS.lastCwd = p.path; SS.newProj = false; renderMsgs(); })),
       chip('+ New project', !!SS.newProj, () => { SS.newProj = !SS.newProj; renderMsgs(); if (SS.newProj) setTimeout(() => nameIn.focus(), 0); }),
       so && so.outside !== false ? chip('Other folder…', !!s.cwd && !known, () => openServerBrowser(s)) : null,
       so && so.root && so.rootReady && so.rootReady.ok ? chip('Run as root', !!s.root, () => { s.root = !s.root; renderMsgs(); }) : null),
