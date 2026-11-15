@@ -181,7 +181,7 @@ function drawWeekPlan() {
       e.title = `${WD_FULL[d.wd]}: ${d.used}% used, planned ${d.planned}%` + (d.fixed ? ' (pinned)' : ' (shared evenly)');
       const L = labels[k]; L.disabled = d.state === 'past' || !!d.start; L.style.left = (at + w / 2) + '%'; centres[k] = at + w / 2;
       L.className = 'wplabel ' + d.state + (WP.sel === d.wd ? ' sel' : '');
-      L.replaceChildren(h('span', { class: 'wpn' }, d.name, d.fixed ? h('b', {}, '•') : null), h('span', { class: 'wpv' }, (d.state === 'past' ? d.used : d.planned) + '%'));
+      fill(L, h('span', { class: 'wpn' }, d.name, d.fixed ? h('b', {}, '•') : null), h('span', { class: 'wpv' }, (d.state === 'past' ? d.used : d.planned) + '%'));
       if (knobs[k]) { knobs[k].style.left = (at + w) + '%'; knobs[k].className = 'wpknob' + (d.fixed ? ' fixed' : '') + (dragging === k ? ' drag' : ''); }
       at += w;
     });

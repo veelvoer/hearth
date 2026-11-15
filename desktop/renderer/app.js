@@ -1,5 +1,7 @@
 'use strict';
 const $ = (s, e = document) => e.querySelector(s);
+/** Puts new children into an element; empty ones (null, false) are left out instead of showing up as the word "null". */
+function fill(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false)); }
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -402,9 +404,9 @@ const tooOld = (e) => /404|unknown|not found/i.test(clean(e));
 function toolCatalogCard() {
   const body = h('div', { class: 'stack', style: 'gap:8px' });
   (async () => {
-    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
-    let tools; try { tools = (await cm.relay(m.id, 'GET', '/mcp/catalog')).tools || []; } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
-    body.replaceChildren(...tools.map((t) => { const btn = h('button', { class: 'ghost sm', onclick: async () => {
+    const m = await hubMachine(); if (!m) { fill(body, h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let tools; try { tools = (await cm.relay(m.id, 'GET', '/mcp/catalog')).tools || []; } catch (e) { fill(body, h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    fill(body, ...tools.map((t) => { const btn = h('button', { class: 'ghost sm', onclick: async () => {
       let secret = ''; if (t.needs) { secret = await askText(t.name, 'This tool needs ' + t.needs + '. It is kept on your server, in the settings of Claude Code.', { placeholder: 'Paste it here', ok: 'Add' }); if (!secret || !secret.trim()) return; }
       btn.disabled = true; btn.textContent = 'Adding…';
       try { const r = await cm.relay(m.id, 'POST', '/mcp/install', { id: t.id, secret: (secret || '').trim() }); toast(r.text || 'Added.'); btn.textContent = 'Added'; } catch (e) { toast(clean(e)); btn.disabled = false; btn.textContent = 'Add'; }
@@ -420,14 +422,14 @@ const routineWhen = (s) => (!s ? '' : s.type === 'interval' ? (s.minutes >= 1440
 function routinesCard() {
   const body = h('div', { class: 'stack', style: 'gap:10px' });
   const load = async (patch) => {
-    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
-    let r, t; try { r = patch ? await cm.relay(m.id, 'POST', '/routines', patch) : await cm.relay(m.id, 'GET', '/routines'); t = (await cm.relay(m.id, 'GET', '/routines/timeline?tail=12')).runs || []; } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for routines. Update it first.' : clean(e))); return; }
+    const m = await hubMachine(); if (!m) { fill(body, h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let r, t; try { r = patch ? await cm.relay(m.id, 'POST', '/routines', patch) : await cm.relay(m.id, 'GET', '/routines'); t = (await cm.relay(m.id, 'GET', '/routines/timeline?tail=12')).runs || []; } catch (e) { fill(body, h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for routines. Update it first.' : clean(e))); return; }
     const custom = async () => {
       const name = await askText('A new routine', 'What should it be called?', { placeholder: 'e.g. Morning check', ok: 'Next' }); if (!name || !name.trim()) return;
       const goal = await askText('What should Claude do?', 'It works on its own and writes down what it found. It only reads, unless you change that later.', { placeholder: 'e.g. Look at my open pull requests and tell me which need me', ok: 'Add' }); if (!goal || !goal.trim()) return;
       load({ add: { name: name.trim(), goal: goal.trim(), schedule: { type: 'daily', at: '08:00' }, mode: 'plan' } });
     };
-    body.replaceChildren(
+    fill(body, 
       ...(r.routines || []).map((x) => h('div', { class: 'spwrap stack', style: 'gap:4px;padding:10px 12px' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', {}, x.name), h('div', { class: 'small muted' }, routineWhen(x.schedule) + (x.mode === 'plan' ? ' · reads only' : ' · can edit files'))), toggle(x.enabled, () => load({ update: { id: x.id, enabled: !x.enabled } }))),
         h('div', { class: 'small muted' }, x.goal), h('div', { class: 'row', style: 'gap:8px' }, h('button', { class: 'ghost sm', onclick: () => load({ run: x.id }) }, 'Run now'), h('button', { class: 'ghost sm', onclick: () => load({ remove: x.id }) }, 'Delete')))),
       h('div', { class: 'small muted', style: 'text-transform:uppercase;letter-spacing:.06em' }, 'Add a routine'),
@@ -438,17 +440,17 @@ function routinesCard() {
         h('div', { class: 'small muted' }, x.status === 'running' ? 'Working on it…' : (String(x.summary || '').replace(/\*\*|`/g, '').replace(/(^|\s)- /g, '$1· ').trim() || (x.status === 'failed' ? 'It did not finish.' : 'Done.'))))));
   };
   load(); const iv = setInterval(() => { if (body.isConnected) load(); else if (iv && body.dataset.seen) clearInterval(iv); else body.dataset.seen = '1'; }, 15000);   // stops by itself once the card is gone
-  return h('div', { class: 'card stack' }, ch('now', 'Routines', 'Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit files.'), body);
+  return h('div', { class: 'card stack' }, ch('clock', 'Routines', 'Claude works on a goal by itself, on a schedule, and writes down what it found. A new routine only reads, unless you let it edit files.'), body);
 }
 /** Short notes about you that Claude gets in every chat and routine. */
 function notesCard() {
   const body = h('div', { class: 'stack', style: 'gap:8px' });
   const load = async (patch) => {
-    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
-    let r; try { r = await cm.relay(m.id, patch ? 'POST' : 'GET', '/memory', patch); } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    const m = await hubMachine(); if (!m) { fill(body, h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let r; try { r = await cm.relay(m.id, patch ? 'POST' : 'GET', '/memory', patch); } catch (e) { fill(body, h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
     const add = async () => { const t = await askText('Something to remember', 'One short fact or preference. Claude sees it in every chat.', { placeholder: 'e.g. I use metric units and short answers', ok: 'Remember' }); if (t && t.trim()) load({ add: t.trim() }); };
-    body.replaceChildren(
-      ...(r.notes || []).map((x) => h('div', { class: 'row spwrap', style: 'padding:8px 12px;gap:8px' }, h('div', { class: 'grow small' }, x.text), h('button', { class: 'ghost sm', onclick: () => load({ remove: x.id }) }, 'Forget'))),
+    fill(body, 
+      ...(r.notes || []).map((x) => h('div', { class: 'row noterow' }, h('div', { class: 'grow' }, x.text), h('button', { class: 'ghost sm', onclick: () => load({ remove: x.id }) }, 'Forget'))),
       (r.notes || []).length ? null : h('div', { class: 'small muted' }, 'Nothing yet. Add a note and Claude will know it from the next message on.'),
       h('div', { class: 'row' }, h('button', { class: 'ghost sm', onclick: add }, 'Add a note')));
   };
@@ -459,11 +461,11 @@ function notesCard() {
 function safetyCard() {
   const body = h('div', { class: 'stack', style: 'gap:10px' });
   const load = async (patch) => {
-    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
-    let d; try { d = patch ? await cm.relay(m.id, 'POST', '/admin/safety', patch) : await cm.relay(m.id, 'GET', '/admin/safety'); } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    const m = await hubMachine(); if (!m) { fill(body, h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let d; try { d = patch ? await cm.relay(m.id, 'POST', '/admin/safety', patch) : await cm.relay(m.id, 'GET', '/admin/safety'); } catch (e) { fill(body, h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
     const b = d.budget || {}, bk = d.backups || {}, last = (bk.list || [])[0];
     const chips = (vals, cur, key) => h('div', { class: 'row wrap' }, ...vals.map((v) => chip(v === 0 ? 'Off' : '$' + v, cur === v, () => load({ budget: { perDay: key === 'perDay' ? v : b.perDay, perChat: key === 'perChat' ? v : b.perChat } }))));
-    body.replaceChildren(
+    fill(body, 
       h('div', { class: 'row', title: 'Claude explains in everyday words, without jargon or code unless you ask.' }, h('div', { class: 'grow' }, 'Plain language'), toggle(!!d.plain, () => load({ plain: !d.plain }))),
       h('div', { class: 'row', title: 'A copy of the project folder, kept for the last 8 runs. In a chat: the undo button at the top.' }, h('div', { class: 'grow' }, 'Snapshot before every run'), toggle(d.snapshots !== false, () => load({ snapshots: d.snapshots === false }))),
       h('div', { class: 'small muted' }, 'Spending limit per day · used $' + (b.usedDay || 0).toFixed(2)), chips([0, 5, 10, 25, 50, 100], b.perDay || 0, 'perDay'),
@@ -478,11 +480,11 @@ function safetyCard() {
 function rulesCard() {
   const body = h('div', { class: 'stack', style: 'gap:8px' });
   const load = async (patch) => {
-    const m = await hubMachine(); if (!m) { body.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
-    let o, lg; try { if (patch) await cm.relay(m.id, 'POST', '/admin/options', patch); o = await cm.relay(m.id, 'GET', '/admin/options'); lg = (await cm.relay(m.id, 'GET', '/admin/decisions?tail=12')).decisions || []; } catch (e) { body.replaceChildren(h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
+    const m = await hubMachine(); if (!m) { fill(body, h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    let o, lg; try { if (patch) await cm.relay(m.id, 'POST', '/admin/options', patch); o = await cm.relay(m.id, 'GET', '/admin/options'); lg = (await cm.relay(m.id, 'GET', '/admin/decisions?tail=12')).decisions || []; } catch (e) { fill(body, h('div', { class: 'small err' }, tooOld(e) ? 'This server is too old for this. Update it first.' : clean(e))); return; }
     const input = h('input', { placeholder: 'Command words, e.g. rm -rf', style: 'flex:1' }), add = () => { if (input.value.trim()) load({ addDeny: input.value.trim() }); };
     input.onkeydown = (e) => { if (e.key === 'Enter') add(); };
-    body.replaceChildren(...(o.denyRules || []).map((r) => h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label), h('button', { class: 'ghost sm', 'aria-label': 'Remove ' + r.label, onclick: () => load({ removeDeny: r.id }) }, 'Remove'))),
+    fill(body, ...(o.denyRules || []).map((r) => h('div', { class: 'row' }, h('span', { class: 'mono grow' }, r.label), h('button', { class: 'ghost sm', 'aria-label': 'Remove ' + r.label, onclick: () => load({ removeDeny: r.id }) }, 'Remove'))),
       h('div', { class: 'row' }, input, h('button', { class: 'ghost sm', onclick: add }, 'Add')),
       lg.length ? h('div', { class: 'small muted', style: 'margin-top:6px;text-transform:uppercase;letter-spacing:.06em' }, 'Lately') : null,
       ...lg.map((x) => h('div', { class: 'row', style: 'align-items:flex-start;gap:8px' }, h('i', { class: 'pdot', style: 'margin-top:7px;background:' + (/^denied/.test(x.result) ? 'var(--clay)' : /^allowed/.test(x.result) ? '#4CAF7D' : 'var(--muted)') }), h('div', { class: 'grow', style: 'min-width:0' }, h('div', { class: 'mono ellip small' }, x.text), h('div', { class: 'small muted' }, x.result)))));
@@ -494,8 +496,8 @@ function rulesCard() {
 function doctorCard() {
   const list = h('div', { class: 'stack', style: 'gap:8px' }), btn = h('button', { class: 'ghost sm', onclick: () => run() }, 'Check now');
   const run = async () => {
-    const m = (await cm.machines()).find((x) => x.secure) || (await cm.machines())[0]; if (!m) { list.replaceChildren(h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
-    btn.disabled = true; btn.textContent = 'Checking…'; list.replaceChildren();
+    const m = (await cm.machines()).find((x) => x.secure) || (await cm.machines())[0]; if (!m) { fill(list, h('div', { class: 'small muted' }, 'Connect a server first.')); return; }
+    btn.disabled = true; btn.textContent = 'Checking…'; fill(list);
     try { const r = await cm.relay(m.id, 'GET', '/admin/doctor'); (r.checks || []).forEach((c) => list.append(h('div', { class: 'row', style: 'align-items:flex-start;gap:10px' }, h('span', { class: 'pill ' + (c.ok ? 'ok' : 'warn'), style: 'padding:2px 9px;flex:none' }, h('i'), c.ok ? 'OK' : 'Check'), h('div', { class: 'grow' }, h('div', {}, c.name), h('div', { class: 'small muted' }, c.text), c.fix ? h('div', { class: 'small', style: 'margin-top:2px' }, c.fix) : null)))); }
     catch (e) { list.append(h('div', { class: 'small err' }, /404|unknown|not found/i.test(clean(e)) ? 'This server is too old for the health check. Update it first.' : clean(e))); }
     btn.disabled = false; btn.textContent = 'Check again';
