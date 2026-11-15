@@ -1,0 +1,176 @@
+/* ═════ Material 3 (Settings → Appearance → Style). Everything here is scoped to :root[data-style="m3"], so the default look is untouched. ═════
+   The color scheme is made from the accent color (--clay) like Material You does from a seed: surfaces get a small tint of it, in five tonal steps. */
+
+/* the icons of the navigation are only for the Material 3 rail */
+#nav .tabs button > .ic { display: none; }
+
+:root[data-style="m3"] {
+  color-scheme: light;
+  --m3-on-surface: #1d1b1a;
+  --m3-surface: color-mix(in oklab, var(--clay) 1.5%, #fffbff);
+  --m3-surface-lowest: #ffffff;
+  --m3-surface-low: color-mix(in oklab, var(--clay) 2.5%, #f8f4f2);
+  --m3-surface-container: color-mix(in oklab, var(--clay) 3.5%, #f3efed);
+  --m3-surface-high: color-mix(in oklab, var(--clay) 4.5%, #ede9e7);
+  --m3-surface-highest: color-mix(in oklab, var(--clay) 5.5%, #e7e2e0);
+  --m3-on-surface-variant: color-mix(in oklab, var(--m3-on-surface) 72%, var(--m3-surface));
+  --m3-outline: color-mix(in oklab, var(--m3-on-surface) 52%, var(--m3-surface));
+  --m3-outline-variant: color-mix(in oklab, var(--m3-on-surface) 16%, var(--m3-surface));
+  --m3-primary: var(--clay);
+  --m3-on-primary: var(--onclay);
+  --m3-primary-container: color-mix(in oklab, var(--clay) 20%, #ffffff);
+  --m3-on-primary-container: color-mix(in oklab, var(--clay) 50%, #000000);
+  --m3-secondary-container: color-mix(in oklab, var(--clay) 11%, #e6e1df);
+  --m3-on-secondary-container: color-mix(in oklab, var(--clay) 38%, #1d1b1a);
+  --m3-error: #b3261e; --m3-ok: #2e7d4f;
+  --m3-scrim: rgba(0, 0, 0, .32);
+  --m3-r-xs: 4px; --m3-r-s: 8px; --m3-r-m: 12px; --m3-r-l: 16px; --m3-r-xl: 28px;
+  --m3-font: Roboto, "Google Sans", "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --m3-ease: cubic-bezier(.2, 0, 0, 1); --m3-ease-out: cubic-bezier(.05, .7, .1, 1);
+  /* the app's own names point at the Material roles */
+  --bg: var(--m3-surface); --card: var(--m3-surface-container); --ink: var(--m3-on-surface); --muted: var(--m3-on-surface-variant);
+  --line: var(--m3-outline-variant); --line-ctl: var(--m3-outline); --side: var(--m3-surface-low); --active: var(--m3-secondary-container); --bubble: var(--m3-primary-container);
+  --serif: var(--m3-font);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-style="m3"] {
+    color-scheme: dark;
+    --m3-on-surface: #e8e1df;
+    --m3-surface: color-mix(in oklab, var(--clay) 3%, #141211);
+    --m3-surface-lowest: color-mix(in oklab, var(--clay) 3%, #0f0d0c);
+    --m3-surface-low: color-mix(in oklab, var(--clay) 4%, #1c1a19);
+    --m3-surface-container: color-mix(in oklab, var(--clay) 5%, #211f1e);
+    --m3-surface-high: color-mix(in oklab, var(--clay) 6%, #2b2928);
+    --m3-surface-highest: color-mix(in oklab, var(--clay) 7%, #363433);
+    --m3-primary-container: color-mix(in oklab, var(--clay) 38%, #1a0f0b);
+    --m3-on-primary-container: color-mix(in oklab, var(--clay) 28%, #ffffff);
+    --m3-secondary-container: color-mix(in oklab, var(--clay) 18%, #3b3836);
+    --m3-on-secondary-container: color-mix(in oklab, var(--clay) 20%, #f2ece9);
+    --m3-error: #f2b8b5; --m3-ok: #7fd1a0;
+    --m3-scrim: rgba(0, 0, 0, .5);
+  }
+}
+
+/* ── canvas, type ── */
+:root[data-style="m3"] body { background: var(--m3-surface); font-family: var(--m3-font); font-size: 14px; line-height: 20px; letter-spacing: .25px; }
+:root[data-style="m3"] h1, :root[data-style="m3"] h2, :root[data-style="m3"] h3 { font-family: var(--m3-font); font-weight: 400; letter-spacing: 0; }
+:root[data-style="m3"] h1 { font-size: 28px; line-height: 36px; }
+:root[data-style="m3"] h2 { font-size: 22px; line-height: 28px; }
+:root[data-style="m3"] h3 { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: .15px; }
+:root[data-style="m3"] .small { font-size: 12px; line-height: 16px; letter-spacing: .4px; }
+:root[data-style="m3"] .label { font-size: 12px; line-height: 16px; letter-spacing: .5px; text-transform: none; font-weight: 500; color: var(--m3-on-surface-variant); }
+:root[data-style="m3"] .muted { color: var(--m3-on-surface-variant); }
+
+/* ── the navigation rail ── */
+:root[data-style="m3"] #app { flex-direction: row; padding: 0; gap: 0; }
+:root[data-style="m3"] #nav { flex-direction: column !important; align-items: center; justify-content: flex-start; width: 88px !important; height: 100%; padding: 16px 0 20px !important; gap: 16px;
+  background: var(--m3-surface) !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; position: relative; }
+:root[data-style="m3"] #nav .brand { padding: 0; margin-bottom: 4px; }
+:root[data-style="m3"] #nav .brand .lbl { display: none; }
+:root[data-style="m3"] #nav .logo { width: 40px; height: 40px; border-radius: var(--m3-r-m); }
+:root[data-style="m3"] #nav button.newchat { order: 1; width: 56px; height: 56px; min-height: 56px; padding: 0 !important; border-radius: var(--m3-r-l); background: var(--m3-primary-container) !important; color: var(--m3-on-primary-container) !important; font-size: 0; margin: 0; flex: none;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .3), 0 4px 8px 3px rgba(0, 0, 0, .12); }
+:root[data-style="m3"] #nav button.newchat::before { content: ""; width: 24px; height: 24px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14M12 5v14'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14M12 5v14'/%3E%3C/svg%3E") center / contain no-repeat; }
+:root[data-style="m3"] #nav .tabs { order: 2; position: static; transform: none; flex-direction: column; gap: 12px; padding: 0; background: none; border-radius: 0; width: 100%; align-items: center; }
+:root[data-style="m3"] #nav .tabs > .hl { display: none; }
+:root[data-style="m3"] #nav .tabs button { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 80px; padding: 0 !important; background: none !important; border-radius: 0; color: var(--m3-on-surface-variant); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .5px; min-height: 0; }
+:root[data-style="m3"] #nav .tabs button > .ic { display: flex; align-items: center; justify-content: center; width: 56px; height: 32px; border-radius: 16px; transition: background-color .2s var(--m3-ease); }
+:root[data-style="m3"] #nav .tabs button:hover > .ic { background: color-mix(in oklab, var(--m3-on-surface) 8%, transparent); }
+:root[data-style="m3"] #nav .tabs button.on { color: var(--m3-on-surface); }
+:root[data-style="m3"] #nav .tabs button.on > .ic { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
+:root[data-style="m3"] #nav .tabs button .ic svg { width: 24px; height: 24px; }
+:root[data-style="m3"] #nav .navfoot { order: 3; margin: auto 0 0 !important; padding: 8px 0 !important; border: 0 !important; background: none !important; flex-direction: column; gap: 6px; font-size: 11px; text-align: center; width: 72px; justify-content: center; }
+:root[data-style="m3"] #nav .navfoot .lbl { white-space: normal; line-height: 14px; }
+:root[data-style="m3"] #nav .navfoot i { width: 8px; height: 8px; }
+:root[data-style="m3"] main { padding: 24px 32px; background: transparent; }
+:root[data-style="m3"] main.flush { padding: 16px 16px 16px 0; }
+
+/* the sliding highlights of the default look are not used here: a selected item is a tonal shape of its own */
+:root[data-style="m3"] .hl { display: none; }
+:root[data-style="m3"] #nav .tabs, :root[data-style="m3"] #nav .tabs.hlready { margin-left: 0 !important; position: static !important; left: auto !important; transform: none !important; }
+:root[data-style="m3"] .cbox select { border-radius: var(--m3-r-s); min-height: 32px; padding: 0 12px; font-size: 13px; color: var(--m3-on-surface-variant); }
+
+/* ── surfaces: flat and tonal, no borders, no glass ── */
+:root[data-style="m3"] .card, :root[data-style="m3"] .rcard, :root[data-style="m3"] .tablecard, :root[data-style="m3"] .cbox { background-color: var(--m3-surface-container) !important; border-color: transparent !important; border-radius: var(--m3-r-l); box-shadow: none !important; }
+:root[data-style="m3"] .card .card, :root[data-style="m3"] .rcard .card { background-color: var(--m3-surface-high) !important; }
+:root[data-style="m3"] .chatmain { background-color: var(--m3-surface-low) !important; border-color: transparent !important; border-radius: var(--m3-r-xl); box-shadow: none !important; }
+:root[data-style="m3"] .chatmain .cbox { background-color: var(--m3-surface-highest) !important; border-radius: var(--m3-r-xl); }
+:root[data-style="m3"] .cbox:focus-within { box-shadow: 0 0 0 2px var(--m3-primary) inset !important; }
+:root[data-style="m3"] .split > .side, :root[data-style="m3"] .side { border: 0; }
+:root[data-style="m3"] .split > .side .item, :root[data-style="m3"] .item { background-color: transparent !important; border-color: transparent !important; border-radius: var(--m3-r-xl); padding: 10px 16px; }
+:root[data-style="m3"] .item:hover { background-color: color-mix(in oklab, var(--m3-on-surface) 8%, transparent) !important; transform: none; }
+:root[data-style="m3"] .split > .side .item.on, :root[data-style="m3"] .item.on { background-color: var(--m3-secondary-container) !important; }
+:root[data-style="m3"] .item.on .ititle { color: var(--m3-on-secondary-container); }
+:root[data-style="m3"] .item .ititle { font-size: 14px; font-weight: 500; }
+:root[data-style="m3"] .gl, :root[data-style="m3"] .sgroup { text-transform: none; letter-spacing: .5px; font-size: 12px; font-weight: 500; color: var(--m3-on-surface-variant); }
+:root[data-style="m3"] .hitem { background-color: var(--m3-surface-container) !important; border-color: transparent !important; border-radius: var(--m3-r-m); }
+:root[data-style="m3"] .tool { background: var(--m3-surface-high); border-color: transparent; border-radius: var(--m3-r-m); }
+:root[data-style="m3"] .tool pre { background: var(--m3-surface-lowest); border-radius: var(--m3-r-s); }
+:root[data-style="m3"] .msg.user { background: var(--m3-primary-container); color: var(--m3-on-primary-container); border: 0; border-radius: var(--m3-r-xl) var(--m3-r-xl) var(--m3-r-xs) var(--m3-r-xl); padding: 12px 16px; }
+:root[data-style="m3"] .code, :root[data-style="m3"] .pcode { background: var(--m3-surface-lowest); border-radius: var(--m3-r-m); }
+
+/* ── buttons ── */
+:root[data-style="m3"] button { border-radius: 999px; font-family: var(--m3-font); font-weight: 500; letter-spacing: .1px; transition: background-color .2s var(--m3-ease), box-shadow .2s var(--m3-ease), color .2s var(--m3-ease); }
+:root[data-style="m3"] button:not(.ib):not(.toggle):not(.swatch):not(.tabbtn) { min-height: 40px; }
+:root[data-style="m3"] button.primary { background: var(--m3-primary); color: var(--m3-on-primary); padding: 0 24px; }
+:root[data-style="m3"] button.ghost { background: transparent; color: var(--m3-primary); border: 1px solid var(--m3-outline); padding: 0 24px; }
+:root[data-style="m3"] button.sm { padding: 0 16px; min-height: 32px !important; font-size: 13px; }
+:root[data-style="m3"] button.link { color: var(--m3-primary); padding: 0 12px; min-height: 40px; border-radius: 999px; }
+:root[data-style="m3"] button:hover:not(:disabled):not(.toggle):not(.swatch):not(#nav .tabs button) { box-shadow: inset 0 0 0 999px color-mix(in oklab, currentColor 8%, transparent); }
+:root[data-style="m3"] button:active:not(:disabled):not(.toggle):not(.swatch):not(#nav .tabs button) { box-shadow: inset 0 0 0 999px color-mix(in oklab, currentColor 12%, transparent); }
+:root[data-style="m3"] button.primary:hover:not(:disabled) { box-shadow: 0 1px 3px rgba(0, 0, 0, .3), inset 0 0 0 999px color-mix(in oklab, currentColor 8%, transparent); }
+:root[data-style="m3"] button.ib { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; color: var(--m3-on-surface-variant); }
+:root[data-style="m3"] button.ib.sm, :root[data-style="m3"] .ghost.sm.ib { width: 36px; height: 36px; }
+:root[data-style="m3"] button.ib.primary, :root[data-style="m3"] .cbox button.primary { background: var(--m3-primary); color: var(--m3-on-primary); padding: 0; }
+:root[data-style="m3"] button:disabled { opacity: .38; }
+:root[data-style="m3"] button:focus-visible, :root[data-style="m3"] .chip:focus-visible { outline: 3px solid color-mix(in oklab, var(--m3-primary) 70%, transparent); outline-offset: 2px; }
+
+/* ── chips, segmented buttons, switches ── */
+:root[data-style="m3"] .chip { background: transparent; border: 1px solid var(--m3-outline); border-radius: var(--m3-r-s); padding: 0 12px; min-height: 32px; font-size: 14px; font-weight: 500; color: var(--m3-on-surface-variant); }
+:root[data-style="m3"] .chip.on { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); border-color: transparent; }
+:root[data-style="m3"] .modebtns { display: inline-flex; align-self: flex-start; width: fit-content; border: 1px solid var(--m3-outline); border-radius: 999px; overflow: hidden; gap: 0; background: none; padding: 0; }
+:root[data-style="m3"] .modebtn { border: 0; border-radius: 0; background: transparent; color: var(--m3-on-surface); padding: 0 20px; min-height: 40px; }
+:root[data-style="m3"] .modebtn + .modebtn { border-left: 1px solid var(--m3-outline); }
+:root[data-style="m3"] .modebtn.on { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
+:root[data-style="m3"] .modebtn.on::before { content: "✓"; margin-right: 8px; font-size: 14px; }
+:root[data-style="m3"] .toggle { width: 52px; height: 32px; border-radius: 16px; background: var(--m3-surface-highest); border: 2px solid var(--m3-outline); transition: background-color .2s var(--m3-ease), border-color .2s var(--m3-ease); }
+:root[data-style="m3"] .toggle::after { top: 6px; left: 6px; width: 16px; height: 16px; background: var(--m3-outline); transition: transform .25s var(--m3-ease-out), width .2s var(--m3-ease), height .2s var(--m3-ease), top .2s var(--m3-ease), left .2s var(--m3-ease), background-color .2s; }
+:root[data-style="m3"] .toggle:active::after { width: 28px; height: 28px; top: 2px; left: 2px; }
+:root[data-style="m3"] .toggle.on { background: var(--m3-primary); border-color: var(--m3-primary); }
+:root[data-style="m3"] .toggle.on::after { width: 24px; height: 24px; top: 2px; left: 2px; background: var(--m3-on-primary); transform: translateX(20px); }
+:root[data-style="m3"] .toggle.on:active::after { width: 28px; transform: translateX(16px); }
+:root[data-style="m3"] .pill { background: var(--m3-surface-container); border: 0; border-radius: var(--m3-r-s); padding: 4px 10px; font-size: 12px; color: var(--m3-on-surface-variant); }
+
+/* ── text fields (outlined) ── */
+:root[data-style="m3"] input, :root[data-style="m3"] textarea, :root[data-style="m3"] select { background: transparent; border: 1px solid var(--m3-outline); border-radius: var(--m3-r-xs); padding: 10px 16px; min-height: 48px; color: var(--m3-on-surface); }
+:root[data-style="m3"] input:hover, :root[data-style="m3"] select:hover { border-color: var(--m3-on-surface); }
+:root[data-style="m3"] input:focus, :root[data-style="m3"] textarea:focus, :root[data-style="m3"] select:focus { border-color: var(--m3-primary); box-shadow: inset 0 0 0 1px var(--m3-primary); outline: none; }
+:root[data-style="m3"] .cbox textarea, :root[data-style="m3"] .cbox textarea:focus { border: 0; box-shadow: none; min-height: 0; padding: 6px 4px; }
+:root[data-style="m3"] .sfind, :root[data-style="m3"] .side input[type=search], :root[data-style="m3"] .side > input { border: 0; border-radius: 999px; background: var(--m3-surface-high) !important; padding: 0 20px; min-height: 48px; }
+:root[data-style="m3"] input[type=range] { accent-color: var(--m3-primary); min-height: 0; }
+
+/* ── settings ── */
+:root[data-style="m3"] .snavitem { border-radius: 999px; padding: 0 16px; min-height: 56px; gap: 12px; }
+:root[data-style="m3"] .snavitem .ftile { background: transparent; color: var(--m3-on-surface-variant); width: 24px; height: 24px; }
+:root[data-style="m3"] .snavitem:hover { background: color-mix(in oklab, var(--m3-on-surface) 8%, transparent); }
+:root[data-style="m3"] .snavitem.on { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); font-weight: 600; }
+:root[data-style="m3"] .snavitem.on .ftile { color: var(--m3-on-secondary-container); background: transparent; }
+:root[data-style="m3"] .spane-title { font-size: 22px; line-height: 28px; }
+:root[data-style="m3"] .sx-title { font-size: 28px; }
+
+/* ── dialogs, menus, tooltips ── */
+:root[data-style="m3"] .overlay { background: var(--m3-scrim); }
+:root[data-style="m3"] .overlay .card, :root[data-style="m3"] .overlay > div { background-color: var(--m3-surface-high) !important; border-radius: var(--m3-r-xl); box-shadow: 0 8px 12px 6px rgba(0, 0, 0, .15), 0 4px 4px rgba(0, 0, 0, .3) !important; padding: 24px; }
+:root[data-style="m3"] .popmenu { background: var(--m3-surface-container); border: 0; border-radius: var(--m3-r-s); box-shadow: 0 1px 3px rgba(0, 0, 0, .3), 0 4px 8px 3px rgba(0, 0, 0, .15); padding: 8px 0; }
+:root[data-style="m3"] .popitem { border-radius: 0; padding: 0 12px; min-height: 48px; }
+:root[data-style="m3"] .ttip, :root[data-style="m3"] .infopop, :root[data-style="m3"] .slashmenu { background-color: var(--m3-surface-highest) !important; border-radius: var(--m3-r-s); box-shadow: 0 1px 3px rgba(0, 0, 0, .3), 0 4px 8px 3px rgba(0, 0, 0, .15) !important; border-color: transparent !important; }
+
+/* ── numbers, bars, rings ── */
+:root[data-style="m3"] progress, :root[data-style="m3"] .bar { border-radius: 4px; }
+:root[data-style="m3"] .ok { color: var(--m3-ok); }
+:root[data-style="m3"] .err, :root[data-style="m3"] .bad { color: var(--m3-error); }
+
+/* ── motion: Material's emphasized easing, and none when animations are off ── */
+:root[data-style="m3"] .item, :root[data-style="m3"] .chip, :root[data-style="m3"] .card { transition-timing-function: var(--m3-ease); }
+:root[data-style="m3"].noanim *, :root[data-style="m3"].noanim *::before, :root[data-style="m3"].noanim *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+@media (prefers-reduced-motion: reduce) { :root[data-style="m3"] * { transition-duration: 0s !important; animation-duration: 0s !important; } }

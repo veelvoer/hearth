@@ -171,6 +171,17 @@ private fun Main() {
         }
         if (!Ui.chatOpen) {
             val cs = MaterialTheme.colorScheme
+            if (Fx.m3) {   // Material 3 navigation bar: the real component, a pill behind the icon of the current place, the names always shown
+                androidx.compose.material3.NavigationBar(modifier = Modifier.tourTarget("tabs"), containerColor = cs.surfaceContainer, windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)) {
+                    tabs.forEachIndexed { i, s ->
+                        val on = tab == i
+                        androidx.compose.material3.NavigationBarItem(selected = on, onClick = { Ui.tab = i },
+                            icon = { Glyph(listOf("chat", "home", "history", "gear")[i], 24.dp, if (on) cs.onSecondaryContainer else cs.onSurfaceVariant) },
+                            label = { androidx.compose.material3.Text(s, style = T.small.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, letterSpacing = 0.5.sp)) },
+                            colors = androidx.compose.material3.NavigationBarItemDefaults.colors(indicatorColor = cs.secondaryContainer, selectedTextColor = cs.onSurface, unselectedTextColor = cs.onSurfaceVariant))
+                    }
+                }
+            } else
             // a standard bottom bar: full width, flat, the same four places always with their names, the current one marked with a pill behind its icon
             Column(Modifier.fillMaxWidth().background(cs.surfaceVariant).tourTarget("tabs")) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(cs.outline))

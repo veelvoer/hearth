@@ -1066,6 +1066,13 @@ fun SettingsScreen() {
                     ThemeTile("System", d.surface, d.surfaceContainerLow, d.primary, sys, Modifier.weight(1f)) { ThemePrefs.system = true; Store.setThemeSystem(c, true) }
                 } else Spacer(Modifier.weight(1f))
             }
+            Spacer(Modifier.height(10.dp))
+            Label("Style")
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("Hearth", !Fx.m3) { Fx.m3 = false; Store.setM3(c, false) }
+                Chip("Material 3", Fx.m3) { Fx.m3 = true; Store.setM3(c, true) }
+            }
+            Txt("Material 3 is Google's design: tonal cards, round buttons and the standard navigation bar." + (if (Build.VERSION.SDK_INT >= 31) " With System colors it takes your wallpaper colors." else ""), T.small, muted = true)
             Spacer(Modifier.height(6.dp))
             Row2("Frosted glass", "See-through panels. Turn off if the app feels slow.") { Switch(Fx.glass, { Fx.glass = it; Store.setGlass(c, it) }) }
             Row2("Animations", "Fades, slides and bounces. Off is the lightest.") { Switch(Fx.motion, { Fx.motion = it; Store.setMotion(c, it) }) }

@@ -88,8 +88,10 @@ object ThemePrefs { var system by mutableStateOf<Boolean?>(null) }
 object Fx {
     var glass by mutableStateOf(true)
     var motion by mutableStateOf(true)
+    /** Material 3: Google's design language (tonal surfaces, round buttons, a standard navigation bar). Off = the Hearth look. */
+    var m3 by mutableStateOf(false)
     private var loaded = false
-    fun load(c: android.content.Context) { if (loaded) return; loaded = true; glass = Store.glass(c); motion = Store.motion(c) }
+    fun load(c: android.content.Context) { if (loaded) return; loaded = true; glass = Store.glass(c); motion = Store.motion(c); m3 = Store.m3(c) }
 }
 
 @Composable
@@ -99,13 +101,14 @@ fun systemColors(): Boolean = ThemePrefs.system == true && Build.VERSION.SDK_INT
 @Composable
 fun softFill(): Color {
     val cs = MaterialTheme.colorScheme
-    return if (systemColors()) cs.secondaryContainer else if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)
+    return if (Fx.m3 || systemColors()) cs.secondaryContainer else if (cs.background.luminance() < .5f) Color(0xFF2E2A26) else Color(0xFFE9E2D2)
 }
 
 /** The panel look. Frosted: a see-through surface with a light edge and a faint highlight at the top. Plain: the solid surface color. */
 @Composable
 fun Modifier.panel(shape: androidx.compose.ui.graphics.Shape): Modifier {
     val cs = MaterialTheme.colorScheme
+    if (Fx.m3) return this.clip(shape).background(cs.surfaceContainer)   // Material 3: a filled card, no border
     val dark = cs.background.luminance() < .5f
     return if (Fx.glass && !systemColors()) {
         val edge = if (dark) Color.White.copy(alpha = .10f) else Color.White.copy(alpha = .75f)
@@ -119,7 +122,7 @@ fun Modifier.panel(shape: androidx.compose.ui.graphics.Shape): Modifier {
 @Composable
 fun Modifier.glow(): Modifier {
     val cs = MaterialTheme.colorScheme
-    if (!Fx.glass || systemColors()) return this.background(cs.background)
+    if (Fx.m3 || !Fx.glass || systemColors()) return this.background(cs.background)
     val dark = cs.background.luminance() < .5f
     val a = if (dark) .20f else .24f
     return this.background(cs.background).drawBehind {
@@ -129,6 +132,34 @@ fun Modifier.glow(): Modifier {
     }
 }
 
+/** The Hearth colors as a full Material 3 scheme (made from the Crail seed the way Material You makes one), for Material 3 style without the wallpaper colors. */
+private val M3Light = lightColorScheme(
+    primary = Color(0xFF9A4122), onPrimary = Color(0xFFFFFFFF), primaryContainer = Color(0xFFFFDBCF), onPrimaryContainer = Color(0xFF380D00),
+    secondary = Color(0xFF77574D), onSecondary = Color(0xFFFFFFFF), secondaryContainer = Color(0xFFF5DDD5), onSecondaryContainer = Color(0xFF2C150F),
+    tertiary = Color(0xFF6B5E2F), onTertiary = Color(0xFFFFFFFF), tertiaryContainer = Color(0xFFF4E2A7), onTertiaryContainer = Color(0xFF231B00),
+    error = Color(0xFFBA1A1A), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFFFFDAD6), onErrorContainer = Color(0xFF410002),
+    background = Color(0xFFFFF8F6), onBackground = Color(0xFF231917), surface = Color(0xFFFFF8F6), onSurface = Color(0xFF231917),
+    surfaceVariant = Color(0xFFF5DED6), onSurfaceVariant = Color(0xFF53433E), outline = Color(0xFF85736D), outlineVariant = Color(0xFFD8C2BB),
+    inverseSurface = Color(0xFF392E2B), inverseOnSurface = Color(0xFFFFEDE8), inversePrimary = Color(0xFFFFB59D), surfaceTint = Color(0xFF9A4122),
+    surfaceDim = Color(0xFFE8D6D2), surfaceBright = Color(0xFFFFF8F6), surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFFFF1ED),
+    surfaceContainer = Color(0xFFFCEAE5), surfaceContainerHigh = Color(0xFFF6E4DF), surfaceContainerHighest = Color(0xFFF0DEDA),
+)
+private val M3Dark = darkColorScheme(
+    primary = Color(0xFFFFB59D), onPrimary = Color(0xFF5B1A00), primaryContainer = Color(0xFF7C2E0F), onPrimaryContainer = Color(0xFFFFDBCF),
+    secondary = Color(0xFFE7BDB0), onSecondary = Color(0xFF442A21), secondaryContainer = Color(0xFF5D4036), onSecondaryContainer = Color(0xFFFFDBCF),
+    tertiary = Color(0xFFD7C58D), onTertiary = Color(0xFF3B2F05), tertiaryContainer = Color(0xFF53461A), onTertiaryContainer = Color(0xFFF4E2A7),
+    error = Color(0xFFFFB4AB), onError = Color(0xFF690005), errorContainer = Color(0xFF93000A), onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF1A110F), onBackground = Color(0xFFF1DFDA), surface = Color(0xFF1A110F), onSurface = Color(0xFFF1DFDA),
+    surfaceVariant = Color(0xFF53433E), onSurfaceVariant = Color(0xFFD8C2BB), outline = Color(0xFFA08D86), outlineVariant = Color(0xFF53433E),
+    inverseSurface = Color(0xFFF1DFDA), inverseOnSurface = Color(0xFF392E2B), inversePrimary = Color(0xFF9A4122), surfaceTint = Color(0xFFFFB59D),
+    surfaceDim = Color(0xFF1A110F), surfaceBright = Color(0xFF423734), surfaceContainerLowest = Color(0xFF140C0A), surfaceContainerLow = Color(0xFF231917),
+    surfaceContainer = Color(0xFF271D1B), surfaceContainerHigh = Color(0xFF322825), surfaceContainerHighest = Color(0xFF3D3230),
+)
+/** The app reads its own roles from a scheme (a card is surfaceVariant, a hairline is outline, a stronger line is outlineVariant): a Material 3 scheme is arranged the same way. */
+private fun androidx.compose.material3.ColorScheme.forApp() = copy(background = surface, surfaceVariant = surfaceContainer, outline = outlineVariant, outlineVariant = outline)
+
+private val M3Shapes = Shapes(extraSmall = RoundedCornerShape(4.dp), small = RoundedCornerShape(8.dp), medium = RoundedCornerShape(12.dp), large = RoundedCornerShape(16.dp), extraLarge = RoundedCornerShape(28.dp))
+
 @Composable
 fun ClaudeTheme(content: @Composable () -> Unit) {
     val c = LocalContext.current
@@ -136,6 +167,8 @@ fun ClaudeTheme(content: @Composable () -> Unit) {
     Fx.load(c)
     val dark = isSystemInDarkTheme()
     val scheme = when {
+        Fx.m3 && ThemePrefs.system == true && Build.VERSION.SDK_INT >= 31 -> (if (dark) dynamicDarkColorScheme(c) else dynamicLightColorScheme(c)).forApp()
+        Fx.m3 -> (if (dark) M3Dark else M3Light).forApp()
         ThemePrefs.system == true && Build.VERSION.SDK_INT >= 31 -> (if (dark) dynamicDarkColorScheme(c) else dynamicLightColorScheme(c)).let { d ->
             // the phone's palette, arranged the way the app uses it: quiet cards on a plain page, a light hairline, a stronger line for inputs
             d.copy(background = d.surface, surfaceVariant = d.surfaceContainerLow, outline = d.outlineVariant, outlineVariant = d.outline)
@@ -143,16 +176,17 @@ fun ClaudeTheme(content: @Composable () -> Unit) {
         dark -> Dark
         else -> Light
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    if (Fx.m3) MaterialTheme(colorScheme = scheme, shapes = M3Shapes, content = content) else MaterialTheme(colorScheme = scheme, content = content)
 }
 
 object T {
-    val big = TextStyle(fontFamily = FontFamily.Serif, fontSize = 64.sp, letterSpacing = (-1.5).sp)
-    val title = TextStyle(fontFamily = FontFamily.Serif, fontSize = 32.sp)
-    val h2 = TextStyle(fontFamily = FontFamily.Serif, fontSize = 20.sp)
-    val body = TextStyle(fontSize = 16.sp, lineHeight = 23.sp)
-    val small = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
-    val label = TextStyle(fontSize = 12.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
+    // Material 3 uses the system font and its type scale; the Hearth look uses a serif for titles
+    val big get() = if (Fx.m3) TextStyle(fontSize = 57.sp, lineHeight = 64.sp, letterSpacing = (-0.25).sp) else TextStyle(fontFamily = FontFamily.Serif, fontSize = 64.sp, letterSpacing = (-1.5).sp)
+    val title get() = if (Fx.m3) TextStyle(fontSize = 32.sp, lineHeight = 40.sp) else TextStyle(fontFamily = FontFamily.Serif, fontSize = 32.sp)
+    val h2 get() = if (Fx.m3) TextStyle(fontSize = 22.sp, lineHeight = 28.sp) else TextStyle(fontFamily = FontFamily.Serif, fontSize = 20.sp)
+    val body get() = if (Fx.m3) TextStyle(fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = 0.5.sp) else TextStyle(fontSize = 16.sp, lineHeight = 23.sp)
+    val small get() = if (Fx.m3) TextStyle(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.25.sp) else TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
+    val label get() = if (Fx.m3) TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.5.sp, fontWeight = FontWeight.Medium) else TextStyle(fontSize = 12.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable
@@ -161,7 +195,7 @@ fun Txt(s: String, style: TextStyle = T.body, muted: Boolean = false, color: Col
         if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
 
 @Composable
-fun Label(s: String, modifier: Modifier = Modifier) = Txt(s.uppercase(), T.label, muted = true, modifier = modifier)
+fun Label(s: String, modifier: Modifier = Modifier) = Txt(if (Fx.m3) s else s.uppercase(), T.label, muted = true, modifier = modifier)
 
 /** Slides up and fades in the first time it appears. */
 /** Inside Settings nothing slides, bounces or fades in: pages should just be there. */
@@ -181,13 +215,15 @@ fun Modifier.pressable(onLong: (() -> Unit)? = null, onClick: () -> Unit): Modif
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val calm = LocalCalm.current
-    val s by animateFloatAsState(if (pressed && Fx.motion && !calm) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
-    graphicsLayer { scaleX = s; scaleY = s }.let { m -> if (onLong == null) m.clickable(interactionSource = src, indication = null, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }) else m.combinedClickable(interactionSource = src, indication = null, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }, onLongClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLong() }) }
+    val m3 = Fx.m3
+    val ind = if (m3) androidx.compose.material3.ripple() else null   // Material 3 answers a touch with a ripple, not with a shrinking card
+    val s by animateFloatAsState(if (pressed && Fx.motion && !calm && !m3) 0.96f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
+    graphicsLayer { scaleX = s; scaleY = s }.let { m -> if (onLong == null) m.clickable(interactionSource = src, indication = ind, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }) else m.combinedClickable(interactionSource = src, indication = ind, onClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }, onLongClick = { hap.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLong() }) }
 }
 
 @Composable
 fun Card(modifier: Modifier = Modifier, flat: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(if (Fx.m3) 16.dp else 20.dp)
     if (flat) { Column(modifier.fillMaxWidth(), content = content); return }
     Column(
         modifier.appear().fillMaxWidth().panel(shape).animateContentSize().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
@@ -207,7 +243,7 @@ val LocalFoldOpen = androidx.compose.runtime.compositionLocalOf { false }
 fun Fold(icon: String, title: String, tip: String? = null, content: @Composable ColumnScope.() -> Unit) {
     val startOpen = LocalFoldOpen.current
     var open by remember { mutableStateOf(startOpen) }
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(if (Fx.m3) 16.dp else 20.dp)
     Column(Modifier.appear().fillMaxWidth().panel(shape).padding(horizontal = 18.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
@@ -223,7 +259,7 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
 
 @Composable
 fun Meter(pct: Float, marker: Float? = null, height: Dp = 8.dp, modifier: Modifier = Modifier) {
-    val track = MaterialTheme.colorScheme.outline
+    val track = if (Fx.m3) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.outline
     val fill = MaterialTheme.colorScheme.primary
     val mark = MaterialTheme.colorScheme.onSurface
     Canvas(modifier.fillMaxWidth().height(height + 8.dp)) {
@@ -256,8 +292,16 @@ fun Spark(size: Dp, color: Color = MaterialTheme.colorScheme.primary) {
 
 @Composable
 fun Chip(text: String, selected: Boolean, icon: String? = null, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
     val cs = MaterialTheme.colorScheme
+    if (Fx.m3) {   // Material 3 filter chip: 8dp corners, a check when chosen, a tonal fill
+        FilterChip(selected = selected, onClick = onClick, label = { Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), maxLines = 1) },
+            leadingIcon = if (selected) { { Glyph("check", 18.dp, cs.onSecondaryContainer) } } else if (icon != null) { { Glyph(icon, 18.dp, cs.onSurfaceVariant) } } else null,
+            shape = RoundedCornerShape(8.dp), border = if (selected) null else BorderStroke(1.dp, cs.outlineVariant),
+            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = cs.secondaryContainer, selectedLabelColor = cs.onSecondaryContainer, labelColor = cs.onSurfaceVariant, containerColor = Color.Transparent),
+            modifier = Modifier.semantics { if (icon != null) contentDescription = text })
+        return
+    }
+    val shape = RoundedCornerShape(50)
     val group = LocalChipGroup.current
     val line by androidx.compose.animation.animateColorAsState(if (selected) (if (group != null) Color.Transparent else cs.primary) else cs.outlineVariant, androidx.compose.animation.core.tween(220), label = "chipline")
     val ink by androidx.compose.animation.animateColorAsState(if (selected) cs.onPrimary else cs.onSurface, androidx.compose.animation.core.tween(220), label = "chipink")
@@ -286,10 +330,10 @@ val LocalChipGroup = androidx.compose.runtime.compositionLocalOf<ChipGroupState?
 fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp), scroll: Boolean = false, multi: Boolean = false, content: @Composable () -> Unit) {
     val st = remember { ChipGroupState() }
     val primary = MaterialTheme.colorScheme.primary
-    androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides (if (multi) null else st)) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalChipGroup provides (if (multi || Fx.m3) null else st)) {
         Box(modifier) { Box(Modifier.onGloballyPositioned { st.coords = it }) {
             val r = st.sel
-            if (r != null) {
+            if (r != null && !Fx.m3) {
                 val spec = androidx.compose.animation.core.tween<Float>(380, easing = androidx.compose.animation.core.FastOutSlowInEasing)
                 val x by animateFloatAsState(r.left, spec, label = "hlx"); val y by animateFloatAsState(r.top, spec, label = "hly")
                 val w by animateFloatAsState(r.width, spec, label = "hlw"); val hh by animateFloatAsState(r.height, spec, label = "hlh")
@@ -304,6 +348,14 @@ fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Ho
 @Composable
 fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
+    if (Fx.m3) {   // the Material 3 filled button: a pill, a ripple, a label in medium weight
+        androidx.compose.material3.Button(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(50), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)) {
+            val ic = ACTION_ICONS[text]
+            if (ic != null) { Glyph(ic, 18.dp, cs.onPrimary); Spacer(Modifier.width(8.dp)) }
+            Text(text, style = T.small.copy(fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp), maxLines = 1)
+        }
+        return
+    }
     Box(
         modifier.pressable(onClick = onClick).clip(RoundedCornerShape(14.dp)).background(cs.primary).padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,

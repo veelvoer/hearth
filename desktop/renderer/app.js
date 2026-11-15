@@ -142,7 +142,8 @@ function renderNav() {
   const tabs = h('div', { class: 'tabs' });
   nav.append(h('div', { class: 'brand' }, h('span', { class: 'logo', html: sparkSVG(18, '#fff') }), h('span', { class: 'lbl' }, 'Hearth')));
   if (!S.signedIn) return;
-  for (const [id, label] of TABS) tabs.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, h('span', { class: 'lbl' }, label)));
+  const TAB_ICON = { sessions: 'sessions', dashboard: 'dashboard', history: 'history', settings: 'settings' };
+  for (const [id, label] of TABS) tabs.append(h('button', { class: tab === id ? 'on' : '', 'data-tab': id, title: label, onclick: () => setTab(id) }, icon(TAB_ICON[id]), h('span', { class: 'lbl' }, label)));
   nav.append(tabs, h('div', { class: 'navfoot' }, h('i'), h('span', { class: 'lbl' }, '')),
     h('button', { class: 'newchat', title: 'New chat', onclick: () => { setTab('sessions'); newChat(); } }, '+ New chat'));
   navStatus();
@@ -353,6 +354,9 @@ function settingsView(only) {
   p.append(h('div', { class: 'card stack appearance' }, ch('paint', 'Appearance', 'Auto follows your desktop and switches between light and dark by itself. “My desktop” uses your desktop’s accent color (found automatically on Windows, macOS, GNOME, KDE and Hyprland). The app icon follows the color you choose.'),
     h('div', { class: 'subtitle' }, 'Mode'),
     h('div', { class: 'modebtns' }, [['light', 'Light'], ['system', 'Auto'], ['dark', 'Dark']].map(([v, l]) => h('button', { class: 'modebtn' + ((st.theme || 'system') === v ? ' on' : ''), onclick: () => set({ theme: v }) }, l))),
+    h('div', { class: 'subtitle' }, 'Style'),
+    h('div', { class: 'modebtns' }, [['calm', 'Hearth'], ['material', 'Material 3']].map(([v, l]) => h('button', { class: 'modebtn' + ((st.style || 'calm') === v ? ' on' : ''), onclick: () => set({ style: v }) }, l))),
+    h('div', { class: 'small muted' }, 'Material 3 is Google’s design language: a navigation rail, tonal surfaces and round buttons. The accent color below becomes its color scheme.'),
     h('div', { class: 'subtitle' }, 'Accent color'),
     h('div', { class: 'row wrap swatches' }, SW.map(([c, n]) => h('button', { class: 'swatch' + (cur.toLowerCase() === c.toLowerCase() ? ' on' : ''), title: n, style: 'background:' + c, onclick: () => set(c === SW[0][0] ? { palette: 'claude' } : { palette: 'custom', customAccent: c }) })),
       chip('My desktop', st.palette === 'system', () => set({ palette: 'system' })),
@@ -907,7 +911,9 @@ function updateAppIcon(accent) {
 /** Frosted glass and animations are switches: off means plain solid panels and no motion, which is much lighter on weak graphics. */
 function applyPerf() {
   const st = S.settings || {}, r = document.documentElement;
-  r.classList.toggle('noglass', st.glass !== true);
+  const m3 = st.style === 'material';   // Material 3: flat tonal surfaces (see m3.css), so the frosted glass is off
+  if (m3) r.dataset.style = 'm3'; else delete r.dataset.style;
+  r.classList.toggle('noglass', st.glass !== true || m3);
   r.classList.toggle('noanim', st.motion === false);
   r.classList.toggle('simpleview', st.simpleView === true);   // the tool and command details are hidden: a chat only shows the conversation
 }
