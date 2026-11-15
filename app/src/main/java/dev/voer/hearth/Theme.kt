@@ -373,3 +373,24 @@ fun Modifier.glide(): Modifier = composed {
             a.value - target
         }
 }
+
+/** One setting on one line: its name on the left, the chosen value on the right; a tap opens the choices as a small menu. */
+@Composable
+fun Pick(label: String, options: List<Pair<String, String>>, value: String, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val cs = MaterialTheme.colorScheme
+    Box {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "Change $label") { open = true }.padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Txt(label, T.body, modifier = Modifier.weight(1f))
+            Txt(options.firstOrNull { it.second == value }?.first ?: options.firstOrNull()?.first.orEmpty(), T.body.copy(fontWeight = FontWeight.Medium), color = cs.primary)
+            Spacer(Modifier.width(4.dp)); Glyph("chevd", 16.dp, cs.primary)
+        }
+        androidx.compose.material3.DropdownMenu(open, { open = false }, modifier = Modifier.background(cs.surfaceVariant), offset = androidx.compose.ui.unit.DpOffset(1000.dp, 0.dp)) {
+            options.forEach { (l, v) ->
+                androidx.compose.material3.DropdownMenuItem(text = { Txt(l, T.body.copy(fontWeight = if (v == value) FontWeight.SemiBold else FontWeight.Normal)) },
+                    trailingIcon = { if (v == value) Glyph("check", 18.dp, cs.primary) }, onClick = { open = false; onPick(v) })
+            }
+        }
+    }
+}

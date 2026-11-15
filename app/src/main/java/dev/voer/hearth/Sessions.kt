@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -285,7 +286,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             confirmButton = { TextAction("Delete") { delChat = null; scope.launch { runCatching { withContext(Dispatchers.IO) { Shares.postJson(mm, "/sessions/${sx.id}/delete", JSONObject()) } }.onSuccess { val k = mm.host + "|" + mm.token.take(8); lists[k] = lists[k]?.filter { it.id != sx.id } }.onFailure { delErr = it.message ?: "Couldn't delete it" } } } },
             dismissButton = { TextAction("Cancel") { delChat = null } }) }
         delErr?.let { Txt(it, T.small, color = MaterialTheme.colorScheme.error) }
-        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared, "chat") { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking, "clock") { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared, "people") { onlyShared = true; onlyWorking = false }; Chip("Join chat", false, "plus") { join() } }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Chip("All", !onlyWorking && !onlyShared) { onlyWorking = false; onlyShared = false }; Chip("Working", onlyWorking) { onlyWorking = true; onlyShared = false }; Chip("Shared", onlyShared) { onlyShared = true; onlyWorking = false } }
         fun key(mm: Machine) = mm.host + "|" + mm.token.take(8)
         val offline = machines.filter { lists.containsKey(key(it)) && lists[key(it)] == null }
         if (offline.isNotEmpty()) Txt(offline.joinToString { it.name } + " can't load chats right now" + (offline.mapNotNull { errs[key(it)] }.firstOrNull()?.let { " ($it)" } ?: "") + ". It tries again on its own, and a stuck server restarts itself within a couple of minutes.", T.small, muted = true)
@@ -300,6 +301,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             .filter { (mm, s) -> (if (onlyShared) (mm.guest || s.shared > 0) else onlyWorking || !(mm.guest || s.shared > 0)) && (!onlyWorking || s.running || s.busy) && (query.isBlank() || (s.title + " " + folder(s.cwd)).contains(query.trim(), ignoreCase = true)) }
         if (all.isEmpty() && lists.size < machines.size + guests.size && query.isBlank()) { Skeleton(76.dp); Skeleton(76.dp); Skeleton(76.dp) }   // the list has its shape while it loads
         if (all.isEmpty() && hits.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) EmptyState(if (query.isNotBlank()) "No chat matches" else if (onlyWorking) "Nothing is running" else if (onlyShared) "No shared chats yet" else "No chats yet", if (query.isNotBlank() || onlyWorking || onlyShared) null else "Tap the plus to start one.")
+        if (onlyShared && query.isBlank()) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { TextAction("Join a shared chat") { join() } }
         if (hits.isNotEmpty()) { Label("In messages"); hits.forEach { (mm, s, snip) -> Card(Modifier.pressable { open(mm, s) }) { androidx.compose.foundation.text.selection.DisableSelection { Txt(Store.chatName(c, s.id).ifBlank { s.title }, T.body.copy(fontWeight = FontWeight.SemiBold)); Spacer(Modifier.height(2.dp)); Txt(snip, T.small, muted = true) } } } }
         all.forEachIndexed { i, (mm, s) -> androidx.compose.runtime.key(if (mm.guest) mm.share + ":" + s.id else s.id) { Box((if (i == 0) Modifier.tourTarget("list") else Modifier).glide()) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } } }
     }
@@ -326,7 +328,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (working) { Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(cs.primary)); Spacer(Modifier.width(6.dp)) }
-                Txt(listOfNotNull(if (working) "Working" else if (s.interrupted) "Interrupted, tap to see your message" else null, name, machine, if (working) null else dur(now - s.mtime)).joinToString(" · "),
+                Txt(listOfNotNull(if (working) "Working" else if (s.interrupted) "Interrupted, tap to see your message" else null, name, machine, if (working) null else age(now - s.mtime)).joinToString(" · "),
                     T.small.copy(fontSize = 12.sp, fontWeight = if (working) FontWeight.SemiBold else FontWeight.Normal), muted = !working, color = if (working) cs.primary else Color.Unspecified)
             }
         }
@@ -803,35 +805,19 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.65f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than two thirds of the screen, so the typing bar always stays
             ProjectLine(m, sess.cwd)
-            Label("Permissions")
-            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions").forEach { (l, v) -> Chip(l, mode == v) { mode = v; Store.setChatMode(appCtx, sess.id, v); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } } }
-            }
+            Pick("Permissions", listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions"), mode) { v -> mode = v; Store.setChatMode(appCtx, sess.id, v); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } }
             if (mode == "bypassPermissions") Txt("Full auto: no questions asked.", T.small, color = cs.primary)
             if (m.secure) {
-                Label("Run on")
                 var pcs by remember { mutableStateOf<List<Computer>>(emptyList()) }
                 LaunchedEffect(options) { runCatching { withContext(Dispatchers.IO) { Relay.computers(m) } }.onSuccess { pcs = it.filter { x -> x.kind == "computer" } } }
-                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    (listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }).forEach { (l, v) -> Chip(l, run == v) { run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } } }
-                }
+                Pick("Runs on", listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }, run) { v -> run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } }
             }
             if (sess.kind != "talk") {
-                Label("Model")
-                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku", "Fable" to "fable").forEach { (l, v) -> Chip(l, model == v) { model = v; Store.setChatModel(appCtx, sess.id, v) } }
-                }
-                Label("Effort")
-                ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max").forEach { (l, v) -> Chip(l, effort == v) { effort = v; Store.setChatEffort(appCtx, sess.id, v) } }
-                }
+                Pick("Model", listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku", "Fable" to "fable"), model) { v -> model = v; Store.setChatModel(appCtx, sess.id, v) }
+                Pick("Effort", listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max"), effort) { v -> effort = v; Store.setChatEffort(appCtx, sess.id, v) }
             }
             if (sess.kind != "talk" && !guest) WorkflowPanel(m, sess.id)
-            Label("Call me")
-            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("When it's done", call == "done") { setCall("done") }
-                Chip("Also if it needs me", call == "attention") { setCall("attention") }
-            }
+            Pick("Call me", listOf("Never" to "off", "When it's done" to "done", "Also if it needs me" to "attention"), call) { v -> if (v == "off") { if (call != "off") setCall(call) } else if (call != v) setCall(v) }
             if (sess.id.isNotEmpty() && !guest) {
                 Spacer(Modifier.height(4.dp))
                 androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) {
@@ -842,7 +828,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 }
             }
         } }
-        androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {   // press and hold on any text to select and copy it
+        androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f).clipToBounds()) {   // press and hold on any text to select and copy it
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty()) item { Txt(if (sess.kind == "talk") "What's on your mind?" else "What should we build in ${folder(sess.cwd)}?", T.title, modifier = Modifier.padding(top = 24.dp)) }
             if (msgs.isEmpty() && parts.isEmpty() && sess.id.isEmpty() && !guest && sess.kind != "talk") item { StartIdeas(input) { input = it } }
@@ -857,7 +843,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                         }
                     }
                     "tool" -> if (!Store.simpleView(c)) ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
-                    "meta" -> Txt(msg.text, T.small, muted = true)
+                    "meta" -> if (!Regex("^[0-9.,]+k? output").containsMatchIn(msg.text)) Txt(msg.text, T.small, muted = true)   // token counts after each reply are for the computer view, not the phone
                     else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column {
                         MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true)
                         if (idx == msgs.indexOfLast { it.role == "assistant" } && !working) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { Row {   // the newest reply can be copied or sent on in one tap

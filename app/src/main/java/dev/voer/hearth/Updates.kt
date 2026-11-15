@@ -57,7 +57,7 @@ object Updates {
         val p = c.getSharedPreferences("updates", Context.MODE_PRIVATE); val now = current(c); val last = p.getString("notes_seen", null)
         p.edit().putString("notes_seen", now).apply()
         if (last == now) return emptyList()
-        if (last == null && !onboarded) return emptyList()
+        if (last == null) return emptyList()   // a fresh install has nothing "new" to tell
         val names = runCatching { c.assets.list("")?.toList().orEmpty() }.getOrDefault(emptyList())
         return names.mapNotNull { Regex("^(\\d+\\.\\d+\\.\\d+)\\.md$").find(it)?.groupValues?.get(1) }
             .filter { cmp(it, now) <= 0 && (if (last == null) it == now else cmp(it, last) > 0) }.sortedWith { a, b -> cmp(b, a) }.take(12)

@@ -84,6 +84,15 @@ fun paceWord(l: Limit?, p: Pace?): String? {
     }
 }
 
+/** How long ago, in one short unit: 5m, 3h, 2d, then the date. */
+fun age(ms: Long): String = when {
+    ms < 90_000 -> "now"
+    ms < 3_600_000 -> "${(ms + 30_000) / 60_000}m"
+    ms < 86_400_000 -> "${(ms + 1_800_000) / 3_600_000}h"
+    ms < 7 * 86_400_000L -> "${(ms + 43_200_000) / 86_400_000}d"
+    else -> java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(java.util.Date(System.currentTimeMillis() - ms))
+}
+
 fun dur(ms: Long): String {
     val m = (ms / 60_000).coerceAtLeast(0)
     return when {
