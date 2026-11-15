@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: The fast Rust reader of the chat logs goes into the app (Linux: static, runs everywhere)
+      - name: The fast Rust reader of the chat logs goes into the app (Linux, a static program that runs everywhere)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y -qq musl-tools >/dev/null
