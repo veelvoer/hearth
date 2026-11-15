@@ -31,6 +31,7 @@ const synth = {
   ],
 };
 for (const [id, lines] of Object.entries(synth)) fs.writeFileSync(path.join(dir, id + '.jsonl'), lines.map(L).join('') + '{"type":"user","message":{"content":"broken line'.slice(0, 18) + '\n' + '{"type":"user","timestamp":"' + ts(200) + '","message":{"content":"unfinished tail"}}');
+{ let n = 0; for (const id of Object.keys(synth)) { const t = new Date(Date.now() - 60000 + 10000 * n++); fs.utimesSync(path.join(dir, id + '.jsonl'), t, t); } }   // clear order: the newest chat first, the same for both
 const secret = 'test-secret';
 const port = 47852;
 const rs = spawn(bin, ['--core-only', '--port', String(port), '--secret', secret], { env: { ...process.env, HOME }, stdio: 'ignore' });
