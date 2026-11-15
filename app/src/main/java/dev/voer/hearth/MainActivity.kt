@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -175,7 +176,7 @@ private fun Main() {
                 androidx.compose.material3.NavigationBar(modifier = Modifier.tourTarget("tabs"), containerColor = cs.surfaceContainer, windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)) {
                     tabs.forEachIndexed { i, s ->
                         val on = tab == i
-                        androidx.compose.material3.NavigationBarItem(selected = on, onClick = { Ui.tab = i },
+                        NavigationBarItem(selected = on, onClick = { Ui.tab = i },
                             icon = { Glyph(listOf("chat", "home", "history", "gear")[i], 24.dp, if (on) cs.onSecondaryContainer else cs.onSurfaceVariant) },
                             label = { androidx.compose.material3.Text(s, style = T.small.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, letterSpacing = 0.5.sp)) },
                             colors = androidx.compose.material3.NavigationBarItemDefaults.colors(indicatorColor = cs.secondaryContainer, selectedTextColor = cs.onSurface, unselectedTextColor = cs.onSurfaceVariant))
