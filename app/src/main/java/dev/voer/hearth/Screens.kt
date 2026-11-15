@@ -354,7 +354,7 @@ private fun WeekPlanCard() {
         val p = plan
         if (p == null) { Txt(err ?: "Loading…", T.small, muted = true, modifier = Modifier.padding(top = 8.dp)); return@Card }
         if (p.unavailable != null) { Txt(p.unavailable, T.small, muted = true, modifier = Modifier.padding(top = 8.dp)); return@Card }
-        Txt("Drag a handle to plan a day. Tap a day to type a number.", T.small, muted = true)
+        Txt("Drag to plan your week, or tap a day.", T.small, muted = true)
         Spacer(Modifier.height(10.dp))
         WeekSlider(p, onPin = { d, v -> save(d, v) }, onTap = { sel = it })
         Spacer(Modifier.height(4.dp))
