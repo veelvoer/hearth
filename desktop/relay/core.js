@@ -99,6 +99,33 @@ function entriesOf0(file) {
 }
 
 const sumCache = new Map();
+
+// ───────── the Rust reads ─────────
+// When the Rust front starts this relay it gives it a private address and a secret: the heavy reads (titles and totals of every chat, the messages of a long chat,
+// search, usage) are then done there, about ten times faster. Without it, or when it does not answer, everything below runs in this file as before.
+const RUST = process.env.HEARTH_RUST_CORE && process.env.HEARTH_RUST_CORE_SECRET ? { url: new URL(process.env.HEARTH_RUST_CORE), secret: process.env.HEARTH_RUST_CORE_SECRET } : null;
+let rustSums = false;   // the summaries came from Rust at least once: what it knew is then used, even a moment out of date, rather than reading the chat again here
+function rustPost(pathname, body, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    if (!RUST) return reject(new Error('no rust'));
+    const data = Buffer.from(JSON.stringify(body || {}));
+    const req = require('http').request({ host: RUST.url.hostname, port: RUST.url.port, path: pathname, method: 'POST', headers: { 'x-hearth-core': RUST.secret, 'Content-Type': 'application/json', 'Content-Length': data.length }, timeout: timeoutMs }, (res) => {
+      const chunks = []; res.on('data', (c) => chunks.push(c));
+      res.on('end', () => { try { if (res.statusCode !== 200) throw new Error('rust ' + res.statusCode); resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { reject(e); } });
+    });
+    req.on('timeout', () => req.destroy(new Error('rust timeout'))); req.on('error', reject); req.end(data);
+  });
+}
+/** Asks Rust for the titles and totals of every chat and keeps them where [summarize] looks. */
+async function refreshSummaries() {
+  if (!RUST) return;
+  try {
+    const list = await rustPost('/summaries');
+    for (const e of list) sumCache.set(e.file, { complete: true, rust: true, mtime: e.mtime, size: e.size, title: e.title, cwd: e.cwd, tokens: e.tokens, cost: e.cost, model: e.model, pos: e.pos, read: e.read, head: e.head,
+      base: { title: e.base.title, cwd: e.base.cwd, tok: e.base.tok, cost: e.base.cost, model: e.base.model, lastId: e.base.lastId, lastW: e.base.lastW, lastC: e.base.lastC } });
+    rustSums = true;
+  } catch { /* the next look reads them here */ }
+}
 function applyTitle(o, r) {
   if (o.type === 'assistant' && !o.isSidechain) {   // tokens of this chat (input + output + cache writes, once per answer) and the model that answered last
     const m = o.message || {}, u = m.usage;
@@ -122,6 +149,7 @@ const SUM_STEP = 16 * 1024 * 1024;   // at most this much of one chat is read pe
 function summarize(f, budget) {
   const hit = sumCache.get(f.file);
   if (hit && hit.mtime === f.mtime && hit.size === f.size && hit.complete !== false) return hit;
+  if (hit && hit.rust && rustSums) return hit;   // a moment out of date is fine: Rust brings it up to date with the next refresh
   // a chat that only grew is read from where it was read last time; anything else is read from the start
   const grew = !!hit && f.size >= hit.read && sameStart(f.file, hit.head);
   const from = grew ? hit.pos : 0;
@@ -387,4 +415,25 @@ function warm() {
   setTimeout(step, 500).unref();
 }
 
-module.exports = { deniedCount: () => denied, search, warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };
+/** [messages] done by Rust when it is there. */
+async function messagesAsync(sid, tail = 80) {
+  const f = findSession(sid);
+  if (RUST && f) { try { return await rustPost('/messages', { file: f.file, tail }); } catch { /* here then */ } }
+  return messagesOf(f, tail);
+}
+/** [search] done by Rust when it is there (it does not give up after 4 seconds, it is fast enough to finish). */
+async function searchAsync(q, limit = 25) {
+  if (RUST) { try { return await rustPost('/search', { q, limit }); } catch { /* here then */ } }
+  return search(q, limit);
+}
+/** Parses the usage of the chats that changed in Rust, and keeps it where [stats] and [report] look, so those find it ready. [days] 0 = all time. */
+async function prefetchUsage(days) {
+  if (!RUST) return;
+  const cutoff = days ? Date.now() - days * 864e5 : 0;
+  const need = listFiles().filter((f) => f.mtime >= cutoff).filter((f) => { const h = statCache.get(f.file); return !h || h.mtime !== f.mtime || h.size !== f.size; });
+  for (let i = 0; i < need.length; i += 40) {
+    const part = need.slice(i, i + 40);
+    try { const rows = await rustPost('/usage', { files: part.map((f) => f.file) }, 120000); part.forEach((f, k) => { if (rows[k]) statCache.set(f.file, { mtime: f.mtime, size: f.size, d: rows[k] }); }); } catch { return; }
+  }
+}
+module.exports = { messagesAsync, searchAsync, prefetchUsage, refreshSummaries, rustOn: !!RUST, parseUsage, deniedCount: () => denied, search, warm, entriesOf, report, messagesOf, listFiles, turnLine, findSession, sessions, messages, stats, summarize, toolInput, resultText, toolLine, textOf, isoTs, readJsonl, projectsDir };

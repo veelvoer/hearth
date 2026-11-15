@@ -221,6 +221,7 @@ function start(opts) {
 
   // ── plan usage: read from the real Claude Code's own output (rate_limit_event), never from account tokens ──
   core.warm();   // read the chat titles in the background so the first chat list is quick
+  if (core.rustOn) { core.refreshSummaries(); setInterval(() => { core.refreshSummaries(); core.prefetchUsage(1); }, 5000).unref(); }   // Rust keeps the titles and the last day of usage fresh
   const weekplan = require('./weekplan');
   const histFile = path.join(dir, 'weekhist.json'), planFile = path.join(dir, 'weekplan.json');
   let weekHist = (() => { try { const a = JSON.parse(fs.readFileSync(histFile, 'utf8')); return Array.isArray(a) ? a : []; } catch { return []; } })();
@@ -1144,8 +1145,9 @@ function start(opts) {
         if (parts[0] === 'status') return json(res, 200, { away: away(), build: BUILD, version: VERSION, canSelfUpdate: !!opts.selfUpdate, listeners: clients.size, root, allowBypass, moveRoot, laptop: laptopOnline(), queued: work.length });
         if (parts[0] === 'voice' && parts[1] === 'status') return proxyVoice(req, res);
         if (parts[0] === 'usage-report') { const n = Number(u.searchParams.get('days')); const extra = []; if (hubSync) { const st = path.join(dir, 'elsewhere'); try { for (const m of fs.readdirSync(st)) for (const f of fs.readdirSync(path.join(st, m))) if (f.endsWith('.jsonl')) { const fp = path.join(st, m, f), ss = fs.statSync(fp); extra.push({ file: fp, id: f.slice(0, -6), mtime: ss.mtimeMs, size: ss.size }); } } catch { /* none */ } }
+          await core.prefetchUsage(n === 0 ? 0 : Math.max(1, Math.min(365, n || 30)));
           return json(res, 200, { ...core.report(n === 0 ? 0 : Math.max(1, Math.min(365, n || 30)), extra), scope: hubSync ? 'account' : 'device' }); }
-        if (parts[0] === 'stats') return json(res, 200, core.stats(Math.max(1, Math.min(90, Number(u.searchParams.get('days')) || 30))));
+        if (parts[0] === 'stats') { const sd = Math.max(1, Math.min(90, Number(u.searchParams.get('days')) || 30)); await core.prefetchUsage(sd); return json(res, 200, core.stats(sd)); }
         if (parts[0] === 'commands') { const cwd = String(u.searchParams.get('cwd') || ''); return json(res, 200, await tools.commands(cwd && (!root || okDir(cwd)) ? cwd : '', findClaude())); }
         if (parts[0] === 'projects' && parts.length === 1) return json(res, 200, listProjects());
         if (parts[0] === 'usage') return json(res, 200, usage);
@@ -1181,7 +1183,7 @@ function start(opts) {
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': body.length, 'X-Gzip': '1', 'X-Mtime': String(f.mtime), 'X-Mode': String(f.mode) });
           return res.end(body);
         }
-        if (parts[0] === 'search' && parts.length === 1) return json(res, 200, { results: core.search(u.searchParams.get('q') || '') });   // words inside the chats
+        if (parts[0] === 'search' && parts.length === 1) return json(res, 200, { results: await core.searchAsync(u.searchParams.get('q') || '') });   // words inside the chats
         if (parts[0] === 'chat-tags' && parts.length === 1) return json(res, 200, { tags: readCfg().chatTags || {} });   // pins and names of chats, shared by the phone and the computer
         if (parts[0] === 'admin' && parts[1] === 'doctor') {   // a quick health check of this server: what works, what does not, and what to do about it
           const checks = [], add = (name, ok, text, fix) => checks.push({ name, ok, text, ...(fix ? { fix } : {}) });
@@ -1207,7 +1209,7 @@ function start(opts) {
         if (parts[0] === 'sessions' && parts[2] === 'snapshots') { const f = core.findSession(parts[1]); const cwd = f ? core.summarize(f).cwd : ''; return json(res, 200, cwd && okDir(cwd) ? safety.listSnapshots({ dir, cwd }).map((x) => ({ id: x.id, at: x.at, label: x.label, text: x.text, files: x.files, bytes: x.bytes })) : []); }
         if (parts[0] === 'admin' && parts[1] === 'decisions') return json(res, 200, { decisions: DECISIONS.slice(-Math.max(1, Math.min(200, Number(u.searchParams.get('tail')) || 50))).reverse() });
         if (parts[0] === 'recap') {   // a short look back: how the last days went
-          const days = Math.max(1, Math.min(31, Number(u.searchParams.get('days')) || 7)); let r; try { r = core.report(days); } catch { r = null; }
+          const days = Math.max(1, Math.min(31, Number(u.searchParams.get('days')) || 7)); let r; try { await core.prefetchUsage(days); r = core.report(days); } catch { r = null; }
           if (!r) return json(res, 200, { days, empty: true });
           const t = r.totals || {}, busiest = (r.days || []).reduce((m, d) => (d.tokens > (m ? m.tokens : 0) ? d : m), null);
           return json(res, 200, { days, activeDays: t.activeDays || 0, prompts: t.prompts || 0, sessions: t.sessions || 0, tokens: t.tokens || 0, cost: Math.round((t.cost || 0) * 100) / 100, streak: t.currentStreak || 0, favorite: r.favorite || '', busiest: busiest && busiest.tokens > 0 ? { date: busiest.date, tokens: busiest.tokens } : null, empty: !(t.prompts || t.tokens) });
@@ -1257,6 +1259,7 @@ function start(opts) {
         if (parts[0] === 'pending') return json(res, 200, [...pending.values()].map((p) => p.event).concat(shares.pendingEvents()));
         if (parts[0] === 'sessions' && parts.length === 1) {
           if (core.deniedCount() > seenDenied) { seenDenied = core.deniedCount(); lastOwnerFix = 0; fixOwnership('a chat could not be read'); }
+          await core.refreshSummaries();
           const run = runningIds(), far = hubSync ? hubSync.remoteRunning() : new Set();
           const quiet = new Set([...jobs.values()].filter((j) => j.done).map((j) => j.sid || j.key));
           const own = core.sessions(run, (f, sm) => (root ? visibleSession({ ...sm }) && (!sm.cwd || under(sm.cwd, root) || !!chathub.describeChat(f, root)) : worthListing(f, sm)), 300, quiet).map((x) => { try { return { ...x, running: run.has(x.id) || far.has(x.id), kind: getPrefs(x.id).kind, root: getPrefs(x.id).root === true, shared: (() => { const sh = shares.bySession(x.id); return sh ? shares.live(sh).length : -1; })() }; } catch (e) { onLog('chat ' + x.id + ': ' + e.message); return { ...x, running: false, kind: 'code', root: false, shared: -1 }; } });
@@ -1278,7 +1281,7 @@ function start(opts) {
           const f = core.findSession(parts[1]);
           if (!f && !jobs.has(parts[1])) { const st = readStubs()[parts[1]]; if (st) return json(res, 200, [{ role: 'user', text: st.text, ts: Math.floor(st.at / 1000) }, { role: 'meta', text: 'This run was interrupted before it could be saved (the server restarted or the connection broke). Send the message again to start it over.' }]); }
           if (f && !visibleSession(core.summarize(f))) return json(res, 403, { error: 'outside the projects folder' });
-          { const shx = shares.bySession(parts[1]); let raw = []; try { raw = core.messages(parts[1], tail); } catch (e) { onLog('messages ' + parts[1] + ': ' + e.message); }   // a chat file that is half written must never turn into an error on the phone
+          { const shx = shares.bySession(parts[1]); let raw = []; try { raw = await core.messagesAsync(parts[1], tail); } catch (e) { onLog('messages ' + parts[1] + ': ' + e.message); }   // a chat file that is half written must never turn into an error on the phone
           const list = withWaiting(raw); return json(res, 200, shx ? shares.merge(shx, list) : list); }
         }
         if (parts[0] === 'sessions' && parts[2] === 'state') {   // is Claude working on this chat right now? (cheap: the phone asks every few seconds)

@@ -16,6 +16,7 @@ jobs:
           ! grep -q "TODO" "release-notes/$V.md" || { echo "release-notes/$V.md still says TODO"; exit 1; }
           [ "$(node -p "require('./desktop/package.json').version")" = "$V" ] || { echo "desktop/package.json is not $V"; exit 1; }
           [ "$(node -p "require('./desktop/relay/version.js')")" = "$V" ] || { echo "desktop/relay/version.js is not $V"; exit 1; }
+          grep -q "^version = \"$V\"" desktop/relay-rs/Cargo.toml || { echo "desktop/relay-rs/Cargo.toml is not $V"; exit 1; }
           grep -q "versionName = \"$V\"" app/build.gradle.kts || { echo "app/build.gradle.kts is not $V"; exit 1; }
   desktop:
     needs: check
@@ -38,6 +39,29 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/*.AppImage
             desktop/dist/*.deb
+  relay-front:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static binary for Linux x64 (it runs on any distribution, on a server or a laptop)
+        run: |
+          sudo apt-get install -y -qq musl-tools >/dev/null
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --manifest-path desktop/relay-rs/Cargo.toml --target x86_64-unknown-linux-musl
+          mkdir out
+          cp desktop/relay-rs/target/x86_64-unknown-linux-musl/release/hearth-relay out/hearth-relay-linux-x64
+      - name: Static binary for Linux arm64 (a server on a Raspberry Pi or an Ampere cloud machine; skipped if it does not build)
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu >/dev/null
+          rustup target add aarch64-unknown-linux-musl
+          CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc cargo build --release --manifest-path desktop/relay-rs/Cargo.toml --target aarch64-unknown-linux-musl
+          cp desktop/relay-rs/target/aarch64-unknown-linux-musl/release/hearth-relay out/hearth-relay-linux-arm64
+      - name: Checksums
+        run: cd out && sha256sum hearth-relay-linux-* > hearth-relay.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: relay-front, path: out/* }
   android:
     needs: check
     runs-on: ubuntu-latest
@@ -64,7 +88,7 @@ jobs:
             Hearth-*.apk
             Hearth-watch-*.zip
   publish:
-    needs: [desktop, android]
+    needs: [desktop, android, relay-front]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -301,6 +301,7 @@ async function install() {
     if (!docker) {
       if (isRoot && !PREFIX && spawnSync('id', ['hearth']).status !== 0) await must('Create a user called "hearth"', 'useradd', ['-m', '-s', '/bin/bash', 'hearth']);
       await must('Copy Hearth to ' + INSTALL_DIR, 'sh', ['-c', `mkdir -p '${relayDir}' && cp ${RELAY_FILES.map((f) => `'${RELAY_SRC}/${f}'`).join(' ')} '${relayDir}/' && mkdir -p '${INSTALL_DIR}/installer' && cp '${__dirname}/hearth-server.js' '${INSTALL_DIR}/installer/' && chmod -R a+rX '${INSTALL_DIR}' && chown -R ${user} '${relayDir}' '${INSTALL_DIR}/installer' 2>/dev/null || true`], { sudo: !PREFIX });
+      if (!PREFIX && !DRY) { try { const r = await require(path.join(relayDir, 'front.js')).install('v' + VERSION, relayDir); if (r === 'installed') ok('Added the fast part of Hearth'); } catch { /* it is optional */ } }   // a Rust program that answers the heavy reads; without it Hearth runs as before
       await must('Make the projects folder', 'sh', ['-c', `mkdir -p '${projects}' '${cfgDir}' && chown -R ${user} '${projects}' '${cfgDir}' 2>/dev/null || true`], { sudo: !PREFIX });
       if (!claudeAlready && !PREFIX) await must('Install Claude Code (this is the part that does the thinking)', 'npm', ['install', '-g', '@anthropic-ai/claude-code'], { sudo: true });
       else ok('Claude Code is already installed');

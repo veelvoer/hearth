@@ -6,6 +6,22 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+// The Rust front (hearth-relay): it takes the public port and runs this relay behind it, and answers the heavy reads itself, about ten times faster.
+// Used when HEARTH_RUST_FRONT names it, or when a hearth-relay of exactly this version sits next to this file (the updater and the installer put it there).
+// HEARTH_NO_RUST=1 turns it off; the front sets that for the relay it starts.
+const rustFront = (() => {
+  if (process.env.HEARTH_NO_RUST || process.argv.includes('--no-rust')) return '';
+  const bin = process.env.HEARTH_RUST_FRONT || path.join(__dirname, 'hearth-relay' + (process.platform === 'win32' ? '.exe' : ''));
+  if (!fs.existsSync(bin)) return '';
+  try { const v = require('child_process').spawnSync(bin, ['--version'], { timeout: 4000, encoding: 'utf8' }); return v.status === 0 && (process.env.HEARTH_RUST_FRONT || String(v.stdout).trim() === require('./version')) ? bin : ''; } catch { return ''; }
+})();
+if (rustFront) {
+  const child = require('child_process').spawn(rustFront, process.argv.slice(2), { stdio: 'inherit' });
+  for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { try { child.kill('SIGTERM'); } catch { /* gone */ } });
+  child.on('exit', (code) => process.exit(code == null ? 1 : code));
+  child.on('error', (e) => { console.error('Could not start the Rust front: ' + e.message); process.exit(1); });
+  return;
+}
 const { start, noteLog } = require('./server');
 
 // One run that goes wrong (a pipe that breaks, a program that cannot start) must not stop the server and every other chat with it: note it and keep going.

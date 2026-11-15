@@ -29,7 +29,7 @@ const get = (url, tok) => new Promise((res) => http.get({ host: '127.0.0.1', por
   const big1 = (l1.find((x) => x.title === 'a huge chat') || {}).tokens || 0;
   ok('4 a 130 MB chat does not stall the list', r1.code === 200 && ms < 3000 && big1 >= 0, ms + ' ms');
   await get('/sessions', tok); const l2 = JSON.parse((await get('/sessions', tok)).body); const big2 = (l2.find((x) => x.title === 'a huge chat') || {}).tokens || 0;
-  ok('5 its totals fill in over a few looks', big2 > big1);
+  ok('5 its totals fill in over a few looks (at once with the Rust reads)', big2 > big1 || (!!process.env.HEARTH_RUST_FRONT && big1 > 0 && big2 === big1));
   relay.kill(); await sleep(300); fs.rmSync(T, { recursive: true, force: true });
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

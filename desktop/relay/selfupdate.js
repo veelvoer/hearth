@@ -58,6 +58,7 @@ async function apply(tag, relayDir) {
     for (const f of files) { const t = path.join(relayDir, f + '.new'); fs.copyFileSync(path.join(src, f), t); fs.renameSync(t, path.join(relayDir, f)); }
     const inst = path.join(tmp, 'server', 'hearth-server.js'), instDest = path.join(relayDir, '..', 'installer', 'hearth-server.js');
     try { if (fs.existsSync(inst) && fs.existsSync(path.dirname(instDest))) fs.copyFileSync(inst, instDest); } catch { /* the installer is optional */ }
+    try { const f = require(path.join(relayDir, 'front.js')); const r = await f.install(tag, relayDir); if (r !== 'installed') { try { fs.rmSync(path.join(relayDir, 'hearth-relay'), { force: true }); } catch { /* none */ } } } catch { /* the fast part is optional */ }   // an older one would not match this version and is ignored anyway
     return want;
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }

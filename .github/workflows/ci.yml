@@ -91,3 +91,13 @@ jobs:
       - name: Keep the watch test build
         uses: actions/upload-artifact@v4
         with: { name: watch-debug, path: wear/build/outputs/apk/debug/*.apk, retention-days: 3 }
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build the Rust relay front
+        run: cargo build --release --manifest-path desktop/relay-rs/Cargo.toml
+      - name: Every test through the Rust front
+        run: HEARTH_RUST_FRONT=$PWD/desktop/relay-rs/target/release/hearth-relay sh desktop/test/run-all.sh
