@@ -177,10 +177,10 @@
 @media (prefers-reduced-motion: reduce) { :root[data-style="m3"] * { transition-duration: 0s !important; animation-duration: 0s !important; } }
 
 /* ── Expressive motion (m3motion.js drives the springs; these are the pieces it moves) ── */
-.m3light { position: fixed; z-index: 2147483000; pointer-events: none; overflow: hidden; }
-.m3light .glow { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle var(--r, 120px) at var(--x, 50%) var(--y, 50%), color-mix(in oklab, var(--m3-primary) 22%, transparent), color-mix(in oklab, var(--m3-primary) 7%, transparent) 45%, transparent 100%); }
+:root[data-style="m3"] .m3light { position: fixed; z-index: 2147483000; pointer-events: none; overflow: hidden; }
+:root[data-style="m3"] .m3light .glow { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle var(--r, 120px) at var(--x, 50%) var(--y, 50%), color-mix(in oklab, var(--m3-primary) 22%, transparent), color-mix(in oklab, var(--m3-primary) 7%, transparent) 45%, transparent 100%); }
 @media (prefers-color-scheme: dark) { :root[data-style="m3"] .m3light .glow { background: radial-gradient(circle var(--r, 120px) at var(--x, 50%) var(--y, 50%), rgba(255, 255, 255, .16), rgba(255, 255, 255, .05) 45%, transparent 100%); } }
-.m3light .ring { position: absolute; width: 0; height: 0; border-radius: 50%; opacity: 0; background: radial-gradient(circle, transparent 52%, color-mix(in oklab, var(--m3-primary) 14%, transparent) 80%, transparent 100%); }
+:root[data-style="m3"] .m3light .ring { position: absolute; width: 0; height: 0; border-radius: 50%; opacity: 0; background: radial-gradient(circle, transparent 52%, color-mix(in oklab, var(--m3-primary) 14%, transparent) 80%, transparent 100%); }
 :root[data-style="m3"] #nav .tabs, :root[data-style="m3"] #nav .tabs.hlready { position: relative !important; }
 :root[data-style="m3"] #nav .tabs > .m3marker { position: absolute; left: 0; top: 0; border-radius: 16px; background: var(--m3-secondary-container); pointer-events: none; will-change: transform; transition: opacity .15s; }
 :root[data-style="m3"].m3pill #nav .tabs button.on > .ic { background: transparent; }
