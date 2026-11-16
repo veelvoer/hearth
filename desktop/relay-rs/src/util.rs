@@ -209,19 +209,19 @@ pub fn iso(ms: f64) -> String {
 
 /// Inside an AppImage the app's own libraries are on LD_LIBRARY_PATH and friends; programs we start (claude, git, tar,
 /// notify-send...) must see the computer's normal environment, or they load the wrong libraries and crash.
+fn clean_env_from(vars: impl Iterator<Item = (String, String)>, appdir: &str, appimage: bool) -> Vec<(String, Option<String>)> {
+    if appdir.len() < 2 || !appimage { return vec![]; }
+    let mut out = vec![];
+    for (k, v) in vars {
+        if !v.contains(appdir) || k == "APPIMAGE" || k == "APPDIR" || k == "OWD" || k == "ARGV0" { continue; }
+        let kept: Vec<&str> = v.split(':').filter(|p| !p.is_empty() && !p.contains(appdir)).collect();
+        out.push((k, if kept.is_empty() { None } else { Some(kept.join(":")) }));
+    }
+    out
+}
 fn clean_env() -> &'static Vec<(String, Option<String>)> {
     static E: std::sync::OnceLock<Vec<(String, Option<String>)>> = std::sync::OnceLock::new();
-    E.get_or_init(|| {
-        let dir = std::env::var("APPDIR").unwrap_or_default();
-        if dir.len() < 2 || std::env::var_os("APPIMAGE").is_none() { return vec![]; }
-        let mut out = vec![];
-        for (k, v) in std::env::vars() {
-            if !v.contains(&dir) || k == "APPIMAGE" || k == "APPDIR" || k == "OWD" || k == "ARGV0" { continue; }
-            let kept: Vec<&str> = v.split(':').filter(|p| !p.is_empty() && !p.contains(&dir)).collect();
-            out.push((k, if kept.is_empty() { None } else { Some(kept.join(":")) }));
-        }
-        out
-    })
+    E.get_or_init(|| clean_env_from(std::env::vars(), &std::env::var("APPDIR").unwrap_or_default(), std::env::var_os("APPIMAGE").is_some()))
 }
 pub fn cmd(p: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     let mut c = std::process::Command::new(p);
@@ -230,15 +230,41 @@ pub fn cmd(p: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
 }
 pub fn tcmd(p: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command { tokio::process::Command::from(cmd(p)) }
 
+/// Memory share of the server: the percentage chosen (5..95, 0 = no limit, anything else = the default 75).
+pub fn mem_pct_of(v: &Value) -> i64 { if *v == serde_json::json!(0) { 0 } else { let x = vnum(v); if (5.0..=95.0).contains(&x) { x.round() as i64 } else { 75 } } }
+/// The most memory the server may use, in MB: that share of what is free, never more than 90% of all memory, never below 256 MB. None = no limit.
+pub fn mem_limit_mb(pct: i64, avail: f64, total: f64) -> Option<i64> {
+    if pct == 0 { return None; }
+    Some(((avail * pct as f64 / 100.0).min(total * 0.9) / 1048576.0).floor().max(256.0) as i64)
+}
+
+/// A scratch folder for unit tests, under ~/hearth-tmp (never /tmp).
+#[cfg(test)]
+pub fn scratch(name: &str) -> PathBuf {
+    let d = home().join("hearth-tmp").join(format!("ut-{name}-{}-{}", std::process::id(), now_ms() as u64 % 1000000));
+    let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d
+}
+
+#[cfg(test)]
+mod memory_tests {
+    // Memory share for the server (memory.test.js)
+    use super::*;
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    #[test] fn default_is_75_percent() { assert_eq!(mem_pct_of(&Value::Null), 75); assert_eq!(mem_pct_of(&serde_json::json!({}).get("memoryPct").cloned().unwrap_or(Value::Null)), 75); }
+    #[test] fn zero_means_no_limit() { assert_eq!(mem_pct_of(&serde_json::json!(0)), 0); assert_eq!(mem_limit_mb(0, 1.0, 1.0), None); }
+    #[test] fn out_of_range_falls_back() { assert_eq!(mem_pct_of(&serde_json::json!(200)), 75); assert_eq!(mem_pct_of(&serde_json::json!(1)), 75); }
+    #[test] fn seventy_five_percent_of_4gb_free_is_3072mb() { assert_eq!(mem_limit_mb(75, 4.0 * GB, 8.0 * GB), Some(3072)); }
+    #[test] fn never_more_than_90_percent_of_all_memory() { assert_eq!(mem_limit_mb(95, 20.0 * GB, 8.0 * GB), Some((8.0 * GB * 0.9 / 1048576.0).floor() as i64)); }
+    #[test] fn never_below_256mb() { assert_eq!(mem_limit_mb(75, 100.0 * 1048576.0, 8.0 * GB), Some(256)); }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn children_do_not_get_the_appimage_libraries() {
-        std::env::set_var("APPIMAGE", "/x/Hearth.AppImage");
-        std::env::set_var("APPDIR", "/tmp/.mount_HearthX");
-        std::env::set_var("LD_LIBRARY_PATH", "/tmp/.mount_HearthX/usr/lib");
-        std::env::set_var("XDG_DATA_DIRS", "/tmp/.mount_HearthX/usr/share:/usr/share");
-        let o = super::cmd("sh").args(["-c", "echo \"[$LD_LIBRARY_PATH|$XDG_DATA_DIRS|$APPIMAGE]\""]).output().unwrap();
-        assert_eq!(String::from_utf8_lossy(&o.stdout).trim(), "[|/usr/share|/x/Hearth.AppImage]");
+        let vars = vec![("LD_LIBRARY_PATH".to_string(), "/tmp/.mount_HearthX/usr/lib".to_string()), ("XDG_DATA_DIRS".to_string(), "/tmp/.mount_HearthX/usr/share:/usr/share".to_string()), ("HOME".to_string(), "/home/x".to_string())];
+        let out = super::clean_env_from(vars.into_iter(), "/tmp/.mount_HearthX", true);
+        assert_eq!(out, vec![("LD_LIBRARY_PATH".to_string(), None), ("XDG_DATA_DIRS".to_string(), Some("/usr/share".to_string()))]);
+        assert!(super::clean_env_from(std::iter::empty(), "/tmp/.mount_HearthX", false).is_empty());
     }
 }

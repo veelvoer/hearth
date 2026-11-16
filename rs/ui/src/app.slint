@@ -1,0 +1,145 @@
+import { Palette, Type, Space, Shape, Motion } from "theme.slint";
+import { Icon, Dock } from "components.slint";
+import { ChatRow, Msg, ChatList, ChatPane } from "chat.slint";
+import { HomeScreen, HistoryScreen, SettingsScreen, Tile, NavItem, Device } from "pages.slint";
+export { Palette, Motion, Type }
+export { ChatRow }
+export { WatchApp } from "watch.slint";
+
+// One window for phone and desktop. Width >= 820 px gives the wide layout:
+// list left, chat right, compact dock at the foot of the list. Narrower is one pane with the floating dock.
+export component App inherits Window {
+    default-font-family: Type.family;
+    default-font-size: Type.body;
+    background: Palette.bg;
+    preferred-width: 360px;
+    preferred-height: 800px;
+    in-out property <string> screen: "chats";   // chats | chat | home | history | settings
+    in-out property <string> page: "";          // settings page ("" = list on phone, devices on wide)
+    in property <bool> chat-top: false;
+    in property <string> status: "Server online";
+    callback new-chat();
+    property <bool> wide: self.width >= 820px;
+    property <bool> split: root.wide && (root.screen == "chats" || root.screen == "chat");
+    property <int> tab: root.screen == "home" ? 1 : root.screen == "history" ? 2 : root.screen == "settings" ? 3 : 0;
+    in-out property <[ChatRow]> chats: [
+        { header: "Working now", title: "Fix the login bug on the settings page", sub: "webshop · working now", working: true, selected: true },
+        { header: "Today", title: "Plan the trip to Lisbon", sub: "Talk · 1h", swiped: false },
+        { header: "Yesterday", title: "Write release notes for 1.4", sub: "hearth · 1d", pinned: true },
+        { header: "Previous 7 days", title: "Why is the build slow?", sub: "api · 3d" },
+        { title: "Summarize the invoices", sub: "Talk · 5d" },
+    ];
+    in-out property <[ChatRow]> history: [
+        { header: "Today", title: "Plan the trip to Lisbon", sub: "Talk · 1h" },
+        { title: "Fix the login bug on the settings page", sub: "webshop · 2h" },
+        { header: "Yesterday", title: "Write release notes for 1.4", sub: "hearth · 1d" },
+        { header: "Previous 7 days", title: "Why is the build slow?", sub: "api · 3d" },
+        { title: "Summarize the invoices", sub: "Talk · 5d" },
+        { title: "Rename the staging bucket", sub: "infra · 6d" },
+    ];
+    in-out property <[Msg]> messages: [
+        { kind: "earlier" },
+        { kind: "user", text: "The settings form loses what I typed when I switch tabs. Can you fix it?" },
+        { kind: "text", text: "I'll look at how the form keeps its state." },
+        { kind: "heading", text: "What I found" },
+        { kind: "text", text: "The tabs unmount the form, so the draft is lost. I'll keep the draft in the parent and restore it when the tab opens again." },
+        { kind: "code", lead: "TYPESCRIPT", text: "const [draft, setDraft] = useState(saved);\nuseEffect(() => save(draft), [draft]);" },
+        { kind: "time", text: "11:50 PM" },
+        { kind: "tool", lead: "Read", text: "LoginForm.tsx", time: "11:50 PM", status: "done" },
+        { kind: "tool", lead: "Edit", text: "Settings.tsx", time: "11:51 PM", status: "applied" },
+        { kind: "text", text: "Done. The form now keeps its draft when you switch tabs." },
+        { kind: "bullet", lead: "Settings.tsx", text: "holds the draft" },
+        { kind: "bullet", lead: "LoginForm.tsx", text: "reads it on mount" },
+        { kind: "quote", text: "Drafts are cleared after a successful save." },
+        { kind: "text", text: "Want me to add a test?" },
+        { kind: "time", text: "11:52 PM" },
+        { kind: "meta", text: "1.2k output · 18k input · 41s" },
+        { kind: "queued", text: "Also run the linter once you are done." },
+        { kind: "working" },
+    ];
+    in-out property <[Tile]> tiles: [
+        { label: "API value", value: "$38.20", sub: "what it would cost per token" },
+        { label: "Tokens used", value: "2.1M", sub: "640k written · 1.5M read fresh" },
+        { label: "Cached reads", value: "9.0M", sub: "saved about $61.00" },
+        { label: "Sessions", value: "41", sub: "19 active days" },
+        { label: "Messages", value: "912", sub: "" },
+        { label: "Longest streak", value: "9 days", sub: "" },
+        { label: "Favourite model", value: "Sonnet 5.5", sub: "" },
+        { label: "Longest session", value: "2h 0m", sub: "" },
+    ];
+    in-out property <[NavItem]> nav: [
+        { header: "Connection", id: "devices", label: "Devices", icon: "devices" },
+        { id: "updates", label: "Updates", icon: "sync" },
+        { header: "App", id: "notifications", label: "Notifications", icon: "bell" },
+        { id: "appearance", label: "Appearance", icon: "palette" },
+        { header: "Server", id: "routines", label: "Routines", icon: "clock" },
+        { id: "server", label: "Server", icon: "server" },
+        { id: "keys", label: "Keys and permissions", icon: "key" },
+        { header: "More", id: "help", label: "Help", icon: "lifebuoy" },
+        { id: "about", label: "About", icon: "info" },
+    ];
+    in-out property <[Device]> devices: [
+        { name: "laptop (this computer)", sub: "This computer" },
+        { name: "VPS", sub: "Server · hearth.example.com", removable: true },
+    ];
+
+    function go(i: int) {
+        root.page = "";
+        root.screen = i == 0 ? "chats" : i == 1 ? "home" : i == 2 ? "history" : "settings";
+    }
+
+    if root.split: HorizontalLayout {
+        padding: 12px;
+        padding-left: 4px;
+        spacing: 12px;
+        ChatList { width: 300px; chats: root.chats; open(i) => { root.screen = "chat"; } }
+        ChatPane {
+            title: "Fix the login bug on the settings page";
+            sub: "webshop · Sonnet 5.5 · VPS · working now";
+            messages: root.messages;
+            top: root.chat-top;
+        }
+    }
+    if !root.wide && root.screen == "chats": ChatList { chats: root.chats; open(i) => { root.screen = "chat"; } }
+    if !root.wide && root.screen == "chat": ChatPane {
+        border-radius: 0px;
+        show-back: true;
+        narrow: true;
+        top: root.chat-top;
+        title: "Fix the login bug on the settings page";
+        sub: "webshop · Sonnet 5.5 · VPS";
+        messages: root.messages;
+        back => { root.screen = "chats"; }
+    }
+    if root.screen == "home": HomeScreen { wide: root.wide; tiles: root.tiles; }
+    if root.screen == "history": HistoryScreen { items: root.history; wide: root.wide; }
+    if root.screen == "settings": SettingsScreen {
+        wide: root.wide;
+        page: root.page;
+        items: root.nav;
+        devices: root.devices;
+        pick(id) => { root.page = id; }
+        back => { root.page = ""; }
+    }
+    // dock: compact at the foot of the list on wide, floating elsewhere
+    if root.split: Dock {
+        compact: true;
+        x: 16px;
+        y: root.height - 48px - 18px;
+        width: 276px;
+        height: 48px;
+        current: 0;
+        go(i) => { root.go(i); }
+        new-chat => { root.new-chat(); }
+    }
+    if !root.split && root.screen != "chat": Dock {
+        x: 0px;
+        y: root.height - 64px - 20px;
+        width: root.width;
+        height: 64px;
+        status: root.wide ? root.status : "";
+        current: root.tab;
+        go(i) => { root.go(i); }
+        new-chat => { root.new-chat(); }
+    }
+}

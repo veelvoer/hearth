@@ -1,0 +1,317 @@
+import { Palette, Type, Space, Shape, Motion } from "theme.slint";
+
+// ---------------------------------------------------------------- Icon
+// One icon family: 24 px grid, round 1.8 px strokes, drawn as paths (no icon font needed).
+export component Icon {
+    in property <string> name;
+    in property <length> size: 22px;
+    in property <color> color: Palette.text;
+    width: root.size;
+    height: root.size;
+    pure function d(n: string) -> string {
+        if n == "chat" { return "M5 4 H19 A2 2 0 0 1 21 6 V15 A2 2 0 0 1 19 17 H10 L6 21 V17 H5 A2 2 0 0 1 3 15 V6 A2 2 0 0 1 5 4 Z"; }
+        if n == "grid" { return "M4 4 H10 V10 H4 Z M14 4 H20 V9 H14 Z M4 14 H10 V20 H4 Z M14 13 H20 V20 H14 Z"; }
+        if n == "history" { return "M3.5 12 A8.5 8.5 0 1 0 6 6 M3 3.5 V8 H7.5 M12 7.5 V12 L15 14"; }
+        if n == "settings" { return "M12 9 A3 3 0 1 0 12 15 A3 3 0 1 0 12 9 Z M12 4.5 A7.5 7.5 0 1 0 12 19.5 A7.5 7.5 0 1 0 12 4.5 Z M 12.0 4.5 L 12.0 2.0 M 17.3 6.7 L 19.1 4.9 M 19.5 12.0 L 22.0 12.0 M 17.3 17.3 L 19.1 19.1 M 12.0 19.5 L 12.0 22.0 M 6.7 17.3 L 4.9 19.1 M 4.5 12.0 L 2.0 12.0 M 6.7 6.7 L 4.9 4.9"; }
+        if n == "plus" { return "M12 5 V19 M5 12 H19"; }
+        if n == "mic" { return "M12 3 A3 3 0 0 0 9 6 V12 A3 3 0 0 0 15 12 V6 A3 3 0 0 0 12 3 Z M6 11 A6 6 0 0 0 18 11 M12 17 V21"; }
+        if n == "send" { return "M12 19 V5 M6 11 L12 5 L18 11"; }
+        if n == "stop" { return "M8 8 H16 V16 H8 Z"; }
+        if n == "dots" { return "M5 12 L5.4 12 M11.8 12 L12.2 12 M18.6 12 L19 12"; }
+        if n == "search" { return "M11 4 A7 7 0 1 0 11 18 A7 7 0 1 0 11 4 Z M16 16 L21 21"; }
+        if n == "back" { return "M19 12 H5 M11 6 L5 12 L11 18"; }
+        if n == "chevron" { return "M6 9 L12 15 L18 9"; }
+        if n == "close" { return "M6 6 L18 18 M18 6 L6 18"; }
+        if n == "check" { return "M5 12.5 L10 17.5 L19 7"; }
+        if n == "refresh" { return "M20 12 A8 8 0 1 1 17.5 6.3 M20 4 V9 H15"; }
+        if n == "sidebar" { return "M4 5 H20 V19 H4 Z M15 5 V19"; }
+        if n == "pin" { return "M9 4 H15 L14 10 L17 13 H7 L10 10 Z M12 13 V20"; }
+        if n == "trash" { return "M5 7 H19 M9 7 V4 H15 V7 M7 7 L8 20 H16 L17 7 M10 11 V16 M14 11 V16"; }
+        if n == "sync" { return "M4 8 H18 M14 4 L18 8 L14 12 M20 16 H6 M10 12 L6 16 L10 20"; }
+        if n == "devices" { return "M3 6 H17 V16 H3 Z M1 19 H19 M19 10 H23 V19 H19 Z"; }
+        if n == "bell" { return "M6 17 H18 L16 14 V10 A4 4 0 0 0 8 10 V14 Z M10 20 H14"; }
+        if n == "palette" { return "M12 3 A9 9 0 1 0 12 21 C13.5 21 14 20 13.5 19 C13 18 13.5 17 15 17 H17 A4 4 0 0 0 21 13 A9 9 0 0 0 12 3 Z"; }
+        if n == "clock" { return "M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 Z M12 7 V12 L15.5 14"; }
+        if n == "server" { return "M4 4 H20 V10 H4 Z M4 14 H20 V20 H4 Z M8 7 L8.4 7 M8 17 L8.4 17"; }
+        if n == "key" { return "M9 8 A4.5 4.5 0 1 0 9 17 A4.5 4.5 0 1 0 9 8 Z M12.5 14.5 L21 6 M17 10 L19.5 12.5"; }
+        if n == "lifebuoy" { return "M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 Z M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 Z M5.6 5.6 L9.2 9.2 M14.8 14.8 L18.4 18.4 M18.4 5.6 L14.8 9.2 M9.2 14.8 L5.6 18.4"; }
+        if n == "info" { return "M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 Z M12 11 V16 M12 8 L12.4 8"; }
+        if n == "watch" { return "M8 6 H16 V18 H8 Z M9 6 L10 2 H14 L15 6 M9 18 L10 22 H14 L15 18"; }
+        return "";
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.d(root.name);
+        fill: transparent;
+        stroke: root.color;
+        stroke-width: root.size / 24 * (root.name == "dots" ? 3.2 : 1.8);
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// Centres its children on the cross axis of a horizontal row.
+export component VC inherits VerticalLayout {
+    alignment: center;
+}
+
+// ---------------------------------------------------------------- Cookie (the Expressive scalloped shape)
+export component Cookie {
+    in property <color> tone: Palette.selected;
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fill: root.tone;
+        commands: "M 50.0 4.0 L 53.1 5.1 L 55.9 7.9 L 58.2 11.4 L 60.2 14.5 L 62.3 16.2 L 65.0 16.2 L 68.5 15.2 L 72.5 13.9 L 76.5 13.6 L 79.6 14.8 L 81.3 17.6 L 81.6 21.5 L 81.1 25.7 L 80.6 29.3 L 81.2 32.0 L 83.2 33.8 L 86.6 35.2 L 90.5 36.9 L 93.7 39.1 L 95.3 42.0 L 94.8 45.3 L 92.5 48.5 L 89.4 51.4 L 86.8 53.9 L 85.5 56.3 L 85.9 58.9 L 87.5 62.2 L 89.4 65.9 L 90.5 69.7 L 89.8 73.0 L 87.3 75.2 L 83.5 76.2 L 79.3 76.4 L 75.7 76.6 L 73.1 77.6 L 71.7 79.9 L 70.9 83.5 L 70.0 87.6 L 68.3 91.2 L 65.7 93.2 L 62.4 93.3 L 58.8 91.6 L 55.5 89.1 L 52.6 86.9 L 50.0 86.0 L 47.4 86.9 L 44.5 89.1 L 41.2 91.6 L 37.6 93.3 L 34.3 93.2 L 31.7 91.2 L 30.0 87.6 L 29.1 83.5 L 28.3 79.9 L 26.9 77.6 L 24.3 76.6 L 20.7 76.4 L 16.5 76.2 L 12.7 75.2 L 10.2 73.0 L 9.5 69.7 L 10.6 65.9 L 12.5 62.2 L 14.1 58.9 L 14.5 56.3 L 13.2 53.9 L 10.6 51.4 L 7.5 48.5 L 5.2 45.3 L 4.7 42.0 L 6.3 39.1 L 9.5 36.9 L 13.4 35.2 L 16.8 33.8 L 18.8 32.0 L 19.4 29.3 L 18.9 25.7 L 18.4 21.5 L 18.7 17.6 L 20.4 14.8 L 23.5 13.6 L 27.5 13.9 L 31.5 15.2 L 35.0 16.2 L 37.7 16.2 L 39.8 14.5 L 41.8 11.4 L 44.1 7.9 L 46.9 5.1 Z";
+    }
+}
+
+// ---------------------------------------------------------------- Tap: state layer + elastic press
+export component Tap inherits Rectangle {
+    in property <color> tint: Palette.text;
+    in property <bool> enabled: true;
+    in property <bool> elastic: true;
+    out property <bool> pressed: ta.pressed;
+    out property <bool> hovered: ta.has-hover;
+    callback clicked();
+    transform-scale: (ta.pressed && root.elastic && root.enabled) ? 0.94 : 1.0;
+    animate transform-scale { duration: Motion.fast; easing: Motion.spring; }
+    animate background { duration: Motion.hover; easing: Motion.out; }
+    Rectangle {
+        border-radius: root.border-radius;
+        background: !root.enabled ? transparent : ta.pressed ? root.tint.with-alpha(0.16) : ta.has-hover ? root.tint.with-alpha(0.08) : transparent;
+        animate background { duration: Motion.hover; easing: Motion.out; }
+    }
+    @children
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component IconButton inherits Tap {
+    in property <string> icon;
+    in property <string> kind: "plain"; // plain | tonal | primary | outline
+    in property <length> size: 40px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: kind == "primary" ? Palette.accent : kind == "tonal" ? Palette.selected : transparent;
+    border-width: kind == "outline" ? 1px : 0px;
+    border-color: Palette.outline;
+    tint: kind == "primary" ? Palette.on-accent : Palette.text;
+    Icon {
+        name: root.icon;
+        size: root.size * 0.5;
+        color: root.kind == "primary" ? Palette.on-accent : root.kind == "tonal" ? Palette.on-selected : Palette.muted;
+    }
+}
+
+export component PillButton inherits Tap {
+    in property <string> text;
+    in property <string> icon;
+    in property <string> kind: "tonal"; // tonal | primary | outline | text | danger
+    in property <length> h: 40px;
+    in property <length> font-size: Type.body;
+    preferred-width: lay.preferred-width;
+    horizontal-stretch: 0;
+    height: root.h;
+    border-radius: root.h / 2;
+    background: kind == "primary" ? Palette.accent : kind == "tonal" ? Palette.selected : transparent;
+    border-width: kind == "outline" ? 1px : 0px;
+    border-color: Palette.outline;
+    tint: kind == "primary" ? Palette.on-accent : kind == "danger" ? Palette.error : Palette.text;
+    property <color> fg: kind == "primary" ? Palette.on-accent : kind == "tonal" ? Palette.on-selected : kind == "danger" ? Palette.error : kind == "text" ? Palette.accent : Palette.muted;
+    lay := HorizontalLayout {
+        padding-left: root.h * 0.4;
+        padding-right: root.h * 0.4;
+        spacing: Space.m;
+        alignment: center;
+        if root.icon != "": VC { Icon { name: root.icon; size: 18px; color: root.fg; } }
+        Text { text: root.text; color: root.fg; font-size: root.font-size; font-weight: 500; vertical-alignment: center; }
+    }
+}
+
+// ---------------------------------------------------------------- Switch (M3)
+export component Switch inherits Rectangle {
+    in-out property <bool> checked;
+    callback toggled(bool);
+    width: 52px;
+    height: 32px;
+    border-radius: 16px;
+    background: root.checked ? Palette.accent : Palette.card-highest;
+    border-width: root.checked ? 0px : 2px;
+    border-color: Palette.outline;
+    animate background { duration: Motion.hover; easing: Motion.out; }
+    Rectangle {
+        width: ta.pressed ? 28px : root.checked ? 24px : 16px;
+        height: self.width;
+        x: root.checked ? parent.width - self.width - (parent.height - self.width) / 2 : (parent.height - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: root.checked ? Palette.on-accent : Palette.outline;
+        animate x { duration: Motion.move; easing: Motion.spring; }
+        animate width { duration: Motion.fast; easing: Motion.spring; }
+        animate background { duration: Motion.hover; easing: Motion.out; }
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.checked = !root.checked; root.toggled(root.checked); } }
+}
+
+// ---------------------------------------------------------------- Field (pill, tonal)
+export component Field inherits Rectangle {
+    in property <string> placeholder;
+    in property <string> icon;
+    in-out property <string> text;
+    height: 48px;
+    border-radius: 24px;
+    background: Palette.card-high;
+    border-width: ti.has-focus ? 2px : 0px;
+    border-color: Palette.accent;
+    animate border-width { duration: Motion.hover; }
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 16px;
+        spacing: 10px;
+        if root.icon != "": VC { Icon { name: root.icon; size: 18px; color: Palette.faint; } }
+        Rectangle {
+            ti := TextInput {
+                x: 0px;
+                width: parent.width;
+                y: (parent.height - self.height) / 2;
+                text <=> root.text;
+                font-size: Type.body;
+                color: Palette.text;
+                single-line: true;
+                selection-background-color: Palette.accent.with-alpha(0.4);
+            }
+            if root.text == "": Text {
+                x: 0px;
+                horizontal-alignment: left;
+                y: (parent.height - self.height) / 2;
+                text: root.placeholder;
+                color: Palette.faint;
+                font-size: Type.body;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Section label, tonal card
+export component SectionLabel inherits Text {
+    color: Palette.faint;
+    font-size: Type.caption;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+}
+
+export component Card inherits Rectangle {
+    in property <brush> fill: Palette.card;
+    background: root.fill;
+    border-radius: Shape.card;
+}
+
+// ---------------------------------------------------------------- Cookie usage ring
+export component UsageRing inherits Rectangle {
+    in property <float> pct: 42;
+    in property <string> caption;
+    in property <color> tone: Palette.accent;
+    property <float> a: min(root.pct, 99.9) * 3.6;
+    width: 150px;
+    height: 150px;
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: "M 50 4 A 46 46 0 1 1 50 96 A 46 46 0 1 1 50 4";
+        fill: transparent;
+        stroke: Palette.outline-soft;
+        stroke-width: root.width * 0.085;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: "M 50 4 A 46 46 0 \{root.pct > 50 ? 1 : 0} 1 \{50 + 46 * Math.sin(root.a * 1deg)} \{50 - 46 * Math.cos(root.a * 1deg)}";
+        fill: transparent;
+        stroke: root.tone;
+        stroke-width: root.width * 0.085;
+        stroke-line-cap: round;
+    }
+    Cookie {
+        width: root.width * 0.68;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        tone: Palette.selected.with-alpha(0.8);
+    }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 1px;
+        Text { text: Math.round(root.pct); color: Palette.text; font-size: root.width * 0.24; font-weight: 400; vertical-alignment: center; }
+        Text { text: "%"; color: Palette.muted; font-size: root.width * 0.11; vertical-alignment: center; }
+    }
+}
+
+// ---------------------------------------------------------------- Floating dock
+export component Dock inherits HorizontalLayout {
+    in property <bool> compact: false;
+    in property <string> status;
+    in property <int> current: 0;
+    callback go(int);
+    callback new-chat();
+    property <length> item: root.compact ? 40px : 52px;
+    property <length> gap: root.compact ? 2px : 8px;
+    property <length> pad: root.compact ? 4px : 6px;
+    spacing: root.compact ? 8px : 12px;
+    alignment: center;
+    if root.status != "": Rectangle {
+        width: statuslbl.preferred-width + 34px;
+        height: 36px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 18px;
+        background: Palette.dock;
+        Rectangle { x: 14px; y: (parent.height - self.height) / 2; width: 8px; height: 8px; border-radius: 4px; background: Palette.ok; }
+        statuslbl := Text { x: 28px; y: (parent.height - self.height) / 2; text: root.status; color: Palette.muted; font-size: Type.small; }
+    }
+    Rectangle {
+        width: root.pad * 2 + root.item * 4 + root.gap * 3;
+        height: root.pad * 2 + root.item;
+        border-radius: self.height / 2;
+        background: Palette.dock;
+        // sliding marker: one value drives it, so quick repeated taps never jump
+        Rectangle {
+            x: root.pad + root.current * (root.item + root.gap);
+            y: root.pad;
+            width: root.item;
+            height: root.item;
+            border-radius: root.item / 2;
+            background: Palette.selected;
+            animate x { duration: Motion.move; easing: Motion.spring; }
+        }
+        for ic[i] in ["chat", "grid", "history", "settings"]: IconButton {
+            x: root.pad + i * (root.item + root.gap);
+            y: root.pad;
+            size: root.item;
+            icon: ic;
+            clicked => { root.go(i); }
+        }
+    }
+    Tap {
+        width: root.pad * 2 + root.item;
+        height: self.width;
+        y: 0px;
+        border-radius: root.compact ? 16px : 22px;
+        background: Palette.accent-container;
+        tint: Palette.on-accent-container;
+        Icon { name: "plus"; size: root.compact ? 22px : 26px; color: Palette.on-accent-container; }
+        clicked => { root.new-chat(); }
+    }
+}

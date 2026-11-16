@@ -1,0 +1,424 @@
+import { Palette, Type, Space, Shape, Motion } from "theme.slint";
+import { VC, Icon, Tap, IconButton, PillButton, Field, SectionLabel, Card, UsageRing, Switch } from "components.slint";
+import { ChatRow, ChatRowItem } from "chat.slint";
+
+export struct Tile { label: string, value: string, sub: string }
+export struct NavItem { header: string, id: string, label: string, icon: string }
+export struct Device { name: string, sub: string, removable: bool }
+
+// ---------------------------------------------------------------- Home (usage)
+component PaceChip inherits Rectangle {
+    in property <string> text;
+    in property <color> dot: Palette.ok;
+    preferred-width: pl.preferred-width;
+    height: 24px;
+    border-radius: 12px;
+    background: Palette.bg.with-alpha(0.5);
+    pl := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        Rectangle { width: 6px; Rectangle { width: 6px; height: 6px; border-radius: 3px; background: root.dot; } }
+        Text { text: root.text; color: Palette.text; font-size: Type.small; vertical-alignment: center; }
+    }
+}
+
+component Bar inherits Rectangle {
+    in property <string> label;
+    in property <float> pct;
+    height: 30px;
+    VerticalLayout {
+        spacing: 4px;
+        HorizontalLayout {
+            Text { text: root.label; color: Palette.muted; font-size: Type.small; }
+            Text { text: Math.round(root.pct) + "%"; color: Palette.muted; font-size: Type.small; horizontal-alignment: right; }
+        }
+        Rectangle {
+            height: 4px;
+            border-radius: 2px;
+            background: Palette.card-highest;
+            Rectangle { x: 0px; width: parent.width * root.pct / 100; height: 4px; border-radius: 2px; background: Palette.accent; }
+        }
+    }
+}
+
+component UsageCard inherits Card {
+    in property <string> title;
+    in property <string> reset;
+    in property <string> at;
+    in property <string> pace;
+    in property <string> note;
+    in property <float> pct;
+    in property <bool> bars;
+    in property <length> ring: 148px;
+    fill: Palette.card-high;
+    HorizontalLayout {
+        padding: 18px;
+        spacing: 18px;
+        VC { horizontal-stretch: 0; UsageRing { width: root.ring; height: root.ring; pct: root.pct; } }
+        VerticalLayout {
+            alignment: center;
+            spacing: 6px;
+            Text { text: root.title; color: Palette.text; font-size: 15px; font-weight: 500; }
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: root.reset; color: Palette.text; font-size: Type.body; wrap: word-wrap; }
+            }
+            Text { text: root.at; color: Palette.faint; font-size: Type.caption; }
+            HorizontalLayout {
+                spacing: 8px;
+                PaceChip { text: root.pace; dot: root.bars ? Palette.accent : Palette.ok; horizontal-stretch: 0; }
+                Rectangle { }
+            }
+            Text { text: root.note; color: Palette.muted; font-size: Type.caption; wrap: word-wrap; }
+            if root.bars: VerticalLayout {
+                spacing: 6px;
+                Bar { label: "Opus"; pct: 21; }
+                Bar { label: "Sonnet"; pct: 48; }
+            }
+        }
+    }
+}
+
+component StatTile inherits Rectangle {
+    in property <Tile> t;
+    height: 84px;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: Palette.outline-soft;
+    VerticalLayout {
+        padding: 14px;
+        padding-top: 12px;
+        spacing: 2px;
+        Text { text: root.t.label; color: Palette.muted; font-size: Type.small; }
+        Text { text: root.t.value; color: Palette.text; font-size: 22px; font-weight: 500; }
+        Text { text: root.t.sub; color: Palette.muted; font-size: Type.caption; overflow: elide; }
+    }
+}
+
+export component HomeScreen inherits Rectangle {
+    in property <bool> wide;
+    in property <[Tile]> tiles;
+    property <int> cols: root.wide ? 4 : 2;
+    Flickable {
+        content-width: self.width;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                max-width: 1100px;
+                alignment: start;
+                padding: root.wide ? 40px : 16px;
+                padding-top: root.wide ? 32px : 28px;
+                padding-bottom: 130px;
+                spacing: 14px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: "Good evening"; color: Palette.text; font-size: Type.display; }
+                        Text { text: "Monday, November 16 · Claude Max"; color: Palette.muted; font-size: Type.body; }
+                    }
+                    Rectangle { }
+                    VC { IconButton { icon: "refresh"; } }
+                    VC { IconButton { icon: "mic"; kind: "primary"; size: 44px; } }
+                }
+                Text { text: "Usage updated just now"; color: Palette.faint; font-size: Type.small; }
+                if root.wide: HorizontalLayout {
+                    spacing: 16px;
+                    UsageCard { title: "Session"; reset: "Resets in 1h 59m"; at: "01:58 AM"; pace: "Under pace"; note: "~69% by reset"; pct: 42; }
+                    UsageCard { title: "Week"; reset: "Resets in 2d 23h"; at: "Thu 11:58 PM"; pace: "Ahead of pace"; note: "Limit in 2d 8h"; pct: 63; bars: true; }
+                }
+                if !root.wide: VerticalLayout {
+                    spacing: 12px;
+                    UsageCard { title: "Session"; reset: "Resets in 1h 59m"; at: "01:58 AM"; pace: "Under pace"; note: "~69% by reset"; pct: 42; ring: 116px; }
+                    UsageCard { title: "Week"; reset: "Resets in 2d 23h"; at: "Thu 11:58 PM"; pace: "Ahead of pace"; note: "Limit in 2d 8h"; pct: 63; bars: true; ring: 116px; }
+                }
+                Card {
+                    height: 84px;
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 6px;
+                        HorizontalLayout {
+                            Text { text: "Your week, day by day"; color: Palette.muted; font-size: Type.small; font-weight: 600; }
+                            if root.wide: Text { text: "Drag a handle to plan a day"; color: Palette.muted; font-size: Type.small; horizontal-alignment: right; }
+                        }
+                        Text { text: "No weekly reading yet."; color: Palette.muted; font-size: Type.small; }
+                    }
+                }
+                Card {
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 14px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text { text: "Usage and cost"; color: Palette.muted; font-size: Type.small; font-weight: 600; vertical-alignment: center; }
+                            Rectangle { }
+                            PillButton { text: "7 days"; kind: "outline"; h: 32px; font-size: Type.small; }
+                            PillButton { text: "30 days"; kind: "tonal"; h: 32px; font-size: Type.small; }
+                            if root.wide: PillButton { text: "All time"; kind: "outline"; h: 32px; font-size: Type.small; }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            VC { Icon { name: "devices"; size: 18px; color: Palette.muted; } }
+                            Text { text: "This computer only"; color: Palette.muted; font-size: Type.small; vertical-alignment: center; }
+                            VC { Icon { name: "info"; size: 16px; color: Palette.faint; } }
+                            Rectangle { }
+                        }
+                        GridLayout {
+                            spacing: 10px;
+                            for t[i] in root.tiles: StatTile { t: t; col: mod(i, root.cols); row: Math.floor(i / root.cols); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- History
+export component HistoryScreen inherits Rectangle {
+    in property <[ChatRow]> items;
+    in property <bool> wide;
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            max-width: 720px;
+            preferred-width: 720px;
+            padding: 16px;
+            padding-top: 28px;
+            spacing: 12px;
+            Text { text: "History"; color: Palette.text; font-size: Type.display; }
+            Field { placeholder: "Search history"; icon: "search"; }
+            Flickable {
+                content-width: self.width;
+                VerticalLayout {
+                    padding-bottom: 120px;
+                    alignment: start;
+                    for row[i] in root.items: VerticalLayout {
+                        if row.header != "": Text {
+                            text: row.header.to-uppercase();
+                            color: Palette.faint;
+                            font-size: Type.caption;
+                            font-weight: 600;
+                            letter-spacing: 0.6px;
+                            height: 36px;
+                            vertical-alignment: bottom;
+                        }
+                        ChatRowItem { item: row; swipe: false; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Settings
+component SettingCard inherits Card {
+    in property <string> title;
+    in property <string> icon;
+    in property <string> info;
+    in property <string> body;
+    in property <bool> has-actions;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 14px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 12px;
+            VC { Icon { name: root.icon; size: 20px; color: Palette.muted; } }
+            Text { text: root.title; color: Palette.muted; font-size: Type.small; font-weight: 600; vertical-alignment: center; }
+            Rectangle { }
+            VC { Icon { name: "info"; size: 18px; color: Palette.faint; } }
+            if root.has-actions: VC { IconButton { icon: "refresh"; size: 32px; } }
+            if root.has-actions: VC { IconButton { icon: "plus"; size: 32px; } }
+        }
+        if root.body != "": Text { text: root.body; wrap: word-wrap; color: Palette.muted; font-size: Type.small; }
+        @children
+    }
+}
+
+component ToggleRow inherits Rectangle {
+    in property <string> title;
+    in property <string> sub;
+    in-out property <bool> on;
+    height: 56px;
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.title; color: Palette.text; font-size: Type.body; font-weight: 500; }
+            Text { text: root.sub; color: Palette.muted; font-size: Type.small; wrap: word-wrap; }
+        }
+        VC { Switch { checked <=> root.on; } }
+    }
+}
+
+component NavRow inherits VerticalLayout {
+    in property <NavItem> it;
+    in property <bool> selected;
+    callback pick();
+    if it.header != "": Text {
+        text: it.header;
+        color: Palette.faint;
+        font-size: Type.small;
+        font-weight: 600;
+        height: 38px;
+        vertical-alignment: bottom;
+    }
+    Tap {
+        height: 40px;
+        border-radius: 20px;
+        background: root.selected ? Palette.selected : transparent;
+        tint: Palette.text;
+        HorizontalLayout {
+            padding-left: 20px;
+            spacing: 14px;
+            VC { Icon { name: root.it.icon; size: 20px; color: root.selected ? Palette.on-selected : Palette.muted; } }
+            Text { text: root.it.label; color: root.selected ? Palette.on-selected : Palette.text; font-size: Type.body; font-weight: 500; vertical-alignment: center; }
+        }
+        clicked => { root.pick(); }
+    }
+}
+
+component SettingsNav inherits Rectangle {
+    in property <[NavItem]> items;
+    in property <string> page;
+    in property <string> title: "Settings";
+    callback pick(string);
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 28px;
+        spacing: 12px;
+        Text { text: root.title; color: Palette.text; font-size: Type.display; }
+        Field { placeholder: "Find a setting"; }
+        Flickable {
+            content-width: self.width;
+            VerticalLayout {
+                padding-bottom: 120px;
+                alignment: start;
+                for it in root.items: NavRow { it: it; selected: it.id == root.page; pick => { root.pick(it.id); } }
+            }
+        }
+    }
+}
+
+component PageBody inherits Rectangle {
+    in property <string> page;
+    in property <[Device]> devices;
+    in-out property <bool> motion: true;
+    in-out property <bool> frosted: true;
+    VerticalLayout {
+        spacing: 12px;
+        alignment: start;
+        if root.page == "devices": SettingCard {
+            title: "Sync";
+            icon: "sync";
+            body: "Not connected to a server yet. Connect one under “Computers and servers” and your files and chats will stay the same everywhere.";
+        }
+        if root.page == "devices": SettingCard {
+            title: "Your devices";
+            icon: "devices";
+            body: "Connect your server below (paste the pairing link in “Computers and servers”). Then your laptop, the server and your phone work as one: chats and projects stay in sync, and work moves to your laptop whenever it is online.";
+        }
+        if root.page == "devices": SettingCard {
+            title: "Computers and servers";
+            icon: "server";
+            has-actions: true;
+            for d in root.devices: Rectangle {
+                height: 48px;
+                HorizontalLayout {
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: d.name; color: Palette.text; font-size: Type.body; font-weight: 500; }
+                        Text { text: d.sub; color: Palette.muted; font-size: Type.small; }
+                    }
+                    Rectangle { }
+                    if d.removable: VC { PillButton { text: "Remove"; kind: "text"; h: 36px; } }
+                }
+            }
+        }
+        if root.page == "appearance": SettingCard {
+            title: "Theme";
+            icon: "palette";
+            HorizontalLayout {
+                spacing: 8px;
+                PillButton { text: "System"; kind: "outline"; h: 36px; }
+                PillButton { text: "Dark"; kind: "tonal"; h: 36px; icon: "check"; }
+                PillButton { text: "Light"; kind: "outline"; h: 36px; }
+                Rectangle { }
+            }
+        }
+        if root.page == "appearance": SettingCard {
+            title: "Look and motion";
+            icon: "settings";
+            ToggleRow { title: "Motion"; sub: "Springs and morphing transitions. Off turns every animation to zero."; on <=> root.motion; }
+            ToggleRow { title: "Frosted dock"; sub: "A translucent dock that stays readable over any content."; on <=> root.frosted; }
+            ToggleRow { title: "Expressive layout"; sub: "Floating dock and larger shapes."; on: true; }
+        }
+        if root.page == "notifications": SettingCard {
+            title: "Notifications";
+            icon: "bell";
+            ToggleRow { title: "Finished runs"; sub: "Tell me when Claude is done."; on: true; }
+            ToggleRow { title: "Usage limits"; sub: "Warn at 80% and 95%."; on: true; }
+        }
+    }
+}
+
+component PageTitle inherits Rectangle {
+    in property <[NavItem]> items;
+    in property <string> id;
+    height: 40px;
+    for it in root.items: Rectangle { if it.id == root.id: Text { x: 0px; horizontal-alignment: left; text: it.label; color: Palette.text; font-size: 22px; vertical-alignment: center; } }
+}
+
+export component SettingsScreen inherits Rectangle {
+    in property <bool> wide;
+    in property <string> page; // "" on phone = the page list
+    in property <[NavItem]> items;
+    in property <[Device]> devices;
+    callback pick(string);
+    callback back();
+    property <string> shown: root.page == "" && root.wide ? "devices" : root.page;
+    if root.wide: HorizontalLayout {
+        SettingsNav { width: 300px; items: root.items; page: root.shown; pick(id) => { root.pick(id); } }
+        Flickable {
+            content-width: self.width;
+            HorizontalLayout {
+                padding: 32px;
+                padding-left: 28px;
+                padding-bottom: 130px;
+                alignment: start;
+                VerticalLayout {
+                    max-width: 720px;
+                    preferred-width: 720px;
+                    spacing: 14px;
+                    alignment: start;
+                    PageTitle { items: root.items; id: root.shown; }
+                    PageBody { page: root.shown; devices: root.devices; }
+                }
+                Rectangle { }
+            }
+        }
+    }
+    if !root.wide && root.page == "": SettingsNav { items: root.items; page: ""; pick(id) => { root.pick(id); } }
+    if !root.wide && root.page != "": VerticalLayout {
+        alignment: start;
+        padding: 16px;
+        padding-top: 20px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 8px;
+            IconButton { icon: "back"; clicked => { root.back(); } }
+            PageTitle { items: root.items; id: root.page; }
+        }
+        Flickable {
+            content-width: self.width;
+            VerticalLayout {
+                padding-bottom: 130px;
+                alignment: start;
+                PageBody { page: root.page; devices: root.devices; }
+            }
+        }
+    }
+}

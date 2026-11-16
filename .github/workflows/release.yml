@@ -18,6 +18,7 @@ jobs:
           [ "$(node -p "require('./desktop/relay/version.js')")" = "$V" ] || { echo "desktop/relay/version.js is not $V"; exit 1; }
           grep -q "^version = \"$V\"" desktop/relay-rs/Cargo.toml || { echo "desktop/relay-rs/Cargo.toml is not $V"; exit 1; }
           grep -q "^version = \"$V\"" desktop/tauri/Cargo.toml || { echo "desktop/tauri/Cargo.toml is not $V"; exit 1; }
+          grep -q "^version = \"$V\"" rs/Cargo.toml || { echo "rs/Cargo.toml is not $V"; exit 1; }
           grep -q "versionName = \"$V\"" app/build.gradle.kts || { echo "app/build.gradle.kts is not $V"; exit 1; }
   desktop:
     needs: check

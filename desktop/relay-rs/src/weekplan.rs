@@ -78,3 +78,77 @@ pub fn groups(segs0: &[Value], targets: &Value, r: f64) -> Value {
     let auto_days: std::collections::HashSet<String> = rem.iter().filter(|i| !want.contains_key(i)).map(|i| key_of(*i)).collect();
     json!({"days": days, "over": over, "leftover": round1(leftover), "autoDays": auto_days.len(), "autoEach": if auto_w > 0.0 && !over { round1(pool / auto_w) } else { json!(0) }})
 }
+
+#[cfg(test)]
+mod tests {
+    // The weekly limit shared out over the days of the week (weekplan.test.js)
+    use super::*;
+    const D: f64 = 86400000.0; const TZ: f64 = 120.0;   // tz=120 means local = UTC+2
+    fn t(y: i64, m: i64, d: i64, h: i64, mi: i64) -> f64 {   // epoch ms of a UTC time
+        let (y2, m2) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
+        let era = y2.div_euclid(400); let yoe = y2.rem_euclid(400); let doy = (153 * m2 + 2) / 5 + d - 1; let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        (((era * 146097 + doe - 719468) * 24 + h) * 60 + mi) as f64 * 60000.0
+    }
+    fn end() -> f64 { t(2026, 10, 15, 15, 0) }   // reset Thu 2026-10-15 15:00 UTC (17:00 local)
+    fn smp(at: f64, w: f64) -> Value { json!({"t": at, "w": w, "r": end()}) }
+    fn days(p: &Value) -> Vec<Value> { p["days"].as_array().cloned().unwrap_or_default() }
+    fn sum(p: &Value) -> f64 { days(p).iter().map(|d| d.n("planned")).sum() }
+    fn by(p: &Value, n: &str) -> f64 { days(p).iter().rev().find(|d| d.s("name") == n).map(|d| d.n("planned")).unwrap_or(-1.0) }   // the last one: the reset weekday also has a small day at the start
+    fn eq(name: &str, a: f64, b: f64) { assert!((a - b).abs() < 0.6, "{name}: {a} expect {b}"); }
+    fn samples() -> Vec<Value> { vec![smp(t(2026, 10, 9, 8, 0), 5.0), smp(t(2026, 10, 10, 8, 0), 12.0), smp(t(2026, 10, 10, 20, 0), 30.0), smp(t(2026, 10, 11, 8, 0), 35.0)] }
+    fn usage(pct: f64) -> Value { json!({"week": {"pct": pct, "resetsAt": end()}}) }
+
+    #[test] fn eight_bars_the_reset_weekday_is_split_in_a_start_and_an_end_day() {
+        let now = t(2026, 10, 11, 10, 0);
+        let p = plan(&usage(35.0), &samples(), &json!({}), now, TZ);
+        eq("8 bars", days(&p).len() as f64, 8.0);
+        eq("plan sums to 100 (no unknown)", sum(&p), 100.0);
+    }
+    #[test] fn pinned_days_keep_their_share() {
+        let now = t(2026, 10, 11, 10, 0);
+        let p = plan(&usage(35.0), &samples(), &json!({"6": 20, "0": 20}), now, TZ);
+        eq("sat (already past) keeps what was used", by(&p, "Sat"), 25.0);
+        eq("sun planned = max(20, used)", by(&p, "Sun"), 20.0);
+        eq("sum 100", sum(&p), 100.0);
+    }
+    #[test] fn after_sunday_the_rest_is_recalculated() {
+        let mut s2 = samples(); s2.push(smp(t(2026, 10, 11, 20, 0), 50.0));
+        let p = plan(&usage(50.0), &s2, &json!({"6": 20, "0": 20}), t(2026, 10, 12, 7, 0), TZ);
+        eq("sum 100", sum(&p), 100.0);
+    }
+    #[test] fn over_commit_is_scaled_down() {
+        let p = plan(&usage(10.0), &[], &json!({"6": 60, "0": 60}), t(2026, 10, 9, 10, 0), TZ);
+        eq("over flag", if p["over"] == json!(true) { 1.0 } else { 0.0 }, 1.0);
+        eq("sat scaled to half of the 90 left", by(&p, "Sat"), 45.0);
+        eq("autos get 0", by(&p, "Mon"), 0.0);
+    }
+    #[test] fn the_reset_weekday_merges_its_pieces() {
+        let p = plan(&usage(0.0), &[], &json!({"4": 14}), t(2026, 10, 8, 16, 0), TZ);
+        eq("thu planned 14", by(&p, "Thu"), 14.0); eq("sum", sum(&p), 100.0);
+    }
+    #[test] fn a_rolled_week_is_unavailable() {
+        let p = plan(&json!({"week": {"pct": 10, "resetsAt": t(2026, 10, 1, 0, 0)}}), &[], &json!({}), t(2026, 10, 12, 7, 0), TZ);
+        assert!(p["unavailable"].is_string());
+    }
+    #[test] fn record_dedupes_equal_readings() {
+        let u = |pct: f64| usage(pct);
+        let mut h: Vec<Value> = vec![];
+        for (u1, now) in [(u(5.0), 1000.0), (u(5.0), 2000.0), (u(6.0), 3000.0)] { if let Some(n) = record(&h, &u1, now) { h = n; } }
+        assert_eq!(h.len(), 2);
+    }
+    #[test] fn a_future_pinned_day_with_saturday_still_ahead() {
+        let now = t(2026, 10, 9, 10, 0); let s = vec![smp(t(2026, 10, 9, 8, 0), 5.0)];
+        let p = plan(&usage(5.0), &s, &json!({"6": 20, "0": 20}), now, TZ);
+        eq("future sat 20", by(&p, "Sat"), 20.0); eq("future sun 20", by(&p, "Sun"), 20.0);
+        eq("autos share the rest evenly", by(&p, "Mon"), by(&p, "Tue"));
+        eq("sum", sum(&p), 100.0);
+    }
+    #[test] fn the_sliders_live_recalculation_equals_asking_again_with_that_pin() {
+        let now = t(2026, 10, 9, 10, 0); let s = vec![smp(t(2026, 10, 9, 8, 0), 5.0)];
+        let base = plan(&usage(5.0), &s, &json!({"0": 20}), now, TZ);
+        let pinned = plan(&usage(5.0), &s, &json!({"0": 20, "6": 30}), now, TZ);
+        let mut tg = base["targets"].clone(); tg["6"] = json!(30);
+        let live = groups(base["segs"].as_array().unwrap(), &tg, base["R"].as_f64().unwrap());
+        assert_eq!(live["days"], pinned["days"]);
+    }
+}

@@ -1,0 +1,337 @@
+import { Palette, Type, Space, Shape, Motion } from "theme.slint";
+import { VC, Icon, Tap, IconButton, PillButton, Field, SectionLabel, Cookie } from "components.slint";
+
+export struct ChatRow { header: string, title: string, sub: string, working: bool, pinned: bool, selected: bool, swiped: bool }
+export struct Msg { kind: string, lead: string, text: string, time: string, status: string }
+
+// ---------------------------------------------------------------- swipe row (pin / delete)
+export component ChatRowItem inherits Rectangle {
+    in property <ChatRow> item;
+    in property <bool> swipe: true;
+    callback open();
+    callback pin();
+    callback delete();
+    property <length> reveal: 112px;
+    in-out property <length> rest: root.item.swiped ? -root.reveal : 0px;
+    property <length> drag: 0px;
+    height: 64px;
+    // actions sit behind the row and are uncovered by the swipe
+    IconButton { x: parent.width - 108px; y: 8px; size: 48px; icon: "pin"; kind: "tonal"; clicked => { root.pin(); } }
+    Tap {
+        x: parent.width - 56px;
+        y: 8px;
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        background: Palette.error;
+        tint: Palette.bg;
+        Icon { name: "trash"; size: 24px; color: Palette.bg; }
+        clicked => { root.delete(); }
+    }
+    content := Rectangle {
+        width: parent.width;
+        height: parent.height;
+        x: ta.pressed ? root.drag : root.rest;
+        border-radius: 32px;
+        background: root.item.selected ? Palette.selected : Palette.bg;
+        animate x { duration: ta.pressed ? 0ms : Motion.move; easing: Motion.spring; }
+        animate background { duration: Motion.hover; easing: Motion.out; }
+        Rectangle {
+            border-radius: parent.border-radius;
+            background: ta.pressed ? Palette.text.with-alpha(0.12) : ta.has-hover && !root.item.selected ? Palette.text.with-alpha(0.06) : transparent;
+            animate background { duration: Motion.hover; easing: Motion.out; }
+        }
+        if root.item.working: Rectangle { x: 20px; y: 21px; width: 8px; height: 8px; border-radius: 4px; background: Palette.accent; }
+        Text {
+            x: root.item.working ? 36px : 20px;
+            y: 12px;
+            width: parent.width - self.x - (root.item.pinned ? 48px : 20px);
+            text: root.item.title;
+            overflow: elide;
+            color: Palette.text;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        Text {
+            x: 20px;
+            y: 34px;
+            width: parent.width - 40px;
+            text: root.item.sub;
+            overflow: elide;
+            color: Palette.muted;
+            font-size: Type.small;
+        }
+        if root.item.pinned: Icon { x: parent.width - 40px; y: 12px; size: 16px; name: "pin"; color: Palette.accent; }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            moved => {
+                if root.swipe { root.drag = clamp(root.rest + (self.mouse-x - self.pressed-x), -root.reveal, 0px); }
+            }
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.up && root.swipe { root.rest = root.drag < -root.reveal / 2 ? -root.reveal : 0px; }
+            }
+            clicked => { if root.rest == 0px { root.open(); } else { root.rest = 0px; } }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- chat list (also the wide left pane)
+export component ChatList inherits Rectangle {
+    in property <[ChatRow]> chats;
+    in property <string> filter: "All chats";
+    callback open(int);
+    callback pin(int);
+    callback delete(int);
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            height: 44px;
+            spacing: 4px;
+            // filter pill: dot + label + chevron
+            VC { horizontal-stretch: 0; Tap {
+                preferred-width: fl.preferred-width;
+                height: 40px;
+                border-radius: 20px;
+                background: Palette.selected;
+                tint: Palette.on-selected;
+                fl := HorizontalLayout {
+                    padding-left: 18px;
+                    padding-right: 14px;
+                    spacing: 8px;
+                    Text { text: root.filter; color: Palette.on-selected; font-size: Type.body; font-weight: 500; vertical-alignment: center; }
+                    VC { Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Palette.accent; } }
+                    VC { Icon { name: "chevron"; size: 14px; color: Palette.on-selected; } }
+                }
+            } }
+            Rectangle { horizontal-stretch: 1; }
+            VC { IconButton { icon: "dots"; } }
+        }
+        Field { placeholder: "Search chats"; icon: "search"; }
+        Flickable {
+            content-width: self.width;
+            VerticalLayout {
+                padding-bottom: 120px;
+                alignment: start;
+                for row[i] in root.chats: VerticalLayout {
+                    if row.header != "": Text {
+                        text: row.header.to-uppercase();
+                        color: Palette.faint;
+                        font-size: Type.caption;
+                        font-weight: 600;
+                        letter-spacing: 0.6px;
+                        height: 36px;
+                        vertical-alignment: bottom;
+                        horizontal-alignment: left;
+                    }
+                    ChatRowItem {
+                        item: row;
+                        open => { root.open(i); }
+                        pin => { root.pin(i); }
+                        delete => { root.delete(i); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- one message (markdown blocks, tool cards, queued)
+export component MessageView inherits VerticalLayout {
+    in property <Msg> m;
+    callback send-now();
+    callback show-earlier();
+    spacing: 4px;
+    if m.kind == "earlier": HorizontalLayout {
+        alignment: center;
+        padding-bottom: 8px;
+        PillButton { text: "Show earlier messages"; kind: "outline"; h: 36px; font-size: Type.small; clicked => { root.show-earlier(); } }
+    }
+    if m.kind == "user": HorizontalLayout {
+        padding-top: 8px;
+        padding-bottom: 4px;
+        Rectangle { min-width: 48px; horizontal-stretch: 1; }
+        Rectangle {
+            preferred-width: ul.preferred-width;
+            horizontal-stretch: 0;
+            background: Palette.selected;
+            border-radius: 22px;
+            ul := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 11px;
+                padding-bottom: 11px;
+                Text { text: root.m.text; wrap: word-wrap; color: Palette.on-selected; font-size: Type.read; }
+            }
+        }
+    }
+    if m.kind == "text": Text { text: root.m.text; wrap: word-wrap; color: Palette.text; font-size: Type.read; }
+    if m.kind == "heading": Text { text: root.m.text; wrap: word-wrap; color: Palette.text; font-size: 16px; font-weight: 600; }
+    if m.kind == "bullet": HorizontalLayout {
+        spacing: 10px;
+        padding-left: 6px;
+        Rectangle { width: 6px; Rectangle { y: 8px; width: 5px; height: 5px; border-radius: 3px; background: Palette.accent; } }
+        if root.m.lead != "": Text { text: root.m.lead; color: Palette.text; font-size: Type.read; font-weight: 700; horizontal-stretch: 0; }
+        Text { text: root.m.text; wrap: word-wrap; color: Palette.text; font-size: Type.read; horizontal-stretch: 1; }
+    }
+    if m.kind == "quote": HorizontalLayout {
+        spacing: 12px;
+        Rectangle { width: 3px; background: Palette.accent; border-radius: 2px; }
+        Text { text: root.m.text; wrap: word-wrap; color: Palette.muted; font-size: Type.read; font-italic: true; }
+    }
+    if m.kind == "code": Rectangle {
+        background: Palette.card;
+        border-radius: 16px;
+        VerticalLayout {
+            padding: 14px;
+            spacing: 8px;
+            Text { text: root.m.lead; color: Palette.faint; font-size: Type.caption; font-weight: 600; }
+            Text { text: root.m.text; color: Palette.text; font-size: 12px; font-family: Type.mono; }
+        }
+    }
+    if m.kind == "tool": Rectangle {
+        height: 38px;
+        background: Palette.card-high;
+        border-radius: 14px;
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            spacing: 10px;
+            Text { text: root.m.lead; color: Palette.accent; font-size: Type.small; font-weight: 700; vertical-alignment: center; min-width: 36px; horizontal-stretch: 0; }
+            Text { text: root.m.text; color: Palette.muted; font-size: Type.small; font-family: Type.mono; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; horizontal-alignment: left; }
+            Text { text: root.m.time; color: Palette.faint; font-size: Type.caption; vertical-alignment: center; horizontal-alignment: right; min-width: 56px; }
+            Text { text: root.m.status; color: Palette.ok; font-size: Type.small; vertical-alignment: center; min-width: 44px; }
+        }
+    }
+    if m.kind == "time": Text { text: root.m.text; color: Palette.faint; font-size: Type.caption; }
+    if m.kind == "meta": Text { text: root.m.text; color: Palette.faint; font-size: Type.caption; }
+    if m.kind == "queued": Rectangle {
+        background: Palette.card-high;
+        border-radius: 20px;
+        border-width: 1px;
+        border-color: Palette.outline-soft;
+        VerticalLayout {
+            padding: 14px;
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 6px;
+                Icon { name: "clock"; size: 14px; color: Palette.faint; }
+                SectionLabel { text: "QUEUED"; vertical-alignment: center; }
+            }
+            Text { text: root.m.text; wrap: word-wrap; color: Palette.text; font-size: Type.read; }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                PillButton { text: "Remove"; kind: "text"; h: 32px; font-size: Type.small; }
+                PillButton { text: "Send now"; kind: "primary"; h: 32px; font-size: Type.small; icon: "send"; clicked => { root.send-now(); } }
+            }
+        }
+    }
+    if m.kind == "working": HorizontalLayout {
+        spacing: 12px;
+        padding-top: 8px;
+        padding-left: 4px;
+        Cookie { width: 24px; height: 24px; tone: Palette.accent; }
+        Text { text: "Claude is working…"; color: Palette.muted; font-size: Type.read; vertical-alignment: center; }
+    }
+}
+
+// ---------------------------------------------------------------- composer
+export component Composer inherits Rectangle {
+    in property <bool> working;
+    in property <bool> narrow;
+    callback send();
+    callback stop();
+    background: Palette.card-high;
+    border-radius: 28px;
+    VerticalLayout {
+        padding: 16px;
+        padding-bottom: 12px;
+        spacing: 12px;
+        Rectangle {
+            min-height: 28px;
+            preferred-height: ph.preferred-height;
+            ti := TextInput { x: 0px; y: 0px; width: parent.width; font-size: Type.read; color: Palette.text; wrap: word-wrap; }
+            ph := Text {
+                visible: ti.text == "";
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                horizontal-alignment: left;
+                text: root.working ? (root.narrow ? "Type to queue a follow-up…" : "Claude is working. Type to queue a follow-up…") : "Message Claude";
+                wrap: word-wrap;
+                color: Palette.faint;
+                font-size: Type.read;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            PillButton { text: "Edits"; kind: "outline"; h: 32px; font-size: Type.small; }
+            PillButton { text: "Default model"; kind: "outline"; h: 32px; font-size: Type.small; }
+            if !root.narrow: PillButton { text: "Default effort"; kind: "outline"; h: 32px; font-size: Type.small; }
+            Rectangle { }
+            // Stop sits beside Send while a run is going
+            if root.working: IconButton { icon: "stop"; kind: "outline"; size: 40px; clicked => { root.stop(); } }
+            IconButton { icon: "send"; kind: "primary"; size: 40px; clicked => { root.send(); } }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- chat pane
+export component ChatPane inherits Rectangle {
+    in property <string> title;
+    in property <string> sub;
+    in property <[Msg]> messages;
+    in property <bool> working: true;
+    in property <bool> show-back;
+    in property <bool> narrow;
+    in property <bool> top;
+    callback back();
+    callback send-now(int);
+    background: Palette.surface-low;
+    border-radius: Shape.card;
+    VerticalLayout {
+        HorizontalLayout {
+            height: 68px;
+            padding-left: root.show-back ? 8px : 24px;
+            padding-right: 16px;
+            spacing: 4px;
+            if root.show-back: VC { IconButton { icon: "back"; } }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text { text: root.title; color: Palette.text; font-size: 15px; font-weight: 500; overflow: elide; horizontal-alignment: left; }
+                Text { text: root.sub; color: Palette.muted; font-size: Type.caption; overflow: elide; horizontal-alignment: left; }
+            }
+            if root.working: Rectangle { width: 20px; horizontal-stretch: 0; Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Palette.accent; } }
+            if !root.narrow: VC { IconButton { icon: "mic"; } }
+            if !root.show-back: VC { IconButton { icon: "sidebar"; } }
+            if root.show-back: VC { IconButton { icon: "dots"; } }
+        }
+        Rectangle { height: 1px; background: Palette.outline-soft.with-alpha(0.5); }
+        Flickable {
+            content-width: self.width;
+            content-y: root.top ? 0px : min(0px, self.height - self.content-height);
+            HorizontalLayout {
+                alignment: center;
+                padding-left: 24px;
+                padding-right: 24px;
+                VerticalLayout {
+                    max-width: 760px;
+                    padding-top: 16px;
+                    padding-bottom: 12px;
+                    spacing: 10px;
+                    for m[i] in root.messages: MessageView { m: m; send-now => { root.send-now(i); } }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding: 12px;
+            padding-top: 4px;
+            alignment: center;
+            Composer { max-width: 760px; preferred-width: 760px; working: root.working; narrow: root.narrow; }
+        }
+    }
+}

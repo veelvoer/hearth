@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["client", "ui", "xtask", "server", "tests", "desktop", "phone/glue", "phone", "phone/pack", "watch"]
+# desktop, phone and watch join as they come up (they need system libraries / the Android toolchain)
+
+[workspace.package]
+version = "1.40.0"
+edition = "2021"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

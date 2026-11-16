@@ -130,3 +130,62 @@ pub fn git_changes(cwd: &str) -> Value {
     json!({"git": true, "files": files, "diff": diff, "cut": cut})
 }
 pub fn _unused(_: PathBuf) {}
+
+#[cfg(test)]
+mod tests {
+    // Snapshots with undo, backups of chats, and the scan for secrets (safety.test.js)
+    use super::*;
+    use std::fs;
+    fn tree(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let t = scratch(name); let dir = t.join("data"); let proj = t.join("projects/app");
+        fs::create_dir_all(proj.join("src")).unwrap(); fs::create_dir_all(proj.join("node_modules/x")).unwrap();
+        fs::write(proj.join("a.txt"), "original a").unwrap(); fs::write(proj.join("c.txt"), "original c").unwrap();
+        fs::write(proj.join("src/deep file.js"), "deep").unwrap(); fs::write(proj.join("node_modules/x/big.js"), "heavy").unwrap();
+        (t, dir, proj)
+    }
+    fn snap(dir: &Path, proj: &Path, text: &str) -> Value { take_snapshot(dir, &proj.to_string_lossy(), "before a run", "", text, MAX_FILES) }
+    fn rd(p: PathBuf) -> String { fs::read_to_string(p).unwrap_or_default() }
+    #[test] fn snapshot_undo_and_friends() {
+        let (t, dir, proj) = tree("snap"); let ps = proj.to_string_lossy().to_string();
+        let s = snap(&dir, &proj, "make an app");
+        assert!(!s["id"].is_null() && s["files"] == 3, "1 a snapshot is taken of the project, without the heavy folders: {s}");
+        fs::write(proj.join("a.txt"), "CHANGED").unwrap(); fs::remove_file(proj.join("c.txt")).unwrap(); fs::write(proj.join("new.txt"), "made by Claude").unwrap();
+        fs::create_dir(proj.join("newdir")).unwrap(); fs::write(proj.join("newdir/n.txt"), "x").unwrap(); fs::write(proj.join("src/deep file.js"), "edited").unwrap();
+        let r = restore_snapshot(&dir, &ps, &s.s("id"));
+        assert!(r["ok"] == true && rd(proj.join("a.txt")) == "original a" && rd(proj.join("c.txt")) == "original c" && rd(proj.join("src/deep file.js")) == "deep", "2 undo brings back changed and deleted files: {r}");
+        assert!(!proj.join("new.txt").exists() && !proj.join("newdir").exists() && r["removed"] == 2, "3 undo removes what was made since, with its empty folders: {r}");
+        assert_eq!(rd(proj.join("node_modules/x/big.js")), "heavy", "4 the heavy folders are left alone");
+        assert!(!r["undoId"].is_null() && list_snapshots(&dir, &ps).iter().any(|x| x["id"] == r["undoId"]), "5 the undo itself can be undone");
+        assert!(!snap(&dir, &home(), "")["skipped"].is_null() && !take_snapshot(&dir, "/", "", "", "", MAX_FILES)["skipped"].is_null(), "6 a home folder or the root is never snapshotted");
+        for _ in 0..10 { snap(&dir, &proj, ""); std::thread::sleep(std::time::Duration::from_millis(5)); }
+        assert_eq!(list_snapshots(&dir, &ps).len(), 8, "7 only the last 8 snapshots are kept");
+        let _ = fs::remove_dir_all(t);
+    }
+    #[test] fn backups() {
+        let t = scratch("backup"); let dir = t.join("data"); let chats = t.join("claude/projects");
+        fs::create_dir_all(chats.join("-p-a")).unwrap(); fs::create_dir_all(chats.join(".hearth-trash")).unwrap();
+        fs::write(chats.join("-p-a/one.jsonl"), "{\"a\":1}\n").unwrap(); fs::write(chats.join(".hearth-trash/gone.jsonl"), "trash").unwrap();
+        let b = create_backup(&dir, &chats); let name = b.s("name");
+        assert!(b["ok"] == true && list_backups(&dir).len() == 1 && name.starts_with("chats-") && name.ends_with(".tgz") && name.len() == "chats-20260101000000.tgz".len(), "8 a backup of the chats is made: {b}");
+        fs::remove_file(chats.join("-p-a/one.jsonl")).unwrap();
+        let rb = restore_backup(&dir, &chats, &name);
+        let listing = String::from_utf8_lossy(&std::process::Command::new("tar").arg("-tzf").arg(dir.join("backups").join(&name)).output().unwrap().stdout).to_string();
+        assert!(rb["ok"] == true && chats.join("-p-a/one.jsonl").exists() && !listing.contains("gone.jsonl"), "9 restoring brings a deleted chat back, and the trash was not part of the backup");
+        fs::write(chats.join("-p-a/one.jsonl"), "NEWER CONTENT").unwrap();
+        restore_backup(&dir, &chats, &name);
+        assert_eq!(fs::read_to_string(chats.join("-p-a/one.jsonl")).unwrap(), "NEWER CONTENT", "10 a chat that is newer than the backup is not overwritten");
+        assert!(!restore_backup(&dir, &chats, "../../etc/passwd")["error"].is_null(), "11 a strange backup name is refused");
+        let _ = fs::remove_dir_all(t);
+    }
+    #[test] fn secrets() {
+        let t = scratch("secrets"); let sp = t.join("projects/leaky");
+        fs::create_dir_all(sp.join("node_modules")).unwrap();
+        fs::write(sp.join(".env"), "KEY=AKIAABCDEFGHIJKLMNOP\n").unwrap(); fs::write(sp.join("fine.js"), "const a = 1;").unwrap();
+        fs::write(sp.join("node_modules/k.js"), "-----BEGIN PRIVATE KEY-----").unwrap(); fs::write(sp.join("tok.txt"), format!("ghp_{}", "a".repeat(36))).unwrap();
+        let sc = scan_secrets(&t.join("projects").to_string_lossy(), 30.0, 5000);
+        let f = sc["findings"].as_array().cloned().unwrap_or_default();
+        assert!(f.len() == 2 && f.iter().any(|x| x.s("file") == "leaky/.env" && x.s("kind").contains("AWS")) && f.iter().any(|x| x.s("kind").contains("GitHub")) && !sc.to_string().contains("AKIAABC"), "12 secrets are found with their place and kind, never their value: {sc}");
+        assert!(!f.iter().any(|x| x.s("file").contains("node_modules")), "13 heavy folders are not searched");
+        let _ = fs::remove_dir_all(t);
+    }
+}

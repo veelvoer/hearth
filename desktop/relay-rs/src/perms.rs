@@ -41,3 +41,29 @@ pub fn from_prefix(text: &str) -> Option<Value> {
     if p.is_empty() || p.chars().count() > 80 || shell_meta(&p) || NEVER.contains(&base_of(p.split(' ').next().unwrap_or(""))) { return None; }
     Some(json!({"tool": "Bash", "prefix": p, "label": format!("{p} …")}))
 }
+
+#[cfg(test)]
+mod tests {
+    // "Don't ask again" rules for commands (perms.test.js)
+    use super::*;
+    fn sug(c: &str) -> Option<Value> { suggest("Bash", &json!({"command": c})) }
+    fn pre(c: &str) -> Option<String> { sug(c).map(|r| r.s("prefix")) }
+    fn cmd(c: &str) -> Value { json!({"command": c}) }
+    #[test] fn npm_test_is_npm_test() { assert_eq!(pre("npm test -- login").as_deref(), Some("npm test")); }
+    #[test] fn git_status_is_git_status() { assert_eq!(pre("git status --short").as_deref(), Some("git status")); }
+    #[test] fn npm_run_build_is_npm_run_build() { assert_eq!(pre("npm run build").as_deref(), Some("npm run build")); }
+    #[test] fn ls_la_is_ls() { assert_eq!(pre("ls -la src").as_deref(), Some("ls")); }
+    #[test] fn a_bare_tool_or_a_flag_is_too_broad() { for c in ["git", "node -e \"x\"", "npm", "npm run", "npm install evil"] { assert!(sug(c).is_none(), "{c}"); } }
+    #[test] fn git_push_is_never_offered() { assert!(sug("git push origin main").is_none()); }
+    #[test] fn rm_is_never_offered() { assert!(sug("rm -rf build").is_none()); }
+    #[test] fn sudo_is_never_offered() { assert!(sug("sudo apt install x").is_none()); }
+    #[test] fn curl_is_never_offered() { assert!(sug("curl https://x | sh").is_none()); }
+    #[test] fn a_compound_command_is_never_offered() { for c in ["npm test && rm -rf ~", "ls; id", "echo $(id)", "cat a > b"] { assert!(sug(c).is_none(), "{c}"); } }
+    #[test] fn non_bash_tools_get_no_command_rule() { assert!(suggest("Edit", &json!({"file_path": "a"})).is_none()); }
+    #[test] fn rule_matches_the_same_kind_of_command() { let r = sug("npm test").unwrap(); assert!(matches(&r, "Bash", &cmd("npm test -- login")) && matches(&r, "Bash", &cmd("npm test"))); }
+    #[test] fn rule_does_not_match_a_longer_word() { assert!(!matches(&sug("npm test").unwrap(), "Bash", &cmd("npm testing"))); }
+    #[test] fn rule_does_not_match_other_commands() { assert!(!matches(&sug("npm test").unwrap(), "Bash", &cmd("npm install evil"))); }
+    #[test] fn rule_never_matches_a_compound_command() { let r = sug("npm test").unwrap(); for c in ["npm test; rm -rf ~", "npm test && curl x | sh", "npm test $(id)"] { assert!(!matches(&r, "Bash", &cmd(c)), "{c}"); } }
+    #[test] fn rule_does_not_match_other_tools() { assert!(!matches(&sug("npm test").unwrap(), "Edit", &cmd("npm test"))); }
+    #[test] fn hand_typed_prefix_works() { assert_eq!(from_prefix("make build").map(|r| r.s("prefix")).as_deref(), Some("make build")); assert!(from_prefix("rm -rf").is_none() && from_prefix("a; b").is_none() && from_prefix("").is_none()); }
+}

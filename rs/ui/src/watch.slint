@@ -1,0 +1,54 @@
+import { Palette, Type, Space, Shape, Motion } from "theme.slint";
+import { Icon, Tap, UsageRing, Cookie } from "components.slint";
+
+// Round Wear OS layout. The black corners show the circular display.
+export component WatchApp inherits Window {
+    default-font-family: Type.family;
+    background: #000000;
+    preferred-width: 400px;
+    preferred-height: 400px;
+    in-out property <string> screen: "home"; // home | chats
+    Rectangle {
+        width: min(root.width, root.height);
+        height: self.width;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: Palette.bg;
+        clip: true;
+        if root.screen == "home": VerticalLayout {
+            padding-top: 30px;
+            padding-bottom: 36px;
+            spacing: 6px;
+            alignment: center;
+            Text { text: "Session"; color: Palette.muted; font-size: Type.body; horizontal-alignment: center; }
+            HorizontalLayout { alignment: center; UsageRing { width: 190px; height: 190px; pct: 42; } }
+            Text { text: "Resets in 1h 59m"; color: Palette.text; font-size: Type.body; horizontal-alignment: center; }
+            Text { text: "Week 63% · Under pace"; color: Palette.faint; font-size: Type.small; horizontal-alignment: center; }
+        }
+        if root.screen == "chats": VerticalLayout {
+            padding-top: 40px;
+            padding-left: 62px;
+            padding-right: 62px;
+            spacing: 8px;
+            alignment: start;
+            Text { text: "Chats"; color: Palette.text; font-size: Type.lead; font-weight: 500; horizontal-alignment: center; }
+            for r[i] in [
+                { t: "Fix the login bug", s: "working now", w: true },
+                { t: "Plan the trip to Lisbon", s: "1h", w: false },
+                { t: "Release notes 1.4", s: "1d", w: false },
+            ]: Rectangle {
+                height: 54px;
+                border-radius: 27px;
+                background: r.w ? Palette.selected : Palette.card-high;
+                VerticalLayout {
+                    alignment: center;
+                    padding-left: 22px;
+                    padding-right: 18px;
+                    Text { text: r.t; color: r.w ? Palette.on-selected : Palette.text; font-size: Type.body; font-weight: 600; overflow: elide; }
+                    Text { text: r.s; color: Palette.muted; font-size: Type.caption; }
+                }
+            }
+        }
+    }
+}

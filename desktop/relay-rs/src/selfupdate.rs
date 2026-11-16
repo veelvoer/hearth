@@ -38,3 +38,13 @@ pub async fn apply(tag: &str) -> Result<String, String> {
     std::fs::rename(&next, &me).map_err(|e| e.to_string())?;
     Ok(want)
 }
+
+#[cfg(test)]
+mod tests {
+    // The JS selfupdate module had no test file of its own (updater-flow.test.js covered it through Electron); these cover its version rule.
+    use super::*;
+    #[test] fn a_higher_version_is_newer() { assert!(newer("1.40.1", "1.40.0") && newer("1.41.0", "1.40.9") && newer("2.0.0", "1.99.99")); }
+    #[test] fn the_same_or_a_lower_version_is_not_newer() { assert!(!newer("1.40.0", "1.40.0") && !newer("1.39.9", "1.40.0") && !newer("0.9.0", "1.0.0")); }
+    #[test] fn numbers_compare_as_numbers_not_text() { assert!(newer("1.10.0", "1.9.0")); }
+    #[test] fn the_asset_name_is_a_release_file() { assert!(!asset_name().is_empty()); }
+}

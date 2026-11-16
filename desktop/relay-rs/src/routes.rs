@@ -322,9 +322,9 @@ impl Relay {
                 return j(200, json!({"path": p, "parent": if up != p && self.ok_dir(&up) { json!(up) } else { Value::Null }, "dirs": dirs, "home": home().to_string_lossy(), "root": self.root, "outside": self.outside_ok()}));
             }
             ("admin", "memory") => {
-                let pct = { let v = self.cfg("memoryPct"); if v == json!(0) { 0 } else { let x = vnum(&v); if (5.0..=95.0).contains(&x) { x.round() as i64 } else { 75 } } };
+                let pct = mem_pct_of(&self.cfg("memoryPct"));
                 let (avail, total) = mem_info(); let mb = 1048576.0;
-                let want = if pct == 0 { Value::Null } else { json!(((avail * pct as f64 / 100.0).min(total * 0.9) / mb).floor().max(256.0) as i64) };
+                let want = match mem_limit_mb(pct, avail, total) { Some(m) => json!(m), None => Value::Null };
                 return j(200, json!({"pct": pct, "defaultPct": 75, "appliedMb": want, "wantedMb": want, "availableMb": (avail / mb).round() as i64, "totalMb": (total / mb).round() as i64, "usedMb": (rss_bytes() / mb).round() as i64, "canRestart": self.o.self_update}));
             }
             ("admin", "latest") => {

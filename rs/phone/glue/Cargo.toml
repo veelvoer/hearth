@@ -1,0 +1,20 @@
+[package]
+name = "hearth-android"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Small Rust API over the Android pieces Hearth needs (JNI): notifications, service, intents, clipboard, haptics, Wear data layer"
+
+[dependencies]
+jni = "0.21"
+ndk-context = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+hearth-client = { path = "../../client" }
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+futures-util = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+hearth-relay = { path = "../../../desktop/relay-rs" }

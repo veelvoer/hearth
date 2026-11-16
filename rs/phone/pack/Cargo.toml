@@ -1,0 +1,13 @@
+[package]
+name = "hearth-pack"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Builds and signs the Rust Android (phone) and Wear OS (watch) APKs without Gradle"
+
+[[bin]]
+name = "hearth-pack"
+path = "src/package.rs"
+
+[dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }

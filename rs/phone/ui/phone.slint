@@ -1,0 +1,47 @@
+// First real phone screen of the pipeline: pair with a relay, list chats as plain text.
+// Colours come only from the platform palette (dark and light); the real design system arrives from rs/ui.
+import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
+
+export struct ChatItem { title: string, sub: string, busy: bool }
+
+export component PhoneWindow inherits Window {
+    in property <bool> paired;
+    in property <bool> working;
+    in property <string> status;
+    in property <string> server;
+    in property <[ChatItem]> chats;
+    callback pair(string, string);
+    callback refresh();
+    callback forget();
+    background: Palette.background;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text { text: "Hearth"; font-size: 24px; font-weight: 700; color: Palette.foreground; }
+        if !root.paired: VerticalLayout {
+            spacing: 8px;
+            Text { text: "Pair with your computer"; font-size: 13px; color: Palette.foreground; wrap: word-wrap; }
+            address := LineEdit { placeholder-text: "hearth:// link or address"; }
+            code := LineEdit { placeholder-text: "6-digit code (not needed with a link)"; input-type: number; }
+            Button { text: "Pair"; primary: true; enabled: !root.working; clicked => { root.pair(address.text, code.text); } }
+        }
+        if root.paired: HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.server; font-size: 13px; color: Palette.foreground; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+            Button { text: "Refresh"; enabled: !root.working; clicked => { root.refresh(); } }
+            Button { text: "Forget"; clicked => { root.forget(); } }
+        }
+        Text { text: root.status; font-size: 12px; color: Palette.foreground; wrap: word-wrap; }
+        if root.paired: ListView {
+            vertical-stretch: 1;
+            for c in root.chats: VerticalLayout {
+                padding-top: 6px;
+                padding-bottom: 6px;
+                Text { text: (c.busy ? "● " : "") + c.title; font-size: 13px; font-weight: 600; color: Palette.foreground; wrap: word-wrap; }
+                Text { text: c.sub; font-size: 11px; color: Palette.foreground; opacity: 0.7; }
+            }
+        }
+        if !root.paired: Rectangle { vertical-stretch: 1; }
+    }
+}

@@ -1,0 +1,27 @@
+[package]
+name = "hearth-server"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "hearth_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+regex = "1.10"
+sha2 = "0.10"
+hex = "0.4"
+url = "2"
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"] }
+
+[dev-dependencies]
+tempfile = "3.8"

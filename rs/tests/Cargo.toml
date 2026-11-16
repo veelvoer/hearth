@@ -1,0 +1,22 @@
+[package]
+name = "hearth-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# The relay binary, built from the relay's own main.rs, so `cargo test -p hearth-tests` has it (CARGO_BIN_EXE_hearth-relay-bin).
+[[bin]]
+name = "hearth-relay-bin"
+path = "../../desktop/relay-rs/src/main.rs"
+test = false
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
+hearth-relay = { path = "../../desktop/relay-rs" }
+# only for the relay binary above (main.rs)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "time", "signal", "fs"] }
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json", "query"] }
+libc = "0.2"
+regex = "1"
+flate2 = "1"
