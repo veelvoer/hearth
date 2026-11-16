@@ -3,31 +3,8 @@
 //!   hearth-relay --lan --host 0.0.0.0 ...                                                  (a computer on your network: pairing by code)
 //!   hearth-relay --link          print the pairing link and exit
 //!   hearth-relay mcp-ask         the small MCP server that gives Claude the ask_user tool (started by Claude itself)
-mod agent;
-mod apikeys;
-mod boot;
-mod chathub;
-mod core;
-mod filehub;
-mod hooks;
-mod jobs;
-mod jsu;
-mod mcpkit;
-mod perms;
-mod post;
-mod pricing;
-mod relay;
-mod routes;
-mod safety;
-mod selfupdate;
-mod service;
-mod shares;
-mod tools;
-mod util;
-mod weekplan;
-mod mcpask;
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+use hearth_relay::{boot, jobs, mcpask, relay, service, util, VERSION};
 
 fn flag(args: &[String], k: &str) -> Option<String> { args.iter().position(|a| a == k).and_then(|i| args.get(i + 1).cloned()).filter(|v| !v.starts_with("--")) }
 

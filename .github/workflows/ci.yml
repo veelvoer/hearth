@@ -103,3 +103,11 @@ jobs:
         run: cargo build --release --manifest-path desktop/relay-rs/Cargo.toml
       - name: Every test through the Rust front
         run: HEARTH_RUST_FRONT=$PWD/desktop/relay-rs/target/release/hearth-relay sh desktop/test/run-all.sh
+  desktop-app:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: What the window needs to build
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev >/dev/null
+      - name: Build the desktop app (Rust)
+        run: cargo build --manifest-path desktop/tauri/Cargo.toml

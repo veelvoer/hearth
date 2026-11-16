@@ -19,6 +19,7 @@ const edit = (rel, fn) => { const f = path.join(root, rel); fs.writeFileSync(f, 
 edit('desktop/package.json', (s) => s.replace(/"version": "[^"]+"/, `"version": "${v}"`));
 fs.writeFileSync(path.join(root, 'desktop/relay/version.js'), `'use strict';\n/* The version of this Hearth. Set by scripts/set-version.js. */\nmodule.exports = '${v}';\n`);
 edit('desktop/relay-rs/Cargo.toml', (s) => s.replace(/^version = "[^"]+"/m, `version = "${v}"`));
+edit('desktop/tauri/Cargo.toml', (s) => s.replace(/^version = "[^"]+"/m, `version = "${v}"`));
 edit('app/build.gradle.kts', (s) => s.replace(/versionCode = \d+/, `versionCode = ${maj * 10000 + min * 100 + pat}`).replace(/versionName = "[^"]+"/, `versionName = "${v}"`));
 edit('wear/build.gradle.kts', (s) => s.replace(/versionCode = \d+/, `versionCode = ${maj * 10000 + min * 100 + pat}`).replace(/versionName = "[^"]+"/, `versionName = "${v}"`));
 const notes = path.join(root, 'release-notes', v + '.md');

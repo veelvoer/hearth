@@ -32,6 +32,9 @@ the 41 test files in `desktop/test` are the spec. Run them against Rust with
 - [x] watchdog, standalone args
 - [x] full test suite green against Rust
 - [ ] installer/selfupdate ship the binary only
-- [ ] desktop: Tauri shell embedding the Rust relay
+- [x] desktop: Tauri app (desktop/tauri) with the relay inside (lib target of this crate); every `cm.*` call in Rust, pages unchanged (src/shim.js)
 
 2026-11-16: every test file passes against the Rust relay with no Node in the server (HEARTH_RUST_FRONT=<bin> sh desktop/test/run-all.sh).
+
+2026-11-17: desktop/tauri replaces Electron in releases. Build: `cd desktop/tauri && npx @tauri-apps/cli@2 build`.
+Tests inside the real window: HEARTH_EVAL=<script.js> HEARTH_TEST_LOG=<file> (the script calls cm.* and logs through `test:log`).

@@ -12,7 +12,7 @@ pub async fn latest() -> Result<Value, String> {
     let r = client().get(format!("https://api.github.com/repos/{REPO}/releases/latest")).header("Accept", "application/vnd.github+json").timeout(std::time::Duration::from_secs(20)).send().await.map_err(|e| e.to_string())?;
     if !r.status().is_success() { return Err(format!("GitHub said {}", r.status().as_u16())); }
     let j: Value = r.json().await.map_err(|e| e.to_string())?;
-    Ok(json!({"tag": j.g("tag_name"), "version": j.s("tag_name").trim_start_matches('v'), "notes": clip(&j.s("body"), 1500), "assets": arr(j.g("assets")).iter().map(|a| json!({"name": a.g("name"), "url": a.g("browser_download_url"), "size": a.g("size")})).collect::<Vec<_>>()}))
+    Ok(json!({"tag": j.g("tag_name"), "version": j.s("tag_name").trim_start_matches('v'), "notes": clip(&j.s("body"), 1500), "assets": arr(j.g("assets")).iter().map(|a| json!({"name": a.g("name"), "url": a.g("browser_download_url"), "size": a.g("size"), "digest": a.g("digest")})).collect::<Vec<_>>()}))
 }
 pub fn asset_name() -> &'static str {
     if cfg!(all(target_os = "linux", target_arch = "x86_64")) { "hearth-relay-linux-x64" } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) { "hearth-relay-linux-arm64" } else { "" }

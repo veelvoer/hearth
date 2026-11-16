@@ -147,3 +147,16 @@ pub fn watch_link(r: Arc<Relay>, lan: bool) {
         }
     });
 }
+
+/// The relay inside the desktop app: on this computer's network (pairing by code), in the app's own folder.
+/// Err((true, _)) = the port is taken (the always-on relay service runs here already).
+pub async fn embedded(o: Opts) -> Result<Arc<Relay>, (bool, String)> {
+    let (host, port) = (o.host.clone(), o.port);
+    let r = make(o).map_err(|e| (false, e))?;
+    let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await.map_err(|e| (e.kind() == std::io::ErrorKind::AddrInUse, e.to_string()))?;
+    timers(&r);
+    discovery(port);
+    watch_link(r.clone(), true);
+    tokio::spawn(serve(r.clone(), listener));
+    Ok(r)
+}

@@ -17,41 +17,41 @@ jobs:
           [ "$(node -p "require('./desktop/package.json').version")" = "$V" ] || { echo "desktop/package.json is not $V"; exit 1; }
           [ "$(node -p "require('./desktop/relay/version.js')")" = "$V" ] || { echo "desktop/relay/version.js is not $V"; exit 1; }
           grep -q "^version = \"$V\"" desktop/relay-rs/Cargo.toml || { echo "desktop/relay-rs/Cargo.toml is not $V"; exit 1; }
+          grep -q "^version = \"$V\"" desktop/tauri/Cargo.toml || { echo "desktop/tauri/Cargo.toml is not $V"; exit 1; }
           grep -q "versionName = \"$V\"" app/build.gradle.kts || { echo "app/build.gradle.kts is not $V"; exit 1; }
   desktop:
     needs: check
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: The fast Rust reader of the chat logs goes into the app (Linux, a static program that runs everywhere)
+      - name: What the window needs to build on Linux (an older Ubuntu, so the AppImage runs on more distributions)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y -qq musl-tools >/dev/null
-          rustup target add x86_64-unknown-linux-musl
-          cargo build --release --manifest-path desktop/relay-rs/Cargo.toml --target x86_64-unknown-linux-musl
-          cp desktop/relay-rs/target/x86_64-unknown-linux-musl/release/hearth-relay desktop/bin/
-      - name: The fast Rust reader of the chat logs goes into the app (Windows)
-        if: runner.os == 'Windows'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf >/dev/null
+      - name: Build the app (Rust, with the relay inside)
+        working-directory: desktop/tauri
+        shell: bash
+        run: npx --yes @tauri-apps/cli@2 build --bundles ${{ runner.os == 'Linux' && 'appimage,deb' || 'nsis' }}
+      - name: Name the files the way earlier versions look for them (so they update themselves to this one)
         shell: bash
         run: |
-          cargo build --release --manifest-path desktop/relay-rs/Cargo.toml
-          cp desktop/relay-rs/target/release/hearth-relay.exe desktop/bin/
-      - run: npm ci
-        working-directory: desktop
-      - run: npx electron-builder --publish never
-        working-directory: desktop
+          V="${GITHUB_REF_NAME#v}"; B=desktop/tauri/target/release/bundle; mkdir out
+          if [ "$RUNNER_OS" = Linux ]; then
+            cp $B/appimage/*.AppImage "out/Hearth-$V-linux-x86_64.AppImage"
+            cp $B/deb/*.deb "out/Hearth-$V-linux-amd64.deb"
+          else
+            cp $B/nsis/*-setup.exe "out/Hearth-$V-win-x64.exe"
+            cp desktop/tauri/target/release/hearth.exe "out/Hearth-$V-portable.exe"
+          fi
+          ls -la out
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.os }}
-          path: |
-            desktop/dist/*.exe
-            desktop/dist/*.AppImage
-            desktop/dist/*.deb
+          path: out/*
   relay-front:
     needs: check
     runs-on: ubuntu-latest

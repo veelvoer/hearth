@@ -13,7 +13,9 @@ const rustFront = (() => {
   if (process.env.HEARTH_NO_RUST || process.argv.includes('--no-rust')) return '';
   const bin = process.env.HEARTH_RUST_FRONT || path.join(__dirname, 'hearth-relay' + (process.platform === 'win32' ? '.exe' : ''));
   if (!fs.existsSync(bin)) return '';
-  try { const v = require('child_process').spawnSync(bin, ['--version'], { timeout: 4000, encoding: 'utf8' }); return v.status === 0 && (process.env.HEARTH_RUST_FRONT || String(v.stdout).trim() === require('./version')) ? bin : ''; } catch { return ''; }
+  // the same version or newer: the Rust relay is the whole server now and updates itself, so it may be ahead of these files
+  const atLeast = (x, y) => { const p = (s) => String(s).trim().split('.').map(Number); const [a, b] = [p(x), p(y)]; for (let i = 0; i < 3; i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return true; };
+  try { const v = require('child_process').spawnSync(bin, ['--version'], { timeout: 4000, encoding: 'utf8' }); return v.status === 0 && /^\d+\.\d+\.\d+$/.test(String(v.stdout).trim()) && (process.env.HEARTH_RUST_FRONT || atLeast(v.stdout, require('./version'))) ? bin : ''; } catch { return ''; }
 })();
 if (rustFront) {
   const child = require('child_process').spawn(rustFront, process.argv.slice(2), { stdio: 'inherit' });
