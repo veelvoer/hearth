@@ -28,18 +28,22 @@ pub fn projects_dir() -> PathBuf {
 }
 
 /// Every readable chat file, like `listFiles` of core.js.
+/// Chat files or folders that exist but cannot be read (made by a run with root rights).
+pub static DENIED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub fn denied_count() -> u64 { DENIED.load(std::sync::atomic::Ordering::Relaxed) }
+
 pub fn list_files() -> Vec<FileInfo> {
     let mut out = Vec::new();
     let Ok(dirs) = std::fs::read_dir(projects_dir()) else { return out };
     for d in dirs.flatten() {
         let name = d.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || !d.path().is_dir() { continue; }
-        let Ok(files) = std::fs::read_dir(d.path()) else { continue };
+        let files = match std::fs::read_dir(d.path()) { Ok(f) => f, Err(e) => { if e.kind() == std::io::ErrorKind::PermissionDenied { DENIED.fetch_add(1, std::sync::atomic::Ordering::Relaxed); } continue } };
         for f in files.flatten() {
             let n = f.file_name().to_string_lossy().to_string();
             if !n.ends_with(".jsonl") { continue; }
             let Ok(md) = f.metadata() else { continue };
-            if File::open(f.path()).is_err() { continue; }
+            if let Err(e) = File::open(f.path()) { if e.kind() == std::io::ErrorKind::PermissionDenied { DENIED.fetch_add(1, std::sync::atomic::Ordering::Relaxed); } continue; }
             let mtime = md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs_f64() * 1000.0).unwrap_or(0.0);
             out.push(FileInfo { id: n[..n.len() - 6].to_string(), file: f.path(), mtime, size: md.len() });
         }
@@ -56,7 +60,7 @@ fn parse_val(line: &[u8]) -> Option<Value> {
 }
 
 /// Every entry of a chat file like `readJsonl`: a file over 48 MB is read from its end (its cut first line is skipped).
-fn read_jsonl(file: &Path) -> Vec<Value> {
+pub fn read_jsonl(file: &Path) -> Vec<Value> {
     let Ok(mut f) = File::open(file) else { return vec![] };
     let size = f.metadata().map(|m| m.len()).unwrap_or(0);
     let mut buf = Vec::new();
@@ -71,7 +75,7 @@ fn read_jsonl(file: &Path) -> Vec<Value> {
 
 // ───────── titles and totals ─────────
 #[derive(Clone, Default)]
-struct R { title: String, cwd: String, tok: f64, cost: f64, model: String, last_id: String, last_w: f64, last_c: f64 }
+pub struct R { pub title: String, pub cwd: String, pub tok: f64, pub cost: f64, pub model: String, last_id: String, last_w: f64, last_c: f64 }
 
 #[derive(Deserialize)]
 struct LineS<'a> {
@@ -186,7 +190,7 @@ pub fn summaries() -> Value {
 }
 
 // ───────── messages ─────────
-fn tool_input(name: &str, arg: Option<&Value>) -> Value {
+pub fn tool_input(name: &str, arg: Option<&Value>) -> Value {
     let empty = Value::Object(Map::new());
     let arg = match arg { Some(a) if !a.is_null() => a, _ => &empty };
     let g = |k: &str| arg.get(k);
@@ -213,13 +217,13 @@ fn tool_input(name: &str, arg: Option<&Value>) -> Value {
 }
 fn or_empty(v: Option<&Value>) -> String { match v { Some(Value::String(s)) if !s.is_empty() => s.clone(), Some(x) if truthy(&Some(x.clone())) => js_string(x), _ => String::new() } }
 
-fn result_text(c: Option<&Value>) -> String {
+pub fn result_text(c: Option<&Value>) -> String {
     match c {
         Some(Value::Array(a)) => slice16(&a.iter().map(|x| match x.get("text") { Some(Value::String(s)) => s.clone(), _ => String::new() }).collect::<Vec<_>>().join("\n"), 0, 2000),
         other => clip(other, 2000),
     }
 }
-fn tool_line(b: &Value) -> String {
+pub fn tool_line(b: &Value) -> String {
     let a = b.get("input").cloned().unwrap_or(Value::Object(Map::new()));
     let k = ["command", "file_path", "pattern", "path", "url"].into_iter().find(|k| a.get(*k).is_some());
     let name = b.get("name").map(js_string).unwrap_or_default();
@@ -378,7 +382,7 @@ pub fn search(q: &str, limit: usize) -> Value {
     Value::Array(out)
 }
 
-fn summarize_cached(f: &FileInfo) -> Option<R> {
+pub fn summarize_cached(f: &FileInfo) -> Option<R> {
     let mut g = SUMS.lock().unwrap();
     let cache = g.get_or_insert_with(HashMap::new);
     let e = summarize(f, cache.get(&f.file).cloned())?;
@@ -502,4 +506,242 @@ pub fn usage(file: &Path) -> Value {
         }
     }
     json!({"cwd": cwd, "msgs": msgs.into_iter().map(|(r, _)| r).collect::<Vec<_>>(), "users": users, "tools": tools})
+}
+
+// ───────── the rest of core.js: finding a chat, the list, statistics ─────────
+static INDEX: Mutex<Option<HashMap<String, PathBuf>>> = Mutex::new(None);
+
+fn info_of(id: &str, file: &Path) -> Option<FileInfo> {
+    let md = std::fs::metadata(file).ok()?;
+    Some(FileInfo { id: id.to_string(), file: file.to_path_buf(), mtime: crate::util::mtime_ms(&md), size: md.len() })
+}
+/// One chat by id. Remembers where chats are, so it does not list every chat file each time.
+pub fn find_session(sid: &str) -> Option<FileInfo> {
+    if sid.is_empty() || !sid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') { return None; }
+    {
+        let mut g = INDEX.lock().unwrap();
+        if let Some(f) = g.as_ref().and_then(|m| m.get(sid).cloned()) {
+            if let Some(i) = info_of(sid, &f) { return Some(i); }
+            if let Some(m) = g.as_mut() { m.remove(sid); }
+        }
+    }
+    let mut next = HashMap::new();
+    for f in list_files() { next.entry(f.id.clone()).or_insert(f.file.clone()); }
+    let hit = next.get(sid).cloned();
+    *INDEX.lock().unwrap() = Some(next);
+    hit.and_then(|f| info_of(sid, &f))
+}
+
+/// What the list shows about a chat.
+#[derive(Clone, Default)]
+pub struct Summary { pub title: String, pub cwd: String, pub tokens: f64, pub cost: f64, pub model: String }
+pub fn summary(f: &FileInfo) -> Summary {
+    match summarize_cached(f) {
+        Some(r) => Summary { title: if r.title.is_empty() { "Untitled".into() } else { r.title }, cwd: r.cwd, tokens: r.tok, cost: r.cost, model: r.model },
+        None => Summary { title: "Untitled".into(), ..Default::default() },
+    }
+}
+impl Summary {
+    pub fn json(&self) -> Value { json!({"title": self.title, "cwd": self.cwd, "tokens": crate::util::num(self.tokens), "cost": self.cost, "model": self.model}) }
+}
+
+/// Claude Code programs open now, by working folder (Linux only).
+fn open_claudes() -> HashMap<String, i32> {
+    let mut counts = HashMap::new();
+    if !cfg!(target_os = "linux") || std::env::var("FLATPAK_ID").is_ok() { return counts; }
+    let Ok(rd) = std::fs::read_dir("/proc") else { return counts };
+    for e in rd.flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if !n.chars().all(|c| c.is_ascii_digit()) { continue; }
+        let p = e.path();
+        if std::fs::read_to_string(p.join("comm")).map(|c| c.trim() != "claude").unwrap_or(true) { continue; }
+        if std::fs::read(p.join("cmdline")).map(|c| memchr::memmem::find(&c, b"stream-json").is_some()).unwrap_or(true) { continue; }
+        if let Ok(cwd) = std::fs::read_link(p.join("cwd")) { *counts.entry(cwd.to_string_lossy().to_string()).or_insert(0) += 1; }
+    }
+    counts
+}
+
+/// The chats, newest first. [keep] drops chats before the list is cut to [limit].
+pub fn sessions(active: &std::collections::HashSet<String>, keep: Option<&dyn Fn(&FileInfo, &Summary) -> bool>, limit: usize, quiet: &std::collections::HashSet<String>) -> Vec<Value> {
+    let mut files = list_files();
+    files.sort_by(|a, b| b.mtime.partial_cmp(&a.mtime).unwrap_or(std::cmp::Ordering::Equal));
+    let now = crate::util::now_ms();
+    let mut open = open_claudes();
+    let has_proc = cfg!(target_os = "linux") && std::env::var("FLATPAK_ID").is_err();
+    let mut out = Vec::new();
+    for f in files {
+        let s = summary(&f);
+        if let Some(k) = keep { if !k(&f, &s) { continue; } }
+        let age = (now - f.mtime) / 1000.0;
+        let mut live = active.contains(&f.id);
+        if !live {
+            if has_proc { if let Some(c) = open.get_mut(&s.cwd) { if *c > 0 { live = true; *c -= 1; } } } else { live = age < 120.0; }
+        }
+        out.push(json!({"id": f.id, "title": s.title, "cwd": s.cwd, "mtime": f.mtime.floor() as i64, "live": live,
+            "busy": active.contains(&f.id) || (!quiet.contains(&f.id) && age < 20.0), "tokens": crate::util::num(s.tokens), "cost": s.cost, "model": s.model}));
+        if out.len() >= limit { break; }
+    }
+    out
+}
+
+pub fn messages_sid(sid: &str, tail: usize) -> Value { match find_session(sid) { Some(f) => messages(&f.file, tail), None => json!([]) } }
+
+/// When the user's last prompt in a chat was, and Claude's last words (for "done" notices of terminal sessions).
+pub fn turn_info(sid: &str) -> (f64, String) {
+    let Some(f) = find_session(sid) else { return (0.0, String::new()) };
+    let (mut started, mut last) = (0.0, String::new());
+    for o in read_jsonl(&f.file) {
+        if crate::util::truthy(o.get("isSidechain").unwrap_or(&Value::Null)) { continue; }
+        let c = o.get("message").and_then(|m| m.get("content"));
+        let k = o.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        if k == "user" && !trim(&text_of(c)).is_empty() { started = iso_ts(o.get("timestamp")); }
+        else if k == "assistant" && c.map(|x| x.is_array()).unwrap_or(false) && !trim(&text_of(c)).is_empty() { last = trim(&text_of(c)).to_string(); }
+    }
+    let secs = if started > 0.0 { (crate::util::now_ms() / 1000.0 - started).floor() } else { 0.0 };
+    (secs, last)
+}
+
+// usage of every chat, kept until the chat changes
+static STATS: Mutex<Option<HashMap<PathBuf, (f64, u64, Value)>>> = Mutex::new(None);
+fn usage_cached(f: &FileInfo) -> Value {
+    {
+        let g = STATS.lock().unwrap();
+        if let Some((m, s, v)) = g.as_ref().and_then(|m| m.get(&f.file)) { if *m == f.mtime && *s == f.size { return v.clone(); } }
+    }
+    let v = usage(&f.file);
+    STATS.lock().unwrap().get_or_insert_with(HashMap::new).insert(f.file.clone(), (f.mtime, f.size, v.clone()));
+    v
+}
+fn family(m: &str) -> &'static str { for f in ["opus", "sonnet", "haiku", "fable", "mythos"] { if m.contains(f) { return f; } } "other" }
+fn local(ms: f64) -> chrono::DateTime<chrono::Local> { use chrono::TimeZone; chrono::Local.timestamp_millis_opt(ms as i64).single().unwrap_or_else(chrono::Local::now) }
+fn day_key(ms: f64) -> String { local(ms).format("%Y-%m-%d").to_string() }
+
+/// Per day, per model family and per project, for the dashboard. Like `stats` of core.js.
+pub fn stats(days: i64) -> Value {
+    use chrono::{Datelike, Timelike};
+    let now = crate::util::now_ms();
+    let cutoff = now - days as f64 * 864e5;
+    struct Row { i: f64, o: f64, cr: f64, cw: f64, msgs: f64, fam: serde_json::Map<String, Value>, sess: std::collections::HashSet<String> }
+    let mut per_day: HashMap<String, Row> = HashMap::new();
+    let mut projects: Vec<(String, f64, std::collections::HashSet<String>, f64)> = Vec::new();
+    let mut models = serde_json::Map::new();
+    let mut tools: Vec<(String, f64)> = Vec::new();
+    let mut heat = vec![vec![0i64; 24]; 7];
+    let addf = |m: &mut serde_json::Map<String, Value>, k: &str, x: f64| { let v = m.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0) + x; m.insert(k.to_string(), crate::util::num(v)); };
+    for f in list_files() {
+        if f.mtime < cutoff { continue; }
+        let d = usage_cached(&f);
+        let pk = { let c = d.get("cwd").and_then(|x| x.as_str()).unwrap_or(""); if c.is_empty() { "unknown".to_string() } else { c.to_string() } };
+        let pi = match projects.iter().position(|p| p.0 == pk) { Some(i) => i, None => { projects.push((pk.clone(), 0.0, Default::default(), 0.0)); projects.len() - 1 } };
+        let msgs = d.get("msgs").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        for m in &msgs {
+            let ts = m.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
+            if ts * 1000.0 < cutoff { continue; }
+            let g = |k: &str| m.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let work = g("in") + g("out") + g("cw");
+            let fam = family(m.get("model").and_then(|x| x.as_str()).unwrap_or(""));
+            let r = per_day.entry(day_key(ts * 1000.0)).or_insert_with(|| Row { i: 0.0, o: 0.0, cr: 0.0, cw: 0.0, msgs: 0.0, fam: Default::default(), sess: Default::default() });
+            r.i += g("in"); r.o += g("out"); r.cr += g("cr"); r.cw += g("cw"); addf(&mut r.fam, fam, work); r.sess.insert(f.id.clone());
+            let p = &mut projects[pi]; p.1 += work; p.2.insert(f.id.clone()); p.3 = p.3.max(ts);
+            addf(&mut models, fam, work);
+        }
+        for u in d.get("users").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
+            let ts = u.as_f64().unwrap_or(0.0);
+            if ts * 1000.0 >= cutoff {
+                per_day.entry(day_key(ts * 1000.0)).or_insert_with(|| Row { i: 0.0, o: 0.0, cr: 0.0, cw: 0.0, msgs: 0.0, fam: Default::default(), sess: Default::default() }).msgs += 1.0;
+                let dt = local(ts * 1000.0);
+                heat[(dt.weekday().num_days_from_sunday() as usize + 6) % 7][dt.hour() as usize] += 1;
+            }
+        }
+        if msgs.last().and_then(|m| m.get("ts")).and_then(|x| x.as_f64()).map(|t| t * 1000.0 >= cutoff).unwrap_or(false) {
+            for t in d.get("tools").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
+                let n = t.as_str().unwrap_or("").to_string();
+                match tools.iter_mut().find(|x| x.0 == n) { Some(x) => x.1 += 1.0, None => tools.push((n, 1.0)) }
+            }
+        }
+    }
+    let mut out_days = Vec::new();
+    for i in (0..days).rev() {
+        let k = day_key(now - i as f64 * 864e5);
+        let r = per_day.get(&k);
+        out_days.push(match r {
+            Some(r) => json!({"date": k, "in": crate::util::num(r.i), "out": crate::util::num(r.o), "cr": crate::util::num(r.cr), "cw": crate::util::num(r.cw), "msgs": crate::util::num(r.msgs), "sessions": r.sess.len(), "fam": r.fam}),
+            None => json!({"date": k, "in": 0, "out": 0, "cr": 0, "cw": 0, "msgs": 0, "sessions": 0, "fam": {}}),
+        });
+    }
+    projects.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let top: Vec<Value> = projects.iter().take(10).filter(|p| p.1 != 0.0).map(|p| json!({"cwd": p.0, "tokens": crate::util::num(p.1), "sessions": p.2.len(), "last": (p.3 * 1000.0).floor() as i64})).collect();
+    tools.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let top_tools: serde_json::Map<String, Value> = tools.into_iter().take(10).map(|(k, v)| (k, crate::util::num(v))).collect();
+    json!({"generated": now as i64, "days": out_days, "models": models, "tools": top_tools, "heat": heat, "projects": top})
+}
+
+fn price_of(model: &str) -> (f64, f64, f64, f64) { crate::pricing::price_of(model) }
+
+/// Everything /usage-style: totals, cost at API prices, per model, per day, per project. days = 0 means all time. Like `report` of core.js.
+pub fn report(days: i64, extra: &[FileInfo]) -> Value {
+    use crate::util::num;
+    let now = crate::util::now_ms();
+    let cutoff = if days > 0 { now - days as f64 * 864e5 } else { 0.0 };
+    struct M { model: String, label: String, i: f64, o: f64, cr: f64, cw: f64, msgs: f64, cost: f64 }
+    let mut by_model: Vec<M> = Vec::new();
+    let mut per_day: HashMap<String, (f64, f64)> = HashMap::new();
+    let mut proj: Vec<(String, f64, f64, std::collections::HashSet<String>)> = Vec::new();
+    let mut sessions = std::collections::HashSet::new();
+    let mut active = std::collections::BTreeSet::new();
+    let mut tools: Vec<(String, f64)> = Vec::new();
+    let (mut first, mut last, mut prompts, mut longest, mut assistant) = (0.0f64, 0.0f64, 0.0, 0.0f64, 0.0);
+    let (mut ti, mut to, mut tcr, mut tcw, mut tcost) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    let mut seen = std::collections::HashSet::new();
+    let mut all = list_files(); all.extend(extra.iter().cloned());
+    for f in all {
+        if f.mtime < cutoff || seen.contains(&f.id) { continue; }
+        seen.insert(f.id.clone());
+        let d = usage_cached(&f);
+        let pk = { let c = d.get("cwd").and_then(|x| x.as_str()).unwrap_or(""); if c.is_empty() { "unknown".to_string() } else { c.to_string() } };
+        let (mut lo, mut hi) = (0.0f64, 0.0f64);
+        let msgs = d.get("msgs").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        for m in &msgs {
+            let g = |k: &str| m.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let t = g("ts") * 1000.0; if t < cutoff { continue; }
+            let model = m.get("model").and_then(|x| x.as_str()).unwrap_or("");
+            let cost = crate::pricing::cost_of(model, &crate::pricing::Tokens { input: g("in"), out: g("out"), cr: g("cr"), cw: g("cw") });
+            let k = if model.is_empty() { "unknown".to_string() } else { model.to_string() };
+            let b = match by_model.iter_mut().position(|x| x.model == k) { Some(i) => &mut by_model[i], None => { by_model.push(M { label: crate::pricing::label_of(&k), model: k.clone(), i: 0.0, o: 0.0, cr: 0.0, cw: 0.0, msgs: 0.0, cost: 0.0 }); by_model.last_mut().unwrap() } };
+            b.i += g("in"); b.o += g("out"); b.cr += g("cr"); b.cw += g("cw"); b.msgs += 1.0; b.cost += cost;
+            ti += g("in"); to += g("out"); tcr += g("cr"); tcw += g("cw"); tcost += cost; assistant += 1.0;
+            let dk = day_key(t); let r = per_day.entry(dk.clone()).or_insert((0.0, 0.0)); r.0 += g("in") + g("out") + g("cw"); r.1 += cost; active.insert(dk);
+            let p = match proj.iter_mut().position(|x| x.0 == pk) { Some(i) => &mut proj[i], None => { proj.push((pk.clone(), 0.0, 0.0, Default::default())); proj.last_mut().unwrap() } };
+            p.1 += g("in") + g("out") + g("cw"); p.2 += cost; p.3.insert(f.id.clone());
+            sessions.insert(f.id.clone());
+            first = if first == 0.0 || t < first { t } else { first }; last = last.max(t);
+            lo = if lo == 0.0 || t < lo { t } else { lo }; hi = hi.max(t);
+        }
+        longest = longest.max(hi - lo);
+        for u in d.get("users").and_then(|x| x.as_array()).cloned().unwrap_or_default() { if u.as_f64().unwrap_or(0.0) * 1000.0 >= cutoff { prompts += 1.0; } }
+        if !msgs.is_empty() { for t in d.get("tools").and_then(|x| x.as_array()).cloned().unwrap_or_default() { let n = t.as_str().unwrap_or("").to_string(); match tools.iter_mut().find(|x| x.0 == n) { Some(x) => x.1 += 1.0, None => tools.push((n, 1.0)) } } }
+    }
+    // streaks of days with activity (noon of each day, so summer time never breaks a streak)
+    let noon = |k: &str| -> f64 { chrono::NaiveDate::parse_from_str(k, "%Y-%m-%d").ok().and_then(|d| d.and_hms_opt(12, 0, 0)).and_then(|d| { use chrono::TimeZone; chrono::Local.from_local_datetime(&d).single() }).map(|d| d.timestamp_millis() as f64).unwrap_or(0.0) };
+    let (mut best, mut run, mut prev) = (0, 0, None::<f64>);
+    for k in &active { let t = noon(k); run = if prev.map(|p| ((t - p) / 864e5).round() == 1.0).unwrap_or(false) { run + 1 } else { 1 }; best = best.max(run); prev = Some(t); }
+    let mut current = 0; let mut t = noon(&day_key(now)); while active.contains(&day_key(t)) { current += 1; t -= 864e5; }
+    let span = if days > 0 { days.min(365) } else { 365 };
+    let mut days_out = Vec::new();
+    for i in (0..span).rev() { let k = day_key(now - i as f64 * 864e5); let r = per_day.get(&k).copied().unwrap_or((0.0, 0.0)); days_out.push(json!({"date": k, "tokens": num(r.0), "cost": r.1})); }
+    by_model.sort_by(|a, b| b.cost.partial_cmp(&a.cost).unwrap_or(std::cmp::Ordering::Equal));
+    let cache_saved: f64 = by_model.iter().map(|m| { let p = price_of(&m.model); m.cr * (p.0 - p.2) / 1e6 }).sum();
+    let work = ti + to + tcw;
+    let models: Vec<Value> = by_model.iter().map(|m| json!({"model": m.model, "label": m.label, "in": num(m.i), "out": num(m.o), "cr": num(m.cr), "cw": num(m.cw), "msgs": num(m.msgs), "cost": m.cost})).collect();
+    proj.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    tools.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let favorite = by_model.first().map(|m| m.label.clone()).unwrap_or_default();
+    json!({
+        "range": days, "generated": now as i64,
+        "totals": {"in": num(ti), "out": num(to), "cr": num(tcr), "cw": num(tcw), "cost": tcost, "tokens": num(work), "allTokens": num(work + tcr), "messages": num(assistant), "prompts": num(prompts), "sessions": sessions.len(), "activeDays": active.len(), "longestStreak": best, "currentStreak": current, "first": num(first), "last": num(last), "longestSessionMs": num(longest), "avgPerActiveDay": if active.is_empty() { 0.0 } else { (work / active.len() as f64).round() }, "cacheSaved": cache_saved},
+        "models": models, "days": days_out, "favorite": favorite,
+        "projects": proj.iter().take(12).map(|p| json!({"cwd": p.0, "tokens": num(p.1), "cost": p.2, "sessions": p.3.len()})).collect::<Vec<_>>(),
+        "tools": tools.into_iter().take(8).map(|(k, v)| (k, num(v))).collect::<serde_json::Map<String, Value>>(),
+        "note": "Cost is what these tokens would cost at Anthropic API prices. A Pro or Max subscription is not billed per token.",
+    })
 }

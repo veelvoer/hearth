@@ -34,3 +34,23 @@ pub fn cost_of(model: &str, t: &Tokens) -> f64 {
     };
     (t.input * i + t.out * o + t.cr * cr + t.cw * cw) / 1e6
 }
+
+/// (input, output, cache read, cache write) dollars per million tokens.
+pub fn price_of(model: &str) -> (f64, f64, f64, f64) {
+    let m = model.to_lowercase();
+    match table().iter().find(|r| r.re.is_match(&m)) { Some(r) => (r.input, r.out, r.cr_share * r.input, CACHE_WRITE * r.input), None => (3.0, 15.0, 0.3, 3.75) }
+}
+/// A readable name: claude-opus-4-8 -> "Opus 4.8".
+pub fn label_of(model: &str) -> String {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"(?i)(opus|sonnet|haiku|fable|mythos)[- ](\d+)(?:[-.](\d+))?").unwrap());
+    match re.captures(model) {
+        Some(c) => {
+            let n = c[1].to_lowercase();
+            let mut s = format!("{}{} {}", n[..1].to_uppercase(), &n[1..], &c[2]);
+            if let Some(x) = c.get(3) { if x.as_str().len() < 3 { s.push('.'); s.push_str(x.as_str()); } }
+            s
+        }
+        None => model.to_string(),
+    }
+}

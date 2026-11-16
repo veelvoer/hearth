@@ -1,212 +1,161 @@
-//! Hearth relay front. It listens on the public port and serves the routes that are already written in Rust;
-//! everything else goes to the Node relay it starts on a private port. Routes move over one by one.
+//! The Hearth relay. Lists Claude Code chats, runs them, and tells your phone and computer when Claude finishes or needs you.
+//!   hearth-relay --projects ~/projects --port 47601 --url https://hearth.example.com      (a server: HTTPS proxy in front, token only)
+//!   hearth-relay --lan --host 0.0.0.0 ...                                                  (a computer on your network: pairing by code)
+//!   hearth-relay --link          print the pairing link and exit
+//!   hearth-relay mcp-ask         the small MCP server that gives Claude the ask_user tool (started by Claude itself)
+mod agent;
+mod apikeys;
+mod boot;
+mod chathub;
 mod core;
+mod filehub;
+mod hooks;
+mod jobs;
 mod jsu;
+mod mcpkit;
+mod perms;
+mod post;
 mod pricing;
+mod relay;
+mod routes;
+mod safety;
+mod selfupdate;
 mod service;
+mod shares;
+mod tools;
+mod util;
+mod weekplan;
+mod mcpask;
 
-use axum::{
-    body::Body,
-    extract::{ConnectInfo, State},
-    http::{header, HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode},
-    Router,
-};
-use std::{net::SocketAddr, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
-use tokio::process::Command;
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-struct Front {
-    client: reqwest::Client,
-    node: String, // http://127.0.0.1:<private port>
-    port: u16,
-    ready: std::sync::atomic::AtomicBool,
-}
+fn flag(args: &[String], k: &str) -> Option<String> { args.iter().position(|a| a == k).and_then(|i| args.get(i + 1).cloned()).filter(|v| !v.starts_with("--")) }
 
-/// Headers that belong to one connection and must not be copied to the other side.
-fn hop(n: &HeaderName) -> bool {
-    matches!(n.as_str(), "connection" | "keep-alive" | "proxy-connection" | "te" | "trailer" | "transfer-encoding" | "upgrade" | "host")
-}
-
-async fn forward(State(f): State<Arc<Front>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, req: Request<Body>) -> Response<Body> {
-    let (parts, body) = req.into_parts();
-    // the Node relay takes a moment to start: until it listens, wait (a request with a body cannot be sent twice)
-    if !f.ready.load(std::sync::atomic::Ordering::Relaxed) {
-        for _ in 0..200 {
-            if tokio::net::TcpStream::connect(("127.0.0.1", f.port)).await.is_ok() { f.ready.store(true, std::sync::atomic::Ordering::Relaxed); break; }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    }
-    let url = format!("{}{}", f.node, parts.uri.path_and_query().map(|x| x.as_str()).unwrap_or("/"));
-    let mut h = HeaderMap::new();
-    for (k, v) in parts.headers.iter() {
-        if !hop(k) {
-            h.append(k.clone(), v.clone());
-        }
-    }
-    // The Node relay trusts X-Forwarded-For only from a loopback peer: a client from outside never gets to choose it.
-    // A loopback peer (Caddy, the desktop app) is passed on as it is; everyone else is named by the address we saw.
-    if !peer.ip().is_loopback() {
-        if let Ok(v) = HeaderValue::from_str(&peer.ip().to_string()) {
-            h.insert(HeaderName::from_static("x-forwarded-for"), v);
-        }
-    }
-    let mut last = String::new();
-    // The Node relay may still be starting: try for a few seconds before giving up.
-    for attempt in 0..100 {
-        let mut rb = f.client.request(parts.method.clone(), &url).headers(h.clone());
-        // a body can be streamed only once, so retries are for requests without one
-        let has_body = parts.headers.contains_key(header::CONTENT_LENGTH) && parts.headers.get(header::CONTENT_LENGTH).map(|v| v != "0").unwrap_or(false)
-            || parts.headers.contains_key(header::TRANSFER_ENCODING);
-        if has_body {
-            rb = rb.body(reqwest::Body::wrap_stream(body.into_data_stream()));
-            return match rb.send().await {
-                Ok(r) => relay(r),
-                Err(e) => bad_gateway(&e.to_string()),
-            };
-        }
-        match rb.send().await {
-            Ok(r) => return relay(r),
-            Err(e) => {
-                last = e.to_string();
-                if !e.is_connect() || attempt >= 99 {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        }
-    }
-    bad_gateway(&last)
-}
-
-fn relay(r: reqwest::Response) -> Response<Body> {
-    let mut out = Response::builder().status(r.status());
-    for (k, v) in r.headers().iter() {
-        if !hop(k) {
-            out = out.header(k, v);
-        }
-    }
-    out.body(Body::from_stream(r.bytes_stream())).unwrap_or_else(|_| bad_gateway("bad response"))
-}
-
-fn bad_gateway(why: &str) -> Response<Body> {
-    let b = serde_json::json!({ "error": format!("The relay is not answering ({})", why) }).to_string();
-    Response::builder().status(StatusCode::BAD_GATEWAY).header(header::CONTENT_TYPE, "application/json").body(Body::from(b)).unwrap()
-}
-
-#[cfg(unix)]
-async fn terminated() {
-    if let Ok(mut t) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) { t.recv().await; } else { std::future::pending::<()>().await }
-}
-#[cfg(not(unix))]
-async fn terminated() { std::future::pending::<()>().await }
-
-/// 32 random bytes from the system, as hex.
-fn random_hex() -> String {
-    let mut b = [0u8; 32];
-    if getrandom::fill(&mut b).is_err() {
-        eprintln!("No system randomness: the Rust reads stay off.");
-        std::process::exit(1);
-    }
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-fn flag(args: &[String], k: &str) -> Option<String> {
-    args.iter().position(|a| a == k).and_then(|i| args.get(i + 1).cloned())
-}
-
-/// Where the Node relay lives: next to this program (installed), or in ../relay (checkout).
-fn standalone() -> PathBuf {
-    if let Ok(p) = std::env::var("HEARTH_NODE_RELAY") {
-        return PathBuf::from(p);
-    }
-    let exe = std::env::current_exe().unwrap_or_default();
-    for up in [exe.parent().map(|x| x.join("relay")), exe.ancestors().nth(4).map(|x| x.join("relay")), Some(PathBuf::from("relay"))].into_iter().flatten() {
-        if up.join("standalone.js").exists() {
-            return up.join("standalone.js");
-        }
-    }
-    PathBuf::from("standalone.js")
-}
-
-#[tokio::main]
-async fn main() {
+fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|a| a == "--version") {
-        println!("{}", env!("CARGO_PKG_VERSION"));
-        return;
+    #[cfg(unix)]
+    unsafe {   // the watchdog blocks stop signals for itself; its child must get them again
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set); libc::sigaddset(&mut set, libc::SIGTERM); libc::sigaddset(&mut set, libc::SIGINT); libc::sigaddset(&mut set, libc::SIGHUP);
+        libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
     }
-    let node_bin = std::env::var("HEARTH_NODE").unwrap_or_else(|_| "node".into());
-    let script = standalone();
-    // `--link` and friends only print something: the Node relay does it
+    if args.iter().any(|a| a == "--version") { println!("{VERSION}"); return; }
+    if args.first().map(|a| a == "mcp-ask").unwrap_or(false) { mcpask::run(); return; }
+    // This program watches; the server itself runs in a second process. When that one stops answering, it is stopped and started again.
+    let plain = args.iter().any(|a| a == "--link" || a == "--core-only" || a == "--no-memory-limit" || a == "--no-watchdog");
+    if !plain && std::env::var("HEARTH_MEM_CHILD").map(|v| v.is_empty()).unwrap_or(true) {
+        let host = flag(&args, "--host").unwrap_or_else(|| "127.0.0.1".into());
+        let port: u16 = flag(&args, "--port").and_then(|p| p.parse().ok()).unwrap_or(47601);
+        watchdog(&host, port); return;
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("runtime");
+    rt.block_on(run(args));
+}
+
+fn default_dir() -> String { util::home().join(".config").join("hearth").to_string_lossy().to_string() }
+
+async fn run(args: Vec<String>) {
+    let get = |k: &str, d: &str| flag(&args, &format!("--{k}")).unwrap_or_else(|| d.to_string());
+    let dir = get("dir", &default_dir());
+    let url = get("url", "");
+    let name = flag(&args, "--name").unwrap_or_else(util::hostname);
     if args.iter().any(|a| a == "--link") {
-        let s = Command::new(&node_bin).arg(&script).args(&args).status().await;
-        std::process::exit(s.ok().and_then(|x| x.code()).unwrap_or(1));
+        match util::read_json(&std::path::Path::new(&dir).join("relay.json")).map(|c| util::J::s(&c, "token")).filter(|t| !t.is_empty()) {
+            Some(token) => { if url.is_empty() { println!("{token}"); } else { println!("hearth://pair?{}", util::qbuild(&[("url", url.clone()), ("token", token), ("name", name.clone())])); } std::process::exit(0); }
+            None => { eprintln!("The relay has not been started yet."); std::process::exit(1); }
+        }
     }
     // for tests: only the private reads, on a port and with a secret given on the command line
     if args.iter().any(|a| a == "--core-only") {
-        let port: u16 = flag(&args, "--port").and_then(|p| p.parse().ok()).unwrap_or(0);
+        let port: u16 = get("port", "0").parse().unwrap_or(0);
         let l = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await.expect("port");
-        println!("listening {}", l.local_addr().map(|a| a.port()).unwrap_or(0));   // the program that started us reads the port from this line
+        println!("listening {}", l.local_addr().map(|a| a.port()).unwrap_or(0));
         let _ = std::io::Write::flush(&mut std::io::stdout());
-        let _ = axum::serve(l, service::router(flag(&args, "--secret").unwrap_or_default())).await;
+        let _ = axum::serve(l, service::router(get("secret", ""))).await;
         return;
     }
-    let host = flag(&args, "--host").unwrap_or_else(|| "127.0.0.1".into());
-    let port: u16 = flag(&args, "--port").and_then(|p| p.parse().ok()).unwrap_or(47601);
-    // a free private port for the Node relay
-    let private = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).unwrap_or(47999);
-    let mut node_args: Vec<String> = Vec::new();
-    let mut it = args.iter().peekable();
-    while let Some(a) = it.next() {
-        if a == "--port" || a == "--host" {
-            it.next();
-        } else {
-            node_args.push(a.clone());
-        }
-    }
-    node_args.extend(["--port".into(), private.to_string(), "--host".into(), "127.0.0.1".into()]);
-
-    let bind = if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
-    let listener = match tokio::net::TcpListener::bind(bind).await {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("Could not listen on {host}:{port}: {e}");
-            std::process::exit(1);
-        }
+    let host = get("host", "127.0.0.1");
+    let port: u16 = get("port", "47601").parse().unwrap_or(47601);
+    let lan = args.iter().any(|a| a == "--lan");
+    let o = relay::Opts {
+        dir: dir.clone(), port, host: host.clone(), name: Some(name.clone()), public_mode: !lan,
+        projects_root: if lan && !args.iter().any(|a| a == "--projects") { None } else { Some(get("projects", &util::home().join("projects").to_string_lossy())) },
+        allow_bypass: args.iter().any(|a| a == "--allow-bypass"), allow_remote: false, self_update: true, relay_dir: String::new(), move_root: get("move-root", ""),
+        seed_token: flag(&args, "--seed-token-file").and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default(),
+        voice: flag(&args, "--voice-port").and_then(|p| p.parse().ok()).map(|p| (p, get("voice-token-file", ""))),
     };
-    // the private side for the Node relay: heavy reads in Rust, reachable only from this machine and only with the secret
-    let secret = random_hex();
-    let core_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("private port");
-    let core_port = core_listener.local_addr().map(|a| a.port()).unwrap_or(0);
-    let secret_for_task = secret.clone();
-    tokio::spawn(async move { let _ = axum::serve(core_listener, service::router(secret_for_task)).await; });
-    let mut child = Command::new(&node_bin)
-        .arg(&script)
-        .args(&node_args)
-        .env_remove("HEARTH_RUST_FRONT")
-        .env("HEARTH_NO_RUST", "1")
-        .env("HEARTH_RUST_CORE", format!("http://127.0.0.1:{core_port}"))
-        .env("HEARTH_RUST_CORE_SECRET", &secret)
-        .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap_or_else(|e| {
-            eprintln!("Could not start the Node relay ({node_bin} {}): {e}", script.display());
-            std::process::exit(1);
-        });
-    let front = Arc::new(Front { client: reqwest::Client::builder().pool_idle_timeout(Duration::from_secs(30)).build().unwrap(), node: format!("http://127.0.0.1:{private}"), port: private, ready: std::sync::atomic::AtomicBool::new(false) });
-    let app = Router::new().fallback(forward).with_state(front);
-    let serve = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>());
+    let r = match boot::make(o) { Ok(r) => r, Err(e) => { eprintln!("Could not start: {e}"); std::process::exit(1); } };
+    let bind = if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
+    let listener = match tokio::net::TcpListener::bind(&bind).await { Ok(l) => l, Err(e) => { eprintln!("Could not start: {e}"); std::process::exit(1); } };
+    println!("Hearth relay listening on {host}:{port}");
+    println!("Projects folder: {}", r.root.clone().unwrap_or_else(|| "null".into()));
+    if !url.is_empty() && is_tty() { println!("Pairing link (keep it secret): hearth://pair?{}", util::qbuild(&[("url", url), ("token", r.token.clone()), ("name", name)])); }   // never into service logs
+    boot::timers(&r);
+    if lan { boot::discovery(port); }
+    boot::watch_link(r.clone(), lan);
     tokio::select! {
-        r = serve => { if let Err(e) = r { eprintln!("server: {e}"); } }
-        s = child.wait() => { std::process::exit(s.ok().and_then(|x| x.code()).unwrap_or(1)); }   // the Node relay ended: so do we, and the service manager starts us again
+        _ = boot::serve(r.clone(), listener) => {}
         _ = tokio::signal::ctrl_c() => {}
         _ = terminated() => {}
     }
-    // stop the Node relay the polite way, so its own watchdog stops the real server too
+    for j in r.jobs.lock().unwrap().values() { if !j.is_done() { jobs::kill_tree(*j.pid.lock().unwrap(), false); } }
+}
+
+fn is_tty() -> bool {
+    #[cfg(unix)] { unsafe { libc::isatty(1) == 1 } }
+    #[cfg(not(unix))] { false }
+}
+#[cfg(unix)]
+async fn terminated() { if let Ok(mut t) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) { t.recv().await; } else { std::future::pending::<()>().await } }
+#[cfg(not(unix))]
+async fn terminated() { std::future::pending::<()>().await }
+
+static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The watchdog: starts the real server as a child and starts it again when it stops answering /health.
+fn watchdog(host: &str, port: u16) {
+    let env_n = |k: &str, d: u64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+    let (every, timeout, fails_max, grace) = (env_n("HEARTH_WD_INTERVAL_MS", 20000), env_n("HEARTH_WD_TIMEOUT_MS", 10000), env_n("HEARTH_WD_FAILS", 3), env_n("HEARTH_WD_GRACE_MS", 90000));
+    let h = if host == "0.0.0.0" || host == "::" { "127.0.0.1".to_string() } else { host.to_string() };
+    let exe = std::env::current_exe().unwrap_or_default();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let child: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>> = Default::default();
+    let launch = { let child = child.clone(); let exe = exe.clone(); let args = args.clone(); move || { let c = std::process::Command::new(&exe).args(&args).env("HEARTH_MEM_CHILD", "1").spawn(); match c { Ok(c) => { *child.lock().unwrap() = Some(c); } Err(_) => std::process::exit(1) } } };
     #[cfg(unix)]
-    if let Some(pid) = child.id() {
-        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
-        let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+    {   // pass a stop on to the server, then end when it has ended (the main loop sees it)
+        let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+        unsafe { libc::sigemptyset(&mut set); libc::sigaddset(&mut set, libc::SIGTERM); libc::sigaddset(&mut set, libc::SIGINT); libc::sigaddset(&mut set, libc::SIGHUP); libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()); }
+        let child2 = child.clone();
+        std::thread::spawn(move || loop {
+            let mut sig: libc::c_int = 0;
+            unsafe { libc::sigwait(&set, &mut sig); }
+            STOPPING.store(true, std::sync::atomic::Ordering::Relaxed);
+            if let Some(c) = child2.lock().unwrap().as_ref() { unsafe { libc::kill(c.id() as i32, sig); } }
+        });
     }
-    let _ = child.kill().await;
+    launch();
+    let ping = |h: &str| -> bool {
+        use std::io::{Read, Write};
+        let Ok(mut s) = std::net::TcpStream::connect_timeout(&format!("{h}:{port}").parse().unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], port))), std::time::Duration::from_millis(timeout)) else { return false };
+        let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(timeout)));
+        if s.write_all(format!("GET /health HTTP/1.1\r\nHost: {h}\r\nConnection: close\r\n\r\n").as_bytes()).is_err() { return false; }
+        let mut b = [0u8; 32]; matches!(s.read(&mut b), Ok(n) if n >= 12 && &b[9..12] == b"200")
+    };
+    let mut next = std::time::Instant::now() + std::time::Duration::from_millis(grace.max(every));
+    let mut fails = 0u64; let mut kills: Vec<std::time::Instant> = vec![];
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        // the server ended by itself: so do we (a restart it asked for comes back through the service manager)
+        let exited = { let mut g = child.lock().unwrap(); g.as_mut().and_then(|c| c.try_wait().ok().flatten()) };
+        if let Some(st) = exited { std::process::exit(st.code().unwrap_or(1)); }
+        if std::time::Instant::now() < next { continue; }
+        next = std::time::Instant::now() + std::time::Duration::from_millis(every);
+        if ping(&h) { fails = 0; continue; }
+        fails += 1; if fails < fails_max { continue; }
+        kills.retain(|k| k.elapsed().as_secs() < 600); kills.push(std::time::Instant::now());
+        if kills.len() > 5 { eprintln!("watchdog: the server keeps getting stuck; giving up so the service manager can take over"); std::process::exit(1); }
+        eprintln!("watchdog: no answer from the server for {fails_max} checks in a row; restarting it");
+        { let mut g = child.lock().unwrap(); if let Some(c) = g.as_mut() { let _ = c.kill(); let _ = c.wait(); } }
+        eprintln!("watchdog: the server was stopped because it did not answer; starting it again");
+        launch(); fails = 0; next = std::time::Instant::now() + std::time::Duration::from_millis(grace.max(every));
+    }
 }
