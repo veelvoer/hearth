@@ -3,7 +3,7 @@
   "productName": "Hearth",
   "mainBinaryName": "hearth",
   "identifier": "dev.voer.hearth",
-  "build": { "frontendDist": "web", "beforeBuildCommand": "node -e \"require('fs').mkdirSync('tauri/web', { recursive: true })\"" },
+  "build": { "frontendDist": "web", "beforeBuildCommand": "node tauri/mkweb.js" },
   "app": {
     "withGlobalTauri": true,
     "windows": [],
