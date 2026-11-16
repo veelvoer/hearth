@@ -55,11 +55,11 @@ impl Relay {
             let tmp = self.dir.join(format!("import-{}.tgz", rand_hex(4)));
             let _ = std::fs::create_dir_all(&self.dir); let _ = std::fs::write(&tmp, &data);
             let res = (|| {
-                let list = crate::util::cmd("tar").args(["-tzf", &tmp.to_string_lossy()]).output().map_err(|_| (400, "invalid archive"))?;
+                let list = std::process::Command::new("tar").args(["-tzf", &tmp.to_string_lossy()]).output().map_err(|_| (400, "invalid archive"))?;
                 let t = String::from_utf8_lossy(&list.stdout).to_string();
                 if !list.status.success() || t.lines().any(|e| e.starts_with('/') || e.split('/').any(|x| x == "..")) { return Err((400, "invalid archive")); }
                 let dest = Self::claude_dir(&cwd); let _ = std::fs::create_dir_all(&dest);
-                let st = crate::util::cmd("tar").args(["-xzf", &tmp.to_string_lossy(), "-C", &dest.to_string_lossy(), "--no-same-owner"]).status().map_err(|_| (500, "could not unpack"))?;
+                let st = std::process::Command::new("tar").args(["-xzf", &tmp.to_string_lossy(), "-C", &dest.to_string_lossy(), "--no-same-owner"]).status().map_err(|_| (500, "could not unpack"))?;
                 if !st.success() { return Err((500, "could not unpack")); }
                 rewrite_paths(&dest, &from, &cwd);
                 Ok(std::fs::read_dir(&dest).map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".jsonl")).count()).unwrap_or(0))

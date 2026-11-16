@@ -179,9 +179,15 @@ fun SessionsScreen() {
         }
     }
     val v = view
+    androidx.compose.runtime.SideEffect { Ui.hasMachines = machines.isNotEmpty() && v is View.Home }
     BackHandler(v !is View.Home) { view = View.Home }
     androidx.compose.animation.AnimatedContent(v, label = "screen", transitionSpec = {   // a screen slides in from the side when you go deeper and back out when you return
         if (!Fx.motion) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+        else if (Fx.m3) { val deeper = targetState !is View.Home   // expressive: the new screen grows up out of the list, the list sinks back behind it
+            if (deeper) (androidx.compose.animation.slideInVertically(Spr.move()) { it / 6 } + androidx.compose.animation.scaleIn(Spr.move(), initialScale = .92f) + androidx.compose.animation.fadeIn(Spr.fade())) togetherWith
+                (androidx.compose.animation.scaleOut(Spr.move(), targetScale = .94f) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)))
+            else (androidx.compose.animation.scaleIn(Spr.move(), initialScale = .94f) + androidx.compose.animation.fadeIn(Spr.fade())) togetherWith
+                (androidx.compose.animation.slideOutVertically(Spr.move()) { it / 6 } + androidx.compose.animation.scaleOut(Spr.move(), targetScale = .92f) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180))) }
         else if (targetState !is View.Home) (androidx.compose.animation.slideInHorizontally(tween(280)) { it / 5 } + androidx.compose.animation.fadeIn(tween(280))) togetherWith (androidx.compose.animation.slideOutHorizontally(tween(280)) { -it / 8 } + androidx.compose.animation.fadeOut(tween(200)))
         else (androidx.compose.animation.slideInHorizontally(tween(280)) { -it / 8 } + androidx.compose.animation.fadeIn(tween(280))) togetherWith (androidx.compose.animation.slideOutHorizontally(tween(280)) { it / 5 } + androidx.compose.animation.fadeOut(tween(200)))
     }) { v ->
@@ -247,7 +253,7 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
             if (machines.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
                     .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "Talk") { talk(machines.firstOrNull { it.secure } ?: machines.first()) }, contentAlignment = Alignment.Center) { Glyph("mic", 22.dp) }
-                Box(Modifier.size(48.dp).tourTarget("new").clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "New chat") { newSession() }, contentAlignment = Alignment.Center) {
+                if (!Fx.m3) Box(Modifier.size(48.dp).tourTarget("new").clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "New chat") { newSession() }, contentAlignment = Alignment.Center) {
                     Glyph("plus", 24.dp, MaterialTheme.colorScheme.onPrimary)
                 }
             }
@@ -306,7 +312,11 @@ private fun Home(machines: List<Machine>, guests: List<Machine>, save: (List<Mac
         if (all.isEmpty() && hits.isEmpty() && offline.size < machines.size && lists.size == machines.size + guests.size) EmptyState(if (query.isNotBlank()) "No chat matches" else if (onlyWorking) "Nothing is running" else if (onlyShared) "No shared chats yet" else "No chats yet", if (query.isNotBlank() || onlyWorking || onlyShared) null else "Tap the plus to start one.")
         if (onlyShared && query.isBlank()) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterStart) { TextAction("Join a shared chat") { join() } }
         if (hits.isNotEmpty()) { Label("In messages"); hits.forEach { (mm, s, snip) -> Card(Modifier.pressable { open(mm, s) }) { androidx.compose.foundation.text.selection.DisableSelection { Txt(Store.chatName(c, s.id).ifBlank { s.title }, T.body.copy(fontWeight = FontWeight.SemiBold)); Spacer(Modifier.height(2.dp)); Txt(snip, T.small, muted = true) } } } }
-        all.forEachIndexed { i, (mm, s) -> androidx.compose.runtime.key(if (mm.guest) mm.share + ":" + s.id else s.id) { Box((if (i == 0) Modifier.tourTarget("list") else Modifier).glide()) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } } }
+        all.forEachIndexed { i, (mm, s) -> androidx.compose.runtime.key(if (mm.guest) mm.share + ":" + s.id else s.id) { Box((if (i == 0) Modifier.tourTarget("list") else Modifier).glide()) { val own = !(mm.guest || s.shared > 0); val isPinned = prefsRev >= 0 && Store.pinned(c, s.id)
+            SwipeRow(   // Material 3: swipe right to pin, left to delete (it still asks first)
+                start = SwipeAction("pin", if (isPinned) "Unpin" else "Pin to top", { MaterialTheme.colorScheme.secondaryContainer }, { MaterialTheme.colorScheme.onSecondaryContainer }) { Store.setPinned(c, s.id, !isPinned); pushTag(s.id, !isPinned, null); Ui.chatPrefsRev++ },
+                end = if (own) SwipeAction("trash", "Delete", { MaterialTheme.colorScheme.errorContainer }, { MaterialTheme.colorScheme.onErrorContainer }) { delChat = mm to s } else null,
+                shape = RoundedCornerShape(20.dp)) { SessionCard(s, if (mm.guest) "shared by " + mm.label else if (s.shared > 0) (if (s.shared > 0) "shared with ${s.shared}" else "shared") else s.elsewhere.ifBlank { null }?.let { "only on $it" }, now, onLong = { actChat = mm to s }, pinned = prefsRev >= 0 && Store.pinned(c, s.id)) { open(mm, s) } } } } }
     }
     }
     }
@@ -318,7 +328,7 @@ private fun SessionCard(s: Sess, machine: String?, now: Long, onLong: (() -> Uni
     val working = s.running || s.busy
     val dark = cs.background.luminance() < .5f
     val shape = RoundedCornerShape(20.dp)
-    Row(Modifier.fillMaxWidth().pressable(onLong, onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { androidx.compose.foundation.text.selection.DisableSelection {   // a long press here is for deleting, not for selecting text
+    Row(Modifier.fillMaxWidth().pressable(onLong, shape = shape, onClick = onClick).panel(shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { androidx.compose.foundation.text.selection.DisableSelection {   // a long press here is for deleting, not for selecting text
         val name = if (s.kind == "talk") "Talk" else folder(s.cwd)
         val tint = if (systemColors()) cs.primary else listOf(Color(0xFFB04D2A), Color(0xFF3A86E8), Color(0xFF2E9A4E), Color(0xFF8E3FA8), Color(0xFF5E7A92), Color(0xFFB8821F))[Math.floorMod(name.lowercase().hashCode(), 6)]   // every project has its own color, so the list reads at a glance
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(tint.copy(alpha = .16f)), contentAlignment = Alignment.Center) {

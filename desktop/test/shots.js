@@ -59,7 +59,7 @@ window.cm = new Proxy({}, { get: (t, k) => {
 } });
 `;
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
   const ctx = await browser.newContext({ viewport: { width: 1180, height: 760 }, colorScheme: DARK ? 'dark' : 'light', deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', (e) => errors.push(String(e.stack || e.message || e).split('\n').slice(0, 3).join(' « ').slice(0, 330)));
@@ -75,6 +75,24 @@ window.cm = new Proxy({}, { get: (t, k) => {
     else if (name === 'home') { await click('Home'); }
     else if (name === 'history') { await click('History'); }
     else if (name === 'newchat') { await click('Chats'); const b = page.locator('#nav button.newchat').first(); if (await b.count()) { await b.click(); await page.waitForTimeout(600); } }
+    else if (name === 'motion') {   // the expressive motion: frames in the middle of each move, and nothing running while idle
+      const shot = async (n) => page.screenshot({ path: path.join(OUT, `${STYLE}${DARK ? '-dark' : ''}-motion-${n}.png`) });
+      await click('Chats'); await page.waitForTimeout(700);
+      const it = page.locator('.side .item').nth(1); const bb = await it.boundingBox();
+      if (bb) { await page.mouse.move(bb.x + bb.width * 0.85, bb.y + bb.height * 0.3); await page.waitForTimeout(350); await shot('1-hover');
+        await page.mouse.down(); await page.waitForTimeout(160); await shot('2-press');
+        await page.mouse.up(); await page.waitForTimeout(70); await shot('3-release'); }
+      const nb = page.locator('#nav button.newchat').first(); const nbb = await nb.boundingBox();
+      if (nbb) { await page.mouse.move(nbb.x + nbb.width * 0.8, nbb.y + nbb.height * 0.8); await page.mouse.down(); await page.waitForTimeout(150); await shot('4-fab-press'); await page.mouse.move(5, 700); await page.mouse.up(); }
+      const home = page.locator('#nav button', { hasText: 'Home' }).first();
+      await home.click(); await page.waitForTimeout(90); await shot('5-page-90ms'); await page.waitForTimeout(160); await shot('6-page-250ms'); await page.waitForTimeout(900); await shot('7-page-rest');
+      const tb = await page.locator('#nav .tabs button.on .ic').first().boundingBox();
+      if (tb) { await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2); await page.mouse.down(); await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2 + 50, { steps: 6 }); await page.waitForTimeout(120); await shot('8-drag');
+        await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2 + 75, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(900); await shot('9-drag-dropped'); }
+      await page.mouse.move(600, 740); await page.waitForTimeout(1500);
+      const frames = await page.evaluate(() => new Promise((res) => { let n = 0; const o = window.requestAnimationFrame; window.requestAnimationFrame = (f) => { n++; return o(f); }; setTimeout(() => { window.requestAnimationFrame = o; res(n); }, 1500); }));
+      console.log('motion: rAF calls while idle for 1.5 s:', frames, '· tab now:', await page.evaluate(() => tab), '· light layers left:', await page.evaluate(() => document.querySelectorAll('.m3light').length));
+    }
     else if (name === 'settings') { await click('Settings'); if (sub) { const t = page.locator('.snavitem', { hasText: new RegExp(sub, 'i') }).first(); if (await t.count()) { await t.click(); await page.waitForTimeout(400); } } }
     await page.waitForTimeout(500);
     await page.screenshot({ path: path.join(OUT, `${STYLE}${DARK ? '-dark' : ''}-${name}${sub ? '-' + sub : ''}.png`) });

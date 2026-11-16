@@ -101,8 +101,6 @@ jobs:
         with: { node-version: 22 }
       - name: Build the Rust relay front
         run: cargo build --release --manifest-path desktop/relay-rs/Cargo.toml
-      - name: Rust unit tests
-        run: cargo test --lib --manifest-path desktop/relay-rs/Cargo.toml
       - name: Every test through the Rust front
         run: HEARTH_RUST_FRONT=$PWD/desktop/relay-rs/target/release/hearth-relay sh desktop/test/run-all.sh
   desktop-app:

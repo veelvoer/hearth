@@ -72,6 +72,7 @@ suspend fun pollDelay(ms: Long) { kotlinx.coroutines.delay(ms); while (!Visible.
 object Ui {
     /** From another app (Share) or a shortcut: a new chat should open, maybe with text and pictures already in it. */
     var startNew by mutableStateOf(false)
+    var hasMachines by mutableStateOf(false)   // the Chats add button only shows when there is a computer to start a chat on
     var prefill by mutableStateOf("")
     val prefillUris = mutableStateListOf<android.net.Uri>()
     /** A report that is ready to send: the support screen opens with this text in it. */
@@ -119,7 +120,7 @@ fun tick(): State<Long> = produceState(System.currentTimeMillis()) {
 fun Screen(content: @Composable ColumnScope.() -> Unit) =
     androidx.compose.foundation.text.selection.SelectionContainer {   // press and hold on any text to select and copy it
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+            verticalArrangement = Arrangement.spacedBy(14.dp)) { content(); if (Fx.m3 && !Ui.chatOpen) Spacer(Modifier.height(DOCK_SPACE)) }   // room for the floating dock
     }
 
 @Composable

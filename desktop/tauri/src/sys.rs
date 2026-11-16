@@ -10,7 +10,7 @@ pub fn platform() -> &'static str { if cfg!(windows) { "win32" } else if cfg!(ta
 /// A command that never flashes a console window on Windows.
 pub fn cmd(prog: &str) -> Command {
     #[allow(unused_mut)]
-    let mut c = hearth_relay::util::cmd(prog);
+    let mut c = Command::new(prog);
     #[cfg(windows)] { use std::os::windows::process::CommandExt; c.creation_flags(0x0800_0000); }
     c
 }
@@ -171,14 +171,14 @@ pub fn terminal(cwd: &str, sid: &str) -> Value {
     if !std::path::Path::new(cwd).is_dir() { return json!({"error": "That project folder is not on this computer."}); }
     let q = |x: &str| format!("'{}'", x.replace('\'', "'\\''"));
     let r = if cfg!(windows) {
-        #[cfg(windows)] { use std::os::windows::process::CommandExt; cmd("cmd.exe").raw_arg(format!("/c start \"Claude Code\" cmd.exe /k \"cd /d \"{cwd}\" && claude --resume {sid}\"")).spawn() }
-        #[cfg(not(windows))] { cmd("true").spawn() }
+        #[cfg(windows)] { use std::os::windows::process::CommandExt; Command::new("cmd.exe").raw_arg(format!("/c start \"Claude Code\" cmd.exe /k \"cd /d \"{cwd}\" && claude --resume {sid}\"")).spawn() }
+        #[cfg(not(windows))] { Command::new("true").spawn() }
     } else if cfg!(target_os = "macos") {
-        cmd("osascript").args(["-e", &format!("tell application \"Terminal\" to do script {}", serde_json::to_string(&format!("cd {} && claude --resume {sid}", q(cwd))).unwrap()), "-e", "tell application \"Terminal\" to activate"]).spawn()
+        Command::new("osascript").args(["-e", &format!("tell application \"Terminal\" to do script {}", serde_json::to_string(&format!("cd {} && claude --resume {sid}", q(cwd))).unwrap()), "-e", "tell application \"Terminal\" to activate"]).spawn()
     } else {
         let inner = format!("cd {} && claude --resume {sid}; exec \"${{SHELL:-bash}}\"", q(cwd));
         let pick = "for t in x-terminal-emulator kgx gnome-terminal konsole kitty alacritty foot wezterm ptyxis xfce4-terminal tilix xterm; do command -v \"$t\" >/dev/null 2>&1 || continue; case \"$t\" in kgx|gnome-terminal|ptyxis) exec \"$t\" -- bash -lc \"$0\";; kitty|foot) exec \"$t\" bash -lc \"$0\";; wezterm) exec wezterm start -- bash -lc \"$0\";; xfce4-terminal|tilix) exec \"$t\" -x bash -lc \"$0\";; *) exec \"$t\" -e bash -lc \"$0\";; esac; done; exit 9";
-        if std::env::var("FLATPAK_ID").is_ok() { cmd("flatpak-spawn").args(["--host", "sh", "-c", pick, &inner]).spawn() } else { cmd("sh").args(["-c", pick, &inner]).spawn() }
+        if std::env::var("FLATPAK_ID").is_ok() { Command::new("flatpak-spawn").args(["--host", "sh", "-c", pick, &inner]).spawn() } else { Command::new("sh").args(["-c", pick, &inner]).spawn() }
     };
     match r { Ok(_) => json!({"ok": true}), Err(e) => json!({"error": format!("No terminal could be opened: {e}")}) }
 }

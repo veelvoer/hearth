@@ -270,7 +270,7 @@ impl Relay {
             ("projects", "export") => {
                 let cwd = q.qs("cwd"); let d = Self::claude_dir(&cwd);
                 if cwd.is_empty() || !d.exists() { return j(404, json!({"error": "no chats for that project"})); }
-                let out = crate::util::tcmd("tar").args(["-czf", "-", "-C", &d.to_string_lossy(), "."]).output().await.map(|o| o.stdout).unwrap_or_default();
+                let out = tokio::process::Command::new("tar").args(["-czf", "-", "-C", &d.to_string_lossy(), "."]).output().await.map(|o| o.stdout).unwrap_or_default();
                 return Response::builder().status(200).header("Content-Type", "application/gzip").body(Body::from(out)).unwrap();
             }
             ("agent", "chats") if p2 == "get" => {
@@ -302,7 +302,7 @@ impl Relay {
                 let chats: Vec<Value> = crate::core::sessions(&Default::default(), Some(&keep), 300, &Default::default()).iter().map(|x| json!({"id": x.g("id"), "title": x.g("title"), "mtime": x.g("mtime")})).collect();
                 let mut cost = 0.0; for c in chats.iter().take(60) { if let Some(f) = crate::core::find_session(&c.s("id")) { cost += crate::core::summary(&f).cost; } }
                 let (mut changed, mut branch) = (Value::Null, String::new());
-                if let Ok(o) = crate::util::cmd("git").args(["-C", &cwd, "status", "--porcelain", "-b"]).output() { if o.status.success() { let t = String::from_utf8_lossy(&o.stdout).to_string(); let lines: Vec<&str> = t.lines().filter(|l| !l.is_empty()).collect(); branch = lines.first().map(|l| l.trim_start_matches("## ").split("...").next().unwrap_or("").to_string()).unwrap_or_default(); changed = json!(lines.len().saturating_sub(1)); } }
+                if let Ok(o) = std::process::Command::new("git").args(["-C", &cwd, "status", "--porcelain", "-b"]).output() { if o.status.success() { let t = String::from_utf8_lossy(&o.stdout).to_string(); let lines: Vec<&str> = t.lines().filter(|l| !l.is_empty()).collect(); branch = lines.first().map(|l| l.trim_start_matches("## ").split("...").next().unwrap_or("").to_string()).unwrap_or_default(); changed = json!(lines.len().saturating_sub(1)); } }
                 return j(200, json!({"name": basename(&cwd), "cwd": cwd, "chats": chats.len(), "lastAt": chats.first().map(|c| c.g("mtime").clone()).unwrap_or(json!(0)), "cost": (cost * 100.0).round() / 100.0, "changed": changed, "branch": branch, "recent": chats.iter().take(5).cloned().collect::<Vec<_>>(), "snapshots": crate::safety::list_snapshots(&self.dir, &cwd).len()}));
             }
             ("routines", "timeline") => { let t = qn("tail").filter(|x| *x != 0.0).unwrap_or(30.0).clamp(1.0, 100.0) as usize; return j(200, json!({"runs": self.read_runs().into_iter().take(t).collect::<Vec<_>>()})); }
@@ -413,7 +413,7 @@ impl Relay {
         let cl = find_claude();
         add("Claude Code", cl.is_some(), cl.as_ref().map(|c| format!("Found at {c}")).unwrap_or_else(|| "Not found on this server".into()), if cl.is_some() { "" } else { "Install it: https://claude.com/claude-code" });
         if let Some(c) = &cl {
-            let v = crate::util::cmd(c).arg("--version").output();
+            let v = std::process::Command::new(c).arg("--version").output();
             let ok = v.as_ref().map(|o| o.status.success()).unwrap_or(false);
             add("Claude Code starts", ok, match &v { Ok(o) if ok => String::from_utf8_lossy(&o.stdout).trim().to_string(), Ok(o) => format!("It did not start ({})", clip(&String::from_utf8_lossy(&o.stderr), 120)), Err(e) => format!("It did not start ({})", clip(&e.to_string(), 120)) }, if ok { "" } else { "Run \"claude\" once on the server and sign in." });
         }

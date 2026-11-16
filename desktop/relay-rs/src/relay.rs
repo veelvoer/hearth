@@ -247,7 +247,7 @@ impl Relay {
         if cfg!(windows) || std::env::var("FLATPAK_ID").is_ok() { return json!({"ok": false, "why": "Root chats are only possible on a Linux server."}); }
         let mut c = self.sudo_cache.lock().unwrap();
         if fresh || now_ms() - c.0 > 20000.0 {
-            let r = crate::util::cmd("sudo").args(["-n", "env", &format!("HOME={}", home().display()), "id", "-u"]).stdin(std::process::Stdio::null()).output();
+            let r = std::process::Command::new("sudo").args(["-n", "env", &format!("HOME={}", home().display()), "id", "-u"]).stdin(std::process::Stdio::null()).output();
             let (ok, out, err) = match r { Ok(o) => (o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "0", String::from_utf8_lossy(&o.stdout).trim().to_string(), clip(String::from_utf8_lossy(&o.stderr).trim(), 200)), Err(e) => (false, String::new(), e.to_string()) };
             c.0 = now_ms(); c.1 = ok; c.2 = out; c.3 = err;
         }
@@ -276,7 +276,7 @@ impl Relay {
         let mut args = vec!["-n".to_string(), "chown".into(), "-R".into(), own, h.join(".claude").to_string_lossy().to_string(), h.join(".claude.json").to_string_lossy().to_string()];
         args.extend(folders);
         tokio::spawn(async move {
-            let _ = crate::util::tcmd("sudo").args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().await;
+            let _ = tokio::process::Command::new("sudo").args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().await;
             me.owner_fix.lock().unwrap().0 = false;
             me.log(&format!("gave files made with root rights back ({why})"));
             me.bump_chats();
@@ -454,7 +454,7 @@ impl Relay {
     pub fn addresses() -> Vec<String> {
         let mut out = Vec::new();
         // the addresses of this computer on its networks (the desktop app shows them for pairing)
-        if let Ok(o) = crate::util::cmd("hostname").arg("-I").output() { for a in String::from_utf8_lossy(&o.stdout).split_whitespace() { if a.contains('.') && !a.starts_with("127.") { out.push(a.to_string()); } } }
+        if let Ok(o) = std::process::Command::new("hostname").arg("-I").output() { for a in String::from_utf8_lossy(&o.stdout).split_whitespace() { if a.contains('.') && !a.starts_with("127.") { out.push(a.to_string()); } } }
         if out.is_empty() { if let Ok(s) = std::net::UdpSocket::bind("0.0.0.0:0") { if s.connect("8.8.8.8:80").is_ok() { if let Ok(a) = s.local_addr() { out.push(a.ip().to_string()); } } } }
         out
     }

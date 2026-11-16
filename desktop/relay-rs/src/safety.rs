@@ -3,6 +3,7 @@
 use crate::util::*;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub const HEAVY: [&str; 14] = ["node_modules", ".git", ".venv", "venv", "__pycache__", ".cache", "dist", "build", ".next", "target", ".uploads", ".gradle", ".idea", ".hearth-trash"];
 const MAX_FILES: usize = 20000;
@@ -14,13 +15,13 @@ pub fn files_of(cwd: &str, max: usize) -> Option<Vec<String>> {
     let mut args: Vec<String> = vec![cwd.into(), "-xdev".into(), "(".into()];
     for (i, n) in HEAVY.iter().enumerate() { if i > 0 { args.push("-o".into()); } args.push("-name".into()); args.push(n.to_string()); }
     args.extend([")", "-prune", "-o", "-type", "f", "-size", "-5M", "-printf", "%P\\0"].iter().map(|s| s.to_string()));
-    let o = crate::util::cmd("find").args(&args).output().ok()?;
+    let o = Command::new("find").args(&args).output().ok()?;
     if !o.status.success() { return None; }
     let list: Vec<String> = String::from_utf8_lossy(&o.stdout).split('\0').filter(|s| !s.is_empty()).map(String::from).collect();
     if list.len() > max { None } else { Some(list) }
 }
 fn unsafe_folder(cwd: &str) -> bool { let r = resolve(cwd); let s = r.to_string_lossy().to_string(); s == "/" || r == home() || s.split('/').filter(|x| !x.is_empty()).count() < 2 }
-fn tar_status(args: &[&str]) -> Option<i32> { crate::util::cmd("tar").args(args).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().ok().and_then(|s| s.code()) }
+fn tar_status(args: &[&str]) -> Option<i32> { Command::new("tar").args(args).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().ok().and_then(|s| s.code()) }
 
 pub fn take_snapshot(dir: &Path, cwd: &str, label: &str, sid: &str, text: &str, max_files: usize) -> Value {
     if cwd.is_empty() || unsafe_folder(cwd) || !Path::new(cwd).exists() { return json!({"skipped": "not a project folder"}); }
@@ -51,7 +52,7 @@ pub fn restore_snapshot(dir: &Path, cwd: &str, id: &str) -> Value {
     if !file.exists() { return json!({"error": "That snapshot is gone."}); }
     let when = { use chrono::TimeZone; chrono::Local.timestamp_millis_opt(snap.n("at") as i64).single().map(|d| d.format("%-d/%-m/%Y, %H:%M:%S").to_string()).unwrap_or_default() };
     let before = take_snapshot(dir, cwd, "before an undo", "", &format!("before going back to {when}"), MAX_FILES);
-    let Ok(lt) = crate::util::cmd("tar").args(["-tzf", &file.to_string_lossy()]).output() else { return json!({"error": "The snapshot could not be read."}) };
+    let Ok(lt) = Command::new("tar").args(["-tzf", &file.to_string_lossy()]).output() else { return json!({"error": "The snapshot could not be read."}) };
     if !lt.status.success() { return json!({"error": "The snapshot could not be read."}); }
     let keep: std::collections::HashSet<String> = String::from_utf8_lossy(&lt.stdout).lines().filter(|l| !l.is_empty()).map(|p| p.trim_start_matches("./").to_string()).collect();
     let now = files_of(cwd, usize::MAX).unwrap_or_default(); let mut removed = 0;
@@ -74,7 +75,7 @@ pub fn list_backups(dir: &Path) -> Vec<Value> {
 }
 pub fn create_backup(dir: &Path, chats: &Path) -> Value {
     if !chats.exists() { return json!({"error": "There are no chats to back up yet."}); }
-    if let Ok(o) = crate::util::cmd("du").args(["-sk", &chats.to_string_lossy()]).output() { if o.status.success() { let kb: f64 = String::from_utf8_lossy(&o.stdout).split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0); if kb > 2.0 * 1024.0 * 1024.0 { return json!({"error": "The chats are bigger than 2 GB: too big for a backup here."}); } } }
+    if let Ok(o) = Command::new("du").args(["-sk", &chats.to_string_lossy()]).output() { if o.status.success() { let kb: f64 = String::from_utf8_lossy(&o.stdout).split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0); if kb > 2.0 * 1024.0 * 1024.0 { return json!({"error": "The chats are bigger than 2 GB: too big for a backup here."}); } } }
     let where_ = dir.join("backups"); let _ = std::fs::create_dir_all(&where_);
     let name = format!("chats-{}.tgz", stamp()); let out = where_.join(&name);
     let st = tar_status(&["-czf", &out.to_string_lossy(), "-C", &chats.to_string_lossy(), "--exclude=.hearth-trash", "."]);
@@ -120,7 +121,7 @@ pub fn scan_secrets(root: &str, days: f64, max_files: usize) -> Value {
 }
 /// What is different in a project right now, from git.
 pub fn git_changes(cwd: &str) -> Value {
-    let run = |a: &[&str]| crate::util::cmd("git").args(["-C", cwd, "-c", "core.quotepath=off"]).args(a).output().ok();
+    let run = |a: &[&str]| Command::new("git").args(["-C", cwd, "-c", "core.quotepath=off"]).args(a).output().ok();
     match run(&["rev-parse", "--is-inside-work-tree"]) { Some(o) if o.status.success() => {} _ => return json!({"git": false, "files": [], "diff": ""}) }
     let st = run(&["status", "--porcelain"]).map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
     let files: Vec<Value> = st.lines().filter(|l| !l.is_empty()).take(200).map(|l| { let x = &l[..2.min(l.len())]; json!({"status": if x.trim() == "??" { "new" } else if x.contains('D') { "deleted" } else { "changed" }, "path": l.get(3..).unwrap_or("").trim_matches('"')}) }).collect();

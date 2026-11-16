@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -203,6 +204,7 @@ val LocalCalm = androidx.compose.runtime.compositionLocalOf { false }
 
 fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
     if (LocalCalm.current) return@composed this
+    if (Fx.m3) return@composed this.springIn()
     val a = remember { Animatable(if (Fx.motion) 0f else 1f) }
     LaunchedEffect(Unit) { if (Fx.motion) { delay(delayMs.toLong()); a.animateTo(1f, tween(340, easing = FastOutSlowInEasing)) } }
     graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 28f }
@@ -210,7 +212,9 @@ fun Modifier.appear(delayMs: Int = 0): Modifier = composed {
 
 /** Shrinks a little while pressed and springs back. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun Modifier.pressable(onLong: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
+fun Modifier.pressable(onLong: (() -> Unit)? = null, shape: androidx.compose.ui.graphics.Shape? = null, onClick: () -> Unit): Modifier = composed {
+    // Material 3 with motion on: the expressive press (leans toward the finger, a light follows it, springs back)
+    if (Fx.m3 && Fx.motion && !LocalCalm.current) return@composed this.elastic(shape ?: RoundedCornerShape(16.dp), onLong = onLong, onClick = onClick)
     val hap = androidx.compose.ui.platform.LocalHapticFeedback.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
@@ -248,11 +252,12 @@ fun Fold(icon: String, title: String, tip: String? = null, content: @Composable 
         Row(Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Glyph(icon, 18.dp); Spacer(Modifier.width(8.dp)); Label(title, Modifier.weight(1f))
             if (tip != null) androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides Alignment.CenterEnd) { InfoDot(title, tip) }
-            val rot by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, androidx.compose.animation.core.tween(if (Fx.motion) 280 else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "chev")
+            val rot by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, if (Fx.m3) Spr.fast() else androidx.compose.animation.core.tween(if (Fx.motion) 280 else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "chev")
             Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterEnd) { Box(Modifier.graphicsLayer { rotationZ = rot }) { Glyph("chevd", 22.dp) } }
         }
         run {
-            androidx.compose.animation.AnimatedVisibility(open, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(if (Fx.motion) 280 else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (Fx.motion) 220 else 0)), exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(if (Fx.motion) 220 else 0)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (Fx.motion) 140 else 0))) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
+            if (Fx.m3 && Fx.motion) androidx.compose.animation.AnimatedVisibility(open, enter = androidx.compose.animation.expandVertically(Spr.move()) + androidx.compose.animation.fadeIn(Spr.fade()) + androidx.compose.animation.scaleIn(Spr.move(), initialScale = .96f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)), exit = androidx.compose.animation.shrinkVertically(Spr.move()) + androidx.compose.animation.fadeOut(Spr.fade())) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
+            else androidx.compose.animation.AnimatedVisibility(open, enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(if (Fx.motion) 280 else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(if (Fx.motion) 220 else 0)), exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(if (Fx.motion) 220 else 0)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(if (Fx.motion) 140 else 0))) { Column(Modifier.padding(bottom = 12.dp)) { content() } }
         }
     }
 }
@@ -293,12 +298,15 @@ fun Spark(size: Dp, color: Color = MaterialTheme.colorScheme.primary) {
 @Composable
 fun Chip(text: String, selected: Boolean, icon: String? = null, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    if (Fx.m3) {   // Material 3 filter chip: 8dp corners, a check when chosen, a tonal fill
+    if (Fx.m3) {   // Material 3 filter chip: 8dp corners that round into a pill when chosen, a check when chosen, a tonal fill
+        val corner by animateDpAsState(if (selected) 18.dp else 8.dp, Spr.fast(), label = "chipShape")
+        val pop = remember { Animatable(1f) }
+        LaunchedEffect(selected) { if (selected && Fx.motion) { pop.snapTo(.9f); pop.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = 700f)) } }
         FilterChip(selected = selected, onClick = onClick, label = { Text(text, style = T.small.copy(fontWeight = FontWeight.Medium), maxLines = 1) },
             leadingIcon = if (selected) { { Glyph("check", 18.dp, cs.onSecondaryContainer) } } else if (icon != null) { { Glyph(icon, 18.dp, cs.onSurfaceVariant) } } else null,
-            shape = RoundedCornerShape(8.dp), border = if (selected) null else BorderStroke(1.dp, cs.outlineVariant),
+            shape = RoundedCornerShape(corner), border = if (selected) null else BorderStroke(1.dp, cs.outlineVariant),
             colors = FilterChipDefaults.filterChipColors(selectedContainerColor = cs.secondaryContainer, selectedLabelColor = cs.onSecondaryContainer, labelColor = cs.onSurfaceVariant, containerColor = Color.Transparent),
-            modifier = Modifier.semantics { if (icon != null) contentDescription = text })
+            modifier = Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }.semantics { if (icon != null) contentDescription = text })
         return
     }
     val shape = RoundedCornerShape(50)
@@ -348,8 +356,12 @@ fun ChipRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Ho
 @Composable
 fun Button(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    if (Fx.m3) {   // the Material 3 filled button: a pill, a ripple, a label in medium weight
-        androidx.compose.material3.Button(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(50), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)) {
+    if (Fx.m3) {   // the Material 3 filled button: a pill that squares up a little while pressed and springs back (the expressive shape morph)
+        val src = remember { MutableInteractionSource() }
+        val pressed by src.collectIsPressedAsState()
+        val corner by animateFloatAsState(if (pressed && Fx.motion) 22f else 50f, Spr.fast(), label = "btnShape")
+        val squash by animateFloatAsState(if (pressed && Fx.motion) .96f else 1f, Spr.fast(), label = "btnSquash")
+        androidx.compose.material3.Button(onClick = onClick, interactionSource = src, modifier = modifier.graphicsLayer { scaleX = squash; scaleY = squash }, shape = RoundedCornerShape(corner.coerceIn(0f, 50f).toInt()), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)) {
             val ic = ACTION_ICONS[text]
             if (ic != null) { Glyph(ic, 18.dp, cs.onPrimary); Spacer(Modifier.width(8.dp)) }
             Text(text, style = T.small.copy(fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp), maxLines = 1)

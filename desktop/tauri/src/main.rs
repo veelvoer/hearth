@@ -830,7 +830,7 @@ async fn voice_install() -> Result<Value, String> {
         let text = match r { Ok(r) if r.status().is_success() => r.text().await.ok(), _ => None };
         match text { Some(t) => { let _ = std::fs::write(&script, t); } None => { a.voice_job.store(false, Ordering::SeqCst); return Err("Could not download the voice installer. Check your internet connection.".into()); } }
     }
-    let child = hearth_relay::util::tcmd("bash").arg(&script).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn();
+    let child = tokio::process::Command::new("bash").arg(&script).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn();
     let mut child = match child { Ok(c) => c, Err(e) => { a.voice_job.store(false, Ordering::SeqCst); return Err(e.to_string()); } };
     use tokio::io::AsyncReadExt;
     fn feed(b: &[u8]) { for l in String::from_utf8_lossy(b).split(['\n', '\r']).map(str::trim).filter(|l| !l.is_empty()) { emit("voice-install", json!({"line": l.chars().take(160).collect::<String>()})); } }

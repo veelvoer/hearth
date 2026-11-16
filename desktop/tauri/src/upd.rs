@@ -131,7 +131,6 @@ impl Upd {
 }
 
 #[derive(Default)]
-#[cfg_attr(not(windows), allow(dead_code))]
 struct Inst { relaunch: Option<String>, manual: Option<String>, note: Option<String>, run_installer: Option<PathBuf>, swap_bat: Option<PathBuf> }
 
 fn pick<'a>(l: &'a Value, re: &str) -> Option<&'a Value> {
@@ -244,7 +243,7 @@ fn restart_into(i: Inst) {
     }
     #[cfg(unix)]
     if let Some(path) = &i.relaunch {
-        let mut c = hearth_relay::util::cmd("/bin/sh");
+        let mut c = std::process::Command::new("/bin/sh");
         c.args(["-c", "n=0; while kill -0 \"$0\" 2>/dev/null && [ $n -lt 100 ]; do sleep 0.3; n=$((n+1)); done; sleep 0.5; exec \"$@\"", &std::process::id().to_string(), path]).args(&hidden);
         let _ = c.spawn();
     }

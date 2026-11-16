@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 struct Out { ok: bool, out: String, err: String }
 async fn run(cmd: &str, args: &[String], cwd: &str, timeout_ms: u64) -> Out {
-    let mut c = crate::util::tcmd(cmd); c.args(args).current_dir(cwd).env("GIT_TERMINAL_PROMPT", "0").kill_on_drop(true).stdin(std::process::Stdio::null());
+    let mut c = tokio::process::Command::new(cmd); c.args(args).current_dir(cwd).env("GIT_TERMINAL_PROMPT", "0").kill_on_drop(true).stdin(std::process::Stdio::null());
     match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), c.output()).await {
         Ok(Ok(o)) => Out { ok: o.status.success(), out: String::from_utf8_lossy(&o.stdout).to_string(), err: { let e = String::from_utf8_lossy(&o.stderr).to_string(); if e.is_empty() && !o.status.success() { format!("Command failed: {cmd}") } else { e } } },
         Ok(Err(e)) => Out { ok: false, out: String::new(), err: e.to_string() },
