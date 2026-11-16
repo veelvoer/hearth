@@ -142,7 +142,7 @@ fun WorkingIndicator() {
     val sc by tr.animateFloat(.9f, 1.1f, androidx.compose.animation.core.infiniteRepeatable(tween(650, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse), label = "s")
     val al by tr.animateFloat(.7f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-        Box(Modifier.graphicsLayer { if (Fx.motion) { scaleX = sc; scaleY = sc; alpha = al } }) { Spark(22.dp) }
+        if (Fx.m3) MorphLoader(22.dp) else Box(Modifier.graphicsLayer { if (Fx.motion) { scaleX = sc; scaleY = sc; alpha = al } }) { Spark(22.dp) }
         Spacer(Modifier.width(10.dp))
         androidx.compose.animation.AnimatedContent(if (playful) Toys.VERBS[i] + "…" else "Claude is working…", transitionSpec = { androidx.compose.animation.fadeIn(tween(300)) togetherWith androidx.compose.animation.fadeOut(tween(300)) }, label = "verb") { Txt(it, T.small, muted = true) }
     }

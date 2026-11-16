@@ -861,3 +861,6 @@ details.rcard.fold > summary::after { transition: transform .25s cubic-bezier(.2
 /* the Material 3 loading shape (m3.css shows it) */
 .m3load { display: none; }
 @keyframes m3turn { to { transform: rotate(360deg); } }
+/* the pin before a pinned chat's name keeps a little room from the name */
+.item .ititle > .ic { display: inline-flex; align-items: center; margin-right: 6px; opacity: .7; vertical-align: -1px; }
+.earlier { align-self: center; margin: 4px auto 10px; }

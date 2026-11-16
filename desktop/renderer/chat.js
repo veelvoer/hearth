@@ -130,7 +130,7 @@ function drawSideNow() {
   if (SS.tabsEl) {   // one project filter instead of a row of tabs: "All chats" or one project, and the rest of the actions behind a small menu
     SS.tabsEl.innerHTML = '';
     const label = SS.projKey === '__all' ? 'All chats' : folderName(SS.projKey), busy = SS.projKey === '__all' ? all.some((x) => x.running || x.busy) : (groups.get(SS.projKey) || []).some((x) => x.running || x.busy);
-    SS.tabsEl.append(h('button', { class: 'ptab on', title: 'Show the chats of one project, or all of them', onclick: (e) => projectPicker(e.currentTarget, ordered) }, h('span', { class: 'ellip', style: 'max-width:240px' }, label), busy ? h('i', { class: 'pdot' }) : null, h('span', { style: 'opacity:.6' }, '▾')),
+    SS.tabsEl.append(h('button', { class: 'ptab on', title: 'Show the chats of one project, or all of them', onclick: (e) => projectPicker(e.currentTarget, ordered) }, h('span', { class: 'ellip', style: 'max-width:240px' }, label), busy ? h('i', { class: 'pdot' }) : null, h('span', { style: 'opacity:.6;margin-left:6px' }, '▾')),
       ibtn('more', 'More', (e) => popMenu(e.currentTarget, [['plus', 'New chat in a project', newChat], ['shared', 'Join a shared chat', shJoinDialog]]), 'ghost sm ptabmore'));
   }
   side.innerHTML = '';
@@ -180,17 +180,31 @@ function withUnsent(list, sel) {
   SS.unsent = (SS.unsent || []).filter((u) => (u.sel === sel || (u.id && u.id === sel.id)) && Date.now() - u.at < 30 * 60e3 && !seen.some((t) => t === norm(u.text) || (u.text.length > 24 && (t.includes(norm(u.text)) || norm(u.text).includes(t) && t.length > 24))));
   return SS.unsent.length ? [...list, ...SS.unsent.map((u) => ({ role: 'user', text: u.text, pending: true }))] : list;
 }
+/** A chat opens with its last messages only (fast even for a huge chat); "Show earlier messages" fetches more. A check never starts while the last one is still on its way. */
+const FIRST_TAIL = 80;
 async function loadMsgs(quiet) {
   const s = SS.sel;
   if (!s || !s.id) return;
+  if (quiet && SS.loadingMsgs) return;
+  if (SS.tailFor !== s.id) { SS.tailFor = s.id; SS.tail = FIRST_TAIL; }
+  SS.loadingMsgs = true;
   try {
-    const raw = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/messages?tail=400`);
+    const raw = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/messages?tail=${SS.tail}`);
+    SS.lastLoad = Date.now();
     if (SS.sel !== s) return;
+    SS.more = Array.isArray(raw) && raw.length >= SS.tail;   // there is more before what is shown
     const m = withUnsent(raw, s);
     const last = (a) => a.length ? a[a.length - 1] : {};
     if (!quiet || m.length !== SS.msgs.length || last(m).text !== last(SS.msgs).text || last(m).result !== last(SS.msgs).result) { SS.msgs = m; renderMsgs(); }
     SS.chatErr = null;
-  } catch (e) { SS.chatErr = clean(e); }
+  } catch (e) { SS.chatErr = clean(e); } finally { SS.loadingMsgs = false; }
+}
+/** Older messages: three times as many, keeping the place you were reading. */
+async function loadEarlier() {
+  const box = $('#msgs'), fromEnd = box ? box.scrollHeight - box.scrollTop : 0;
+  SS.tail = Math.min((SS.tail || FIRST_TAIL) * 3, 3000);
+  await loadMsgs(false);
+  const b = $('#msgs'); if (b) b.scrollTop = b.scrollHeight - fromEnd;
 }
 
 /** Your own computers come first; a server is only preselected if nothing else is connected. */
@@ -212,7 +226,7 @@ function sessionsView() {
     drawSide(); await loadList(); await pollLive();
   })();
   setTimeout(() => { if (SS.sel) { renderMsgs(); renderPerms(); renderFiles(); } }, 0);  // the pane is in the document now
-  SS.timers.push(setInterval(shLoadGuestInfo, 3000), setInterval(pollLive, 8000), setInterval(() => { if (SS.sel && SS.sel.id && !SS.sending && !SS.voice) loadMsgs(true); }, 3000), setInterval(refreshBusy, 4000));
+  SS.timers.push(setInterval(shLoadGuestInfo, 3000), setInterval(pollLive, 8000), setInterval(() => { if (SS.sel && SS.sel.id && !SS.sending && !SS.voice && (remoteWorking() || Date.now() - (SS.lastLoad || 0) > 15000)) loadMsgs(true); }, 3000), setInterval(refreshBusy, 4000));
   return root;
 }
 
@@ -645,6 +659,7 @@ function renderMsgs() {
   const box = $('#msgs'), stick = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   col.innerHTML = '';
   if (SS.sel && SS.sel.isNew && !SS.msgs.length && !SS.sending) col.append(newChatIntro());
+  if (SS.more && SS.sel && SS.sel.id) col.append(h('button', { class: 'ghost sm earlier', onclick: (e) => { e.currentTarget.disabled = true; e.currentTarget.textContent = 'Loading…'; loadEarlier(); } }, 'Show earlier messages'));
   let tools = null;
   const key = SS.sel ? (SS.sel.id || 'new') : '', before = SS.shown && SS.shown.key === key ? SS.shown.n : -1;   // messages that are new since the last drawing glide in
   SS.msgs.forEach((m, i) => {

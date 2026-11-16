@@ -918,16 +918,37 @@ function applyPerf() {
   r.classList.toggle('noanim', st.motion === false);
   r.classList.toggle('simpleview', st.simpleView === true);   // the tool and command details are hidden: a chat only shows the conversation
 }
+const SURF_VARS = ['--bg', '--card', '--side', '--line', '--line-ctl', '--ink', '--muted', '--active', '--bubble', '--m3-surface', '--m3-surface-lowest', '--m3-surface-low', '--m3-surface-container', '--m3-surface-high', '--m3-surface-highest', '--m3-on-surface', '--m3-on-surface-variant', '--m3-outline', '--m3-outline-variant', '--m3-error', '--m3-primary-container', '--m3-on-primary-container', '--m3-secondary-container', '--m3-on-secondary-container'];
+/** The desktop's own surfaces and text, mapped onto both looks (Hearth's names and the Material 3 roles). null puts back the app's own. */
+function applySystemSurfaces(p) {
+  const r = document.documentElement.style;
+  SURF_VARS.forEach((v) => r.removeProperty(v));
+  document.documentElement.toggleAttribute('data-syspal', !!p);
+  if (!p) return;
+  const mix = (a, b, pct) => `color-mix(in oklab, ${a} ${pct}%, ${b})`;
+  const surface = p.surface || mix(p.text, p.bg, 6), raised = p.raised || mix(p.text, p.bg, 11), line = p.line || mix(p.text, p.bg, 18), muted = p.muted || mix(p.text, p.bg, 62);
+  const set = { '--bg': p.bg, '--card': surface, '--side': p.bg, '--line': line, '--line-ctl': mix(muted, line, 50), '--ink': p.text, '--muted': muted, '--active': raised, '--bubble': raised,
+    '--m3-surface': p.bg, '--m3-surface-lowest': mix(p.bg, '#000', 80), '--m3-surface-low': mix(surface, p.bg, 50), '--m3-surface-container': surface, '--m3-surface-high': raised, '--m3-surface-highest': mix(line, raised, 55),
+    '--m3-on-surface': p.text, '--m3-on-surface-variant': muted, '--m3-outline': mix(muted, line, 50), '--m3-outline-variant': line };
+  if (p.accent) Object.assign(set, { '--m3-primary-container': mix(p.accent, p.bg, 34), '--m3-on-primary-container': mix(p.accent, p.text, 35), '--m3-secondary-container': mix(p.accent, raised, 20), '--m3-on-secondary-container': mix(p.accent, p.text, 25) });
+  if (p.error) set['--m3-error'] = p.error;
+  for (const [k, v] of Object.entries(set)) r.setProperty(k, v);
+}
 async function applyPalette() {
   applyPerf();
   const root = document.documentElement, pal = (S.settings && S.settings.palette) || 'claude';
   let a = null;
-  if (pal === 'system') a = await cm.accent(); else if (pal === 'custom') a = (S.settings && S.settings.customAccent) || '#F0643C';
+  // a desktop that hands over its whole theme (the Oxide window manager): its surfaces and text too, not only the accent
+  const sp = pal === 'system' && cm.systemPalette ? await cm.systemPalette().catch(() => null) : null;
+  const mode = (S.settings && S.settings.theme) || 'system';
+  applySystemSurfaces(sp && (mode === 'system' || (mode === 'dark') === !sp.light) ? sp : null);
+  if (pal === 'system') a = (sp && sp.accent) || await cm.accent(); else if (pal === 'custom') a = (S.settings && S.settings.customAccent) || '#F0643C';
   if (!a) { root.removeAttribute('data-palette'); ['--accent', '--onclay'].forEach((v) => root.style.removeProperty(v)); updateAppIcon(null); return; }
   const n = parseInt(a.slice(1), 16), lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
   root.dataset.palette = 'system';
   root.style.setProperty('--accent', a);
   root.style.setProperty('--onclay', lum > 0.62 ? '#111111' : '#ffffff');
+  if (sp && sp.ink && sp.accent === a) root.style.setProperty('--onclay', sp.ink);   // the desktop's own text color on its accent
   updateAppIcon(a);
 }
 setInterval(() => { if (S.settings && S.settings.palette === 'system') applyPalette(); }, 20000);

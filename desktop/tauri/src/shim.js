@@ -13,7 +13,7 @@
   const CHANNELS = ['usage', 'goto', 'stream', 'open-session', 'event', 'move-progress', 'update-available', 'update-progress', 'pending-projects', 'pair-requests', 'voice-install'];
   const names = {
     state: 'state', refresh: 'refresh', setSettings: 'settings:set', testNotify: 'notify:test', stats: 'stats', pairInfo: 'pair:info', newPairCode: 'pair:newcode',
-    installHooks: 'hooks:install', removeHooks: 'hooks:remove', accent: 'system:accent', systemDark: 'system:dark', setIcon: 'app:icon', setupPaths: 'setup:paths',
+    installHooks: 'hooks:install', removeHooks: 'hooks:remove', accent: 'system:accent', systemPalette: 'system:palette', systemDark: 'system:dark', setIcon: 'app:icon', setupPaths: 'setup:paths',
     installVoice: 'voice:install', setAutostart: 'autostart:set', pickFolder: 'pickFolder', openPath: 'openPath', moveProject: 'project:move', updateRun: 'update:run',
     updateCheck: 'update:check', updateLater: 'update:later', updateStatus: 'update:status', hubStatus: 'hub:status', phoneCode: 'hub:phonecode', continueHere: 'project:continue',
     stop: 'stop', openExternal: 'openExternal', openTerminal: 'terminal:open', machines: 'machines', addMachine: 'machines:add', removeMachine: 'machines:remove', discover: 'discover',

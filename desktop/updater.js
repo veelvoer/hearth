@@ -74,7 +74,10 @@ function create(d) {
     const lat = await latest();
     const selfUpd = !!(sv && sv.version && sv.canSelfUpdate);   // a server that updates itself from the newest GitHub release
     const loc = await d.relayBuild('local');
-    const localNeed = typeof loc === 'string' && loc !== rs;
+    // the Rust relay reports a build id of its own (not the fingerprint of the JS files): the same version as this checkout is up to date
+    const lst = typeof loc === 'string' ? await d.relayStatus('local').catch(() => null) : null;
+    let repoVer = ''; try { repoVer = String(fs.readFileSync(path.join(desktopDir, 'relay', 'version.js'), 'utf8').match(/'(\d+\.\d+\.\d+)'/)[1]); } catch { /* none */ }
+    const localNeed = typeof loc === 'string' && loc !== rs && !(lst && repoVer && lst.version === repoVer);
     const behind = await behindGithub();
     return { desktop: sg.desktop !== loaded || localNeed, phone: false, server: selfUpd ? !!(lat && gh.newer(lat.version, sv.version)) : (hasServer && typeof srv === 'string' && srv !== rs), selfUpd, sv, latestV: lat && lat.version, github: behind > 0, behind, sigs: sg, rs, srv, loc , sigKey: JSON.stringify([sg.desktop, rs, srv, lat && lat.version, sv && sv.version, loc]) };
   }

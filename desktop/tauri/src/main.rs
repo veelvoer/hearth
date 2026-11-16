@@ -576,6 +576,7 @@ async fn dispatch(name: &str, a_: Vec<Value>) -> Result<Value, String> {
         "hooks:remove" => sys::hooks_remove().map(Value::Bool),
         "system:accent" => Ok(json!(sys::accent().await)),
         "system:dark" => Ok(json!(sys::dark().await)),
+        "system:palette" => Ok(sys::oxide_palette().unwrap_or(Value::Null)),
         "setup:paths" => { let p = home().join("projects"); let _ = std::fs::create_dir_all(&p); Ok(json!({"home": home().to_string_lossy(), "projects": p.to_string_lossy(), "platform": sys::platform()})) }
         "voice:install" => voice_install().await,
         "app:icon" => {

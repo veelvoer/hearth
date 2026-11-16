@@ -180,6 +180,7 @@ private fun Ring(pct: Float, dia: Dp = 118.dp, stroke: Dp = 11.dp, onClay: Boole
     val cs = MaterialTheme.colorScheme
     val track = if (onClay) cs.onPrimary.copy(alpha = .3f) else cs.outline; val fill = if (onClay) cs.onPrimary else if (pct >= 90f) cs.error else cs.primary
     Box(Modifier.size(dia), contentAlignment = Alignment.Center) {
+        if (Fx.m3 && !onClay) Cookie(Modifier.fillMaxSize().padding(stroke + 8.dp), cs.primary.copy(alpha = .13f))   // Material 3: the number sits on a soft cookie shape
         Canvas(Modifier.fillMaxSize()) {
             val s = stroke.toPx(); val tl = Offset(s / 2, s / 2); val sz = Size(this.size.width - s, this.size.height - s)
             drawArc(track, 0f, 360f, false, tl, sz, style = Stroke(s))

@@ -9,11 +9,16 @@
   const on = () => root.dataset.style === 'm3' && !root.classList.contains('noanim') && !reduce.matches;
 
   // ── the spring engine: one frame loop for every spring, idle when nothing moves ──
-  const live = new Set();
+  const live = new Set(), dirty = new Set();
+  let inFrame = false;
+  const mark = (f) => { if (inFrame) dirty.add(f); else f(); };
   let raf = 0, last = 0;
   function frame(t) {
     const dt = Math.min(0.064, last ? (t - last) / 1000 : 1 / 60); last = t;
+    inFrame = true;
     for (const s of live) s.step(dt);
+    inFrame = false;
+    for (const f of dirty) f(); dirty.clear();   // one style write per element per frame, however many of its springs moved
     for (const s of [...live]) if (s.rest) { live.delete(s); s.done && s.done(); }
     raf = live.size ? requestAnimationFrame(frame) : (last = 0, 0);
   }
@@ -78,16 +83,16 @@
       }
     };
     s.apply = apply;
-    s.X = new Spring(0, (v) => { s.dx = v; apply(); });
-    s.Y = new Spring(0, (v) => { s.dy = v; apply(); });
-    s.S = new Spring(1, (v) => { s.sc = v; apply(); });
-    s.G = new Spring(0, (v) => { s.glow = v; apply(); });
+    s.X = new Spring(0, (v) => { s.dx = v; mark(apply); });
+    s.Y = new Spring(0, (v) => { s.dy = v; mark(apply); });
+    s.S = new Spring(1, (v) => { s.sc = v; mark(apply); });
+    s.G = new Spring(0, (v) => { s.glow = v; mark(apply); });
     state.set(el, s);
     return s;
   }
   function ensureLight(el, s) {
     if (!s.light) s.light = makeLight(el);
-    const r = s.light.fit(); s.w = r.width; s.h = r.height; return r;
+    const r = s.light.fit(); s.w = r.width; s.h = r.height; s.r = r; return r;   // measured once per press, not on every move
   }
   function dropLight(s) { if (s.light && s.G.rest && s.G.v < 0.01 && !s.ringing) { s.light.d.remove(); s.light = null; } }
   function aim(el, s, e, r, pull) {
@@ -121,14 +126,8 @@
   }, true);
   addEventListener('pointermove', (e) => {
     if (!on()) return;
-    if (pressed) { const s = state.get(pressed); if (s && s.light) aim(pressed, s, e, s.light.fit(), 1); return; }
-    // hover: a soft light follows the pointer and the surface leans toward it a little
-    const el = e.target.closest && e.target.closest(SEL);
-    if (el !== hovered) { if (hovered) release(hovered); hovered = el && !el.closest('.m3off') ? el : null; }
-    if (!hovered) return;
-    const s = st(hovered), r = ensureLight(hovered, s);
-    s.G.to(0.38, ...FADE);
-    aim(hovered, s, e, r, 0.35);
+    if (!pressed) return;   // hovering costs nothing here: the hover color is plain CSS
+    const s = state.get(pressed); if (s && s.light && s.r) aim(pressed, s, e, s.r, 1);
   }, { passive: true });
   const up = () => { if (pressed) { const el = pressed; pressed = null; if (el !== hovered) release(el); else { const s = state.get(el); s.S.to(1, ...SETTLE); s.X.to(0, ...RELEASE); s.Y.to(0, ...RELEASE); s.G.to(0.38, ...FADE); } } };
   addEventListener('pointerup', up, true);
@@ -223,39 +222,55 @@
     });
   }
 
+  // ── where the dock sits: on Chats at the foot of the chat list (out of the chat's way), elsewhere centered over the page ──
+  function placeDock() {
+    const side = root.dataset.style === 'm3' && document.querySelector('#content.flush .split > .side');
+    const r = side && side.getBoundingClientRect();
+    const fits = r && r.width >= 236;
+    root.classList.toggle('m3side', !!fits);
+    if (fits) root.style.setProperty('--dockx', Math.round(r.left + r.width / 2) + 'px'); else root.style.removeProperty('--dockx');
+    requestAnimationFrame(() => syncPill(false));
+  }
+  if (document.getElementById('content')) {
+    new MutationObserver(placeDock).observe(document.getElementById('content'), { attributes: true, attributeFilter: ['class'], childList: true });
+    addEventListener('resize', placeDock);
+    new MutationObserver(placeDock).observe(root, { attributes: true, attributeFilter: ['data-style'] });
+  }
+
   // ── pages: the new screen travels in on a spring and its cards arrive one after another ──
   const content = document.getElementById('content');
+  // a damped spring (damping 0.72, stiffness 320) sampled into a CSS linear() curve: it runs on the compositor, not in JS
+  const SPRING_EASE = (() => {
+    const pts = [], z = 0.72, w = Math.sqrt(320), wd = w * Math.sqrt(1 - z * z), T = 0.9;
+    for (let i = 0; i <= 40; i++) { const tt = (i / 40) * T; pts.push((1 - Math.exp(-z * w * tt) * (Math.cos(wd * tt) + (z * w / wd) * Math.sin(wd * tt))).toFixed(4)); }
+    const css = 'linear(' + pts.join(', ') + ')';
+    return (window.CSS && CSS.supports && CSS.supports('transition-timing-function', css)) ? css : 'cubic-bezier(.34, 1.4, .64, 1)';
+  })();
   function springIn(el, delay, from) {
-    el.style.opacity = '0';
-    setTimeout(() => {
-      if (!el.isConnected) return;
-      const o = new Spring(0, (v) => { el.style.opacity = v >= 1 ? '' : v.toFixed(3); });
-      const a = new Spring(0, (v) => {
-        const p = 1 - v;
-        el.style.transform = v >= 1 && a.rest ? '' : `translate(${(from.x * p).toFixed(2)}px, ${(from.y * p).toFixed(2)}px) scale(${(1 - from.s * p).toFixed(4)})`;
-      });
-      o.to(1, 1, 600); a.to(1, 0.72, 320, () => { el.style.transform = ''; });
-    }, delay);
+    el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, delay, easing: 'ease-out', fill: 'backwards' });
+    el.animate([{ transform: `translate(${from.x}px, ${from.y}px) scale(${1 - from.s})` }, { transform: 'none' }], { duration: 900, delay, easing: SPRING_EASE, fill: 'backwards' });
   }
+
   if (content) {
     new MutationObserver(() => {
       if (!on() || !/\bentering\b/.test(content.className)) return;
       const back = /\bback\b/.test(content.className);
       const page = content.firstElementChild; if (!page) return;
       springIn(page, 0, { x: back ? -40 : 40, y: 0, s: 0.02 });
-      const items = [...page.querySelectorAll('.card, .rcard, .tablecard, .hitem, .side .item')].filter((x) => { const r = x.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }).slice(0, 14);
+      const items = [...page.querySelectorAll('.card, .rcard, .tablecard, .hitem, .side .item')].slice(0, 10);   // the first few only: no measuring, cheap on slow machines
       items.forEach((x, i) => springIn(x, 40 + i * 38, { x: 0, y: 26, s: 0.05 }));
     }).observe(content, { attributes: true, attributeFilter: ['class'] });
   }
 
   // ── a message you send rises out of the box you typed it in ──
   let users = 0, box = null;
+  const userMsgs = document.getElementsByClassName('msg user');   // live list: reading its length is free
   new MutationObserver(() => {
-    if (!on()) return;
-    const all = document.querySelectorAll('#content .msg.user');
+    if (!on() || userMsgs.length === users) { users = userMsgs.length; return; }
+    const all = userMsgs;
     const b = all.length ? all[all.length - 1].parentElement : null;
     if (b !== box) { box = b; users = all.length; return; }   // another chat (or a rebuilt list): nothing new was sent
     if (all.length > users) { const m = all[all.length - 1]; springIn(m, 0, { x: 0, y: 40, s: 0.08 }); }
     users = all.length;
-  }).observe(document.body, { childList: true, subtree: true });
+  }).observe(document.getElementById('content') || document.body, { childList: true, subtree: true });
 })();

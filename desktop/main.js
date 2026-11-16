@@ -459,9 +459,21 @@ let accentCache = { at: 0, v: null };
 const hex2 = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
 const GNOME_DESKTOP = () => /gnome|unity|budgie|cinnamon|pantheon|ubuntu/i.test(process.env.XDG_CURRENT_DESKTOP || '');
 /** The accent color of this desktop. Windows and macOS say it directly; on Linux every desktop does it differently, so we ask the places in turn. */
+/** The Oxide window manager keeps its whole theme in one file: background, surfaces, text, accent, light or dark. */
+function oxidePalette() {
+  if (process.platform !== 'linux') return null;
+  const f = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'oxide', 'theme.json');
+  if (!/oxide/i.test(process.env.XDG_CURRENT_DESKTOP || '') && !fs.existsSync(f)) return null;
+  try {
+    const o = JSON.parse(fs.readFileSync(f, 'utf8')), hex = (x) => (typeof x === 'string' && /^#[0-9a-f]{6}/i.test(x) ? x.slice(0, 7) : null);
+    const p = { bg: hex(o.bg), surface: hex(o.surface), raised: hex(o.raised), line: hex(o.line), text: hex(o.text), muted: hex(o.muted), accent: hex(o.accent), ink: hex(o.ink), error: hex(o.bad), light: !!o.light, name: String(o.name || '') };
+    return p.accent && p.bg && p.text ? p : null;
+  } catch { return null; }
+}
 async function systemAccent() {
   if (Date.now() - accentCache.at < 15000) return accentCache.v;
   let v = null;
+  const ox = oxidePalette(); if (ox) { accentCache = { at: Date.now(), v: ox.accent }; return ox.accent; }
   if (process.platform === 'win32' || process.platform === 'darwin') {
     try { const c = require('electron').systemPreferences.getAccentColor(); if (c) v = '#' + c.slice(0, 6); } catch { /* none */ }
   } else {
@@ -488,6 +500,7 @@ async function systemAccent() {
 /** Dark or light, for desktops that do not tell Electron (a window manager without a settings daemon). null = unknown. */
 async function systemDark() {
   if (process.platform !== 'linux') return null;
+  const ox = oxidePalette(); if (ox) return !ox.light;
   const o = await run('gdbus', ['call', '--session', '--dest', 'org.freedesktop.portal.Desktop', '--object-path', '/org/freedesktop/portal/desktop', '--method', 'org.freedesktop.portal.Settings.Read', 'org.freedesktop.appearance', 'color-scheme']);
   const pm = /uint32 (\d)/.exec(o); if (pm) return pm[1] === '1' ? true : pm[1] === '2' ? false : null;
   const cs = (await run('gsettings', ['get', 'org.gnome.desktop.interface', 'color-scheme'])).replace(/['\s]/g, '');
@@ -521,6 +534,7 @@ h('pair:newcode', () => (relayInfo && relayInfo.ok ? relayInfo.newPairCode() : n
 h('hooks:install', () => hooksInstall());
 h('hooks:remove', () => hooksRemove());
 h('system:accent', () => systemAccent());
+h('system:palette', () => oxidePalette());
 h('system:dark', () => systemDark());
 h('setup:paths', () => { const projects = path.join(os.homedir(), 'projects'); try { fs.mkdirSync(projects, { recursive: true }); } catch { /* shown by the setup */ } return { home: os.homedir(), projects, platform: process.platform }; });
 // the better local voices (Linux): runs the installer script and reports each line while it works

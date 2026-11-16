@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -443,3 +444,43 @@ private fun RowScope.DockIcon(label: String, glyph: String, tap: Tap, on: Boolea
 
 /** Room under the content of a page so the floating dock never covers its last line. */
 val DOCK_SPACE = 104.dp
+
+/* ── Expressive shapes: soft polar shapes (cookie, flower, burst, pill), drawn as one path; two of them blend into each other point by point ── */
+private val SHAPES: List<(Double) -> Double> = listOf(
+    { t -> 0.9 + 0.1 * kotlin.math.cos(9 * t) },                                   // cookie, nine soft lobes
+    { t -> 0.82 + 0.18 * Math.pow(kotlin.math.abs(kotlin.math.cos(3 * t)), 0.8) },  // flower
+    { t -> 0.86 + 0.14 * kotlin.math.cos(4 * t) },                                  // four-sided cookie
+    { t -> 0.84 + 0.16 * kotlin.math.cos(12 * t) },                                 // burst
+    { t -> 0.8 / Math.pow(Math.pow(kotlin.math.abs(kotlin.math.cos(t)), 4.0) + Math.pow(kotlin.math.abs(kotlin.math.sin(t)), 4.0), 0.25) },   // squircle
+)
+
+private fun shapePath(size: androidx.compose.ui.geometry.Size, a: Int, b: Int, mix: Float): androidx.compose.ui.graphics.Path {
+    val p = androidx.compose.ui.graphics.Path()
+    val r0 = minOf(size.width, size.height) / 2f; val cx = size.width / 2f; val cy = size.height / 2f
+    val n = 96
+    for (i in 0..n) {
+        val t = 2 * Math.PI * i / n - Math.PI / 2
+        val r = r0 * ((1 - mix) * SHAPES[a](t) + mix * SHAPES[b](t)).toFloat()
+        val x = cx + r * kotlin.math.cos(t).toFloat(); val y = cy + r * kotlin.math.sin(t).toFloat()
+        if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
+    }
+    p.close(); return p
+}
+
+/** The soft nine-sided "cookie" of Material 3 Expressive, as a quiet backdrop (behind the usage ring). */
+@Composable
+fun Cookie(modifier: Modifier, color: Color) = androidx.compose.foundation.Canvas(modifier) { drawPath(shapePath(size, 0, 0, 0f), color) }
+
+/** The Material 3 Expressive loading indicator: one shape that turns and slowly changes into the next. Still when motion is off. */
+@Composable
+fun MorphLoader(size: Dp = 24.dp, color: Color = MaterialTheme.colorScheme.primary) {
+    val tr = androidx.compose.animation.core.rememberInfiniteTransition(label = "morph")
+    val phase by tr.animateFloat(0f, SHAPES.size.toFloat(), androidx.compose.animation.core.infiniteRepeatable(tween(SHAPES.size * 1100, easing = androidx.compose.animation.core.LinearEasing)), label = "phase")
+    val turn by tr.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(tween(3600, easing = androidx.compose.animation.core.LinearEasing)), label = "turn")
+    androidx.compose.foundation.Canvas(Modifier.size(size).graphicsLayer { if (Fx.motion) rotationZ = turn }) {
+        val ph = if (Fx.motion) phase else 0f
+        val a = ph.toInt() % SHAPES.size; val f = ph - ph.toInt()
+        val ease = (f * f * (3 - 2 * f)).let { e -> if (f < .55f) 0f else ((f - .55f) / .45f).let { it * it * (3 - 2 * it) } }   // holds each shape, then blends into the next
+        drawPath(shapePath(this.size, a, (a + 1) % SHAPES.size, ease), color)
+    }
+}

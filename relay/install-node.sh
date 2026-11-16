@@ -17,8 +17,14 @@ fi
 link_old() { [ -e "$1" ] && [ ! -e "$2" ] && ln -s "$1" "$2" || true; }   # the optional voice engine keeps working
 link_old "$HOME/.local/share/claude-meter-relay" "$HOME/.local/share/hearth-relay"
 link_old "$HOME/.config/claude-meter-relay" "$HOME/.config/hearth-relay"
-rm -f "$DEST/chatsync.js"
-install -m 644 $(ls "$SRC"/*.js | grep -v "/embedded.js$") "$DEST/"
+# files that are no longer part of the relay (or sync leftovers) go: they would make the installed copy never match the project
+for f in "$DEST"/*.js; do b="$(basename "$f")"; if [ ! -f "$SRC/$b" ] || [ "$b" = embedded.js ] || [[ "$b" == *conflict* ]]; then rm -f "$f"; fi; done
+install -m 644 $(ls "$SRC"/*.js | grep -v "/embedded.js$" | grep -v conflict) "$DEST/"
+# the fast relay (Rust): standalone.js runs it when it sits next to it. A fresh build from this checkout, else the release of this version.
+V="$(node -p "require('$SRC/version.js')")"
+BIN="$(dirname "$SRC")/relay-rs/target/release/hearth-relay"
+if [ -x "$BIN" ] && [ "$("$BIN" --version 2>/dev/null)" = "$V" ]; then install -m 755 "$BIN" "$DEST/hearth-relay.new" && mv -f "$DEST/hearth-relay.new" "$DEST/hearth-relay"
+else node -e "require('$DEST/front.js').install('v$V', '$DEST').catch(() => {})" 2>/dev/null || true; fi
 SEED=""; VOICE=""
 [ -f "$HOME/.config/hearth-relay/token" ] && SEED="--seed-token-file $HOME/.config/hearth-relay/token" && VOICE="--voice-port 47602 --voice-token-file $HOME/.config/hearth-relay/token"
 cat > "$UNIT" <<EOF

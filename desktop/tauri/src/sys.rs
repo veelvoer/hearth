@@ -28,9 +28,21 @@ pub async fn run(prog: &str, args: &[&str]) -> String {
 fn hex2(n: f64) -> String { format!("{:02x}", n.round().clamp(0.0, 255.0) as u8) }
 static ACCENT: Mutex<(f64, Option<String>)> = Mutex::new((0.0, None));
 
+/** The Oxide window manager keeps its whole theme in one file: background, surfaces, text, accent, light or dark. */
+pub fn oxide_palette() -> Option<serde_json::Value> {
+    if !cfg!(target_os = "linux") { return None; }
+    let f = std::env::var("XDG_CONFIG_HOME").ok().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or_else(|| home().join(".config")).join("oxide/theme.json");
+    if !std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_lowercase().contains("oxide") && !f.exists() { return None; }
+    let o = read_json(&f)?;
+    let hex = |k: &str| o.get(k).and_then(|v| v.as_str()).filter(|s| s.len() >= 7 && s.starts_with('#') && s[1..7].chars().all(|c| c.is_ascii_hexdigit())).map(|s| s[..7].to_string());
+    let (accent, bg, text) = (hex("accent")?, hex("bg")?, hex("text")?);
+    Some(json!({"bg": bg, "surface": hex("surface"), "raised": hex("raised"), "line": hex("line"), "text": text, "muted": hex("muted"), "accent": accent, "ink": hex("ink"), "error": hex("bad"), "light": o.get("light").and_then(|v| v.as_bool()).unwrap_or(false), "name": o.get("name").and_then(|v| v.as_str()).unwrap_or("")}))
+}
+
 /// The accent color of this desktop. Windows says it directly; on Linux every desktop does it differently, so the places are asked in turn.
 pub async fn accent() -> Option<String> {
     { let c = ACCENT.lock().unwrap(); if hearth_relay::util::now_ms() - c.0 < 15000.0 { return c.1.clone(); } }
+    if let Some(p) = oxide_palette() { let v = p.get("accent").and_then(|x| x.as_str()).map(String::from); *ACCENT.lock().unwrap() = (hearth_relay::util::now_ms(), v.clone()); return v; }
     let mut v: Option<String> = None;
     if cfg!(windows) {
         let o = run("reg", &["query", r"HKCU\Software\Microsoft\Windows\DWM", "/v", "AccentColor"]).await;
@@ -82,6 +94,7 @@ pub async fn dark() -> Option<bool> {
         return None;
     }
     if cfg!(target_os = "macos") { return None; }
+    if let Some(p) = oxide_palette() { return Some(!p.get("light").and_then(|v| v.as_bool()).unwrap_or(false)); }
     let o = run("gdbus", &["call", "--session", "--dest", "org.freedesktop.portal.Desktop", "--object-path", "/org/freedesktop/portal/desktop", "--method", "org.freedesktop.portal.Settings.Read", "org.freedesktop.appearance", "color-scheme"]).await;
     if let Some(m) = regex::Regex::new(r"uint32 (\d)").unwrap().captures(&o) { match &m[1] { "1" => return Some(true), "2" => return Some(false), _ => {} } }
     let cs = run("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]).await.replace(['\'', ' ', '\n'], "");

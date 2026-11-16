@@ -222,3 +222,16 @@
 :root[data-style="m3"] .split > .side .item.on, :root[data-style="m3"] .item.on { border-radius: 999px; }
 :root[data-style="m3"] .chatmain { border-radius: 32px !important; }
 :root[data-style="m3"] .msg.user { border-radius: 26px 26px 8px 26px; }
+/* ── on Chats the dock sits at the foot of the chat list, compact, so the chat itself keeps the whole height ── */
+:root[data-style="m3"] #nav { transition: left .5s cubic-bezier(.34, 1.25, .64, 1), bottom .5s cubic-bezier(.34, 1.25, .64, 1); }
+:root[data-style="m3"].m3side #nav { left: var(--dockx, 145px); bottom: 14px; gap: 6px; }
+:root[data-style="m3"].m3side #nav .navfoot { display: none; }
+:root[data-style="m3"].m3side #nav .tabs { height: 52px; padding: 4px; gap: 0; }
+:root[data-style="m3"].m3side #nav .tabs button { width: 46px; height: 44px; min-height: 44px; }
+:root[data-style="m3"].m3side #nav .tabs button > .ic { width: 44px; height: 44px; }
+:root[data-style="m3"].m3side #nav .tabs button .ic svg { width: 22px; height: 22px; }
+:root[data-style="m3"].m3side #nav button.newchat { width: 52px; height: 52px; min-height: 52px; border-radius: 18px; }
+:root[data-style="m3"].m3side main.flush { padding-bottom: 16px; }
+:root[data-style="m3"].m3side .split > .side { padding-bottom: 84px; }
+/* the update card comes in at the top right, where it never covers the message box or the dock */
+:root[data-style="m3"] .updcard { top: 18px; bottom: auto; border-radius: 24px; border: 0; background: var(--m3-surface-high); box-shadow: 0 10px 32px rgba(0, 0, 0, .28); }
