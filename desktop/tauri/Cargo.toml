@@ -1,6 +1,6 @@
 [package]
 name = "hearth"
-version = "1.37.0"
+version = "1.37.1"
 edition = "2021"
 description = "Hearth: Claude Code on your phone and computer"
 

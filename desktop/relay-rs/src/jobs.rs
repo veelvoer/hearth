@@ -63,14 +63,14 @@ impl Job {
 /// The Claude program started the right way on this system (inside Flatpak through the host; .cmd files through a shell on Windows).
 pub fn claude_command(claude: &str, args: &[String], cwd: &str) -> tokio::process::Command {
     let mut c = if std::env::var("FLATPAK_ID").is_ok() {
-        let mut c = tokio::process::Command::new("flatpak-spawn");
+        let mut c = crate::util::tcmd("flatpak-spawn");
         c.arg("--host").arg(format!("--directory={cwd}")).args(["bash", "-lc", "exec claude \"$@\"", "claude"]).args(args);
         c
     } else if cfg!(windows) && (claude.to_lowercase().ends_with(".cmd") || claude.to_lowercase().ends_with(".bat")) {
-        let mut c = tokio::process::Command::new("cmd");
+        let mut c = crate::util::tcmd("cmd");
         c.arg("/C").arg(claude).args(args);
         c
-    } else { let mut c = tokio::process::Command::new(claude); c.args(args); c };
+    } else { let mut c = crate::util::tcmd(claude); c.args(args); c };
     c.current_dir(cwd);
     #[cfg(windows)] { c.creation_flags(0x08000000); }
     c.kill_on_drop(false);
@@ -159,7 +159,7 @@ impl Relay {
             if sn.t("skipped") { self.log(&format!("no snapshot: {}", sn.s("skipped"))); } else { self.log(&format!("snapshot {}", sn.s("id"))); }
         }
         let mut cmd = if root_launch {
-            let mut c = tokio::process::Command::new("sudo");
+            let mut c = crate::util::tcmd("sudo");
             c.args(["-n", "env", &format!("HOME={}", home().display()), &format!("PATH={}", std::env::var("PATH").unwrap_or_default())]);
             for (k, v) in std::env::vars() { let ku = k.to_uppercase(); if ku.starts_with("ANTHROPIC_") || ku.starts_with("CLAUDE_") || ku.starts_with("HTTP_PROXY") || ku.starts_with("HTTPS_PROXY") || ku.starts_with("NO_PROXY") { c.arg(format!("{k}={v}")); } }
             c.arg(&claude).args(&args); c.current_dir(&cwd); c
@@ -505,12 +505,12 @@ pub fn kill_tree(pid: Option<u32>, via_sudo: bool) {
     #[cfg(unix)]
     unsafe { libc::kill(pid as i32, libc::SIGTERM); }
     #[cfg(windows)]
-    { let _ = std::process::Command::new("taskkill").args(["/pid", &pid.to_string(), "/T", "/F"]).output(); }
+    { let _ = crate::util::cmd("taskkill").args(["/pid", &pid.to_string(), "/T", "/F"]).output(); }
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(4));
         #[cfg(unix)]
         {
-            if via_sudo { let _ = std::process::Command::new("sudo").args(["-n", "pkill", "-KILL", "-P", &pid.to_string()]).output(); }
+            if via_sudo { let _ = crate::util::cmd("sudo").args(["-n", "pkill", "-KILL", "-P", &pid.to_string()]).output(); }
             unsafe { if libc::kill(pid as i32, 0) == 0 { libc::kill(pid as i32, libc::SIGKILL); } }
         }
     });
