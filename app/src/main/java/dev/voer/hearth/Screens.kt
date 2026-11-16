@@ -1075,7 +1075,7 @@ fun SettingsScreen() {
             }
             Txt("Material 3 is Google's design: tonal cards, round buttons and the standard navigation bar." + (if (Build.VERSION.SDK_INT >= 31) " With System colors it takes your wallpaper colors." else ""), T.small, muted = true)
             Spacer(Modifier.height(6.dp))
-            Row2("Frosted glass", "See-through panels. Turn off if the app feels slow.") { Switch(Fx.glass, { Fx.glass = it; Store.setGlass(c, it) }) }
+            Row2(if (Fx.m3) "Frosted glass dock" else "Frosted glass", if (Fx.m3) "The floating bar at the bottom turns to frosted glass: the page shows through it, blurred. Turn off if the app feels slow." else "See-through panels. Turn off if the app feels slow.") { Switch(Fx.glass, { Fx.glass = it; Store.setGlass(c, it) }) }
             Row2("Animations", "Fades, slides and bounces. Off is the lightest.") { Switch(Fx.motion, { Fx.motion = it; Store.setMotion(c, it) }) }
             Spacer(Modifier.height(8.dp))
         }

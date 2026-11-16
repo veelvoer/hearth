@@ -29,7 +29,7 @@ const msgs = [
 ];
 const usage = { session: { pct: 42, resetsAt: NOW + 2 * 3600e3 }, week: { pct: 63, resetsAt: NOW + 3 * 86400e3 }, opus: { pct: 21, resetsAt: NOW + 3 * 86400e3 }, sonnet: { pct: 48, resetsAt: NOW + 3 * 86400e3 }, at: NOW };
 const history = Array.from({ length: 48 }, (_, i) => ({ at: NOW - (48 - i) * 1800e3, session: 20 + (i * 7) % 60, week: 30 + i * 0.6 }));
-let S = { usage, profile: { email: 'me@example.com', plan: 'Max' }, signedIn: true, history, settings: { interval: 5, theme: 'system', palette: 'claude', style: ${JSON.stringify(STYLE === 'm3' ? 'material' : 'calm')}, background: true, onboarded: true, tourSeen: true, lastSeenVersion: '9.9.9', thresholds: [75, 90, 100] }, error: null, now: NOW };
+let S = { usage, profile: { email: 'me@example.com', plan: 'Max' }, signedIn: true, history, settings: { interval: 5, theme: 'system', palette: 'claude', style: ${JSON.stringify(STYLE === 'm3' ? 'material' : 'calm')}, glass: ${!!arg('glass', false)}, background: true, onboarded: true, tourSeen: true, lastSeenVersion: '9.9.9', thresholds: [75, 90, 100] }, error: null, now: NOW };
 const machines = [{ id: 'local', name: 'laptop (this computer)', host: '127.0.0.1', port: 47601, local: true, secure: false }, { id: 'vps', name: 'VPS', host: 'hearth.example.com', port: 443, secure: true }];
 const report = { range: 30, generated: NOW, totals: { in: 1200000, out: 640000, cr: 9000000, cw: 300000, cost: 38.2, tokens: 2140000, allTokens: 11140000, messages: 912, prompts: 188, sessions: 41, activeDays: 19, longestStreak: 9, currentStreak: 4, first: NOW - 30 * 86400e3, last: NOW, longestSessionMs: 7200e3, avgPerActiveDay: 112000, cacheSaved: 61 }, models: [{ model: 'claude-sonnet-5-5', label: 'Sonnet 5.5', in: 800000, out: 400000, cr: 5000000, cw: 200000, msgs: 500, cost: 20 }, { model: 'claude-opus-5-5', label: 'Opus 5.5', in: 300000, out: 200000, cr: 3000000, cw: 80000, msgs: 200, cost: 15 }], days: Array.from({ length: 30 }, (_, i) => ({ date: new Date(NOW - (29 - i) * 86400e3).toISOString().slice(0, 10), tokens: (i * 37 % 11) * 20000, cost: (i * 13 % 7) })), favorite: 'Sonnet 5.5', projects: [{ cwd: '/home/me/projects/webshop', tokens: 900000, cost: 14, sessions: 12 }], tools: { Edit: 120, Bash: 90, Read: 200 } };
 const relay = (mid, method, p0) => { const p = String(p0).split('?')[0];
@@ -87,15 +87,19 @@ window.cm = new Proxy({}, { get: (t, k) => {
       const home = page.locator('#nav button', { hasText: 'Home' }).first();
       await home.click(); await page.waitForTimeout(90); await shot('5-page-90ms'); await page.waitForTimeout(160); await shot('6-page-250ms'); await page.waitForTimeout(900); await shot('7-page-rest');
       const tb = await page.locator('#nav .tabs button.on .ic').first().boundingBox();
-      if (tb) { await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2); await page.mouse.down(); await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2 + 50, { steps: 6 }); await page.waitForTimeout(120); await shot('8-drag');
-        await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2 + 75, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(900); await shot('9-drag-dropped'); }
+      const side = await page.evaluate(() => getComputedStyle(document.querySelector('#nav .tabs')).flexDirection.startsWith('row'));
+      const mv = (d) => side ? [tb.x + tb.width / 2 + d, tb.y + tb.height / 2] : [tb.x + tb.width / 2, tb.y + tb.height / 2 + d];
+      if (tb) { const before = await page.evaluate(() => tab); await page.mouse.move(...mv(0)); await page.mouse.down(); await page.mouse.move(...mv(70), { steps: 6 }); await page.waitForTimeout(120); await shot('8-drag');
+        await page.mouse.move(...mv(125), { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(900); await shot('9-drag-dropped');
+        console.log('motion: drag moved the tab from', before, 'to', await page.evaluate(() => tab)); }
       await page.mouse.move(600, 740); await page.waitForTimeout(1500);
       const frames = await page.evaluate(() => new Promise((res) => { let n = 0; const o = window.requestAnimationFrame; window.requestAnimationFrame = (f) => { n++; return o(f); }; setTimeout(() => { window.requestAnimationFrame = o; res(n); }, 1500); }));
       console.log('motion: rAF calls while idle for 1.5 s:', frames, '· tab now:', await page.evaluate(() => tab), '· light layers left:', await page.evaluate(() => document.querySelectorAll('.m3light').length));
     }
     else if (name === 'settings') { await click('Settings'); if (sub) { const t = page.locator('.snavitem', { hasText: new RegExp(sub, 'i') }).first(); if (await t.count()) { await t.click(); await page.waitForTimeout(400); } } }
     await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(OUT, `${STYLE}${DARK ? '-dark' : ''}-${name}${sub ? '-' + sub : ''}.png`) });
+    if (arg('scroll', false)) { await page.evaluate((n) => { const c = document.querySelector('#content'); if (c) c.scrollTop = n; }, Number(arg('scroll', 0))); await page.waitForTimeout(300); }
+    await page.screenshot({ path: path.join(OUT, `${STYLE}${DARK ? '-dark' : ''}${arg('glass', false) ? '-glass' : ''}-${name}${sub ? '-' + sub : ''}.png`) });
   }
   if (arg('debug', false)) console.log('cm.machines()', await page.evaluate(async () => JSON.stringify(await cm.machines()).slice(0, 80)), 'cm.guests()', await page.evaluate(async () => JSON.stringify(await cm.guests())));
   if (arg('debug', false)) console.log(await page.evaluate(() => JSON.stringify({ live: Object.fromEntries(Object.entries(SS.live).map(([k, v]) => [k, Array.isArray(v) ? 'array' + v.length : typeof v])), list: Array.isArray(SS.list) ? 'array' : typeof SS.list, machines: Array.isArray(SS.machines) ? SS.machines.length : typeof SS.machines, guests: Array.isArray(SS.guests) ? 'array' : typeof SS.guests })));

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tells the Hearth watch app that this phone can make its calls for it (over Bluetooth) -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@array/android_wear_capabilities">
+    <string-array name="android_wear_capabilities">
+        <item>hearth_phone_link</item>
+    </string-array>
+</resources>

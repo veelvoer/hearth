@@ -1,0 +1,78 @@
+package dev.voer.hearth
+
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.WearableListenerService
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * The watch's way to your servers: it asks this phone over Bluetooth (the Wear OS data layer) and the phone makes the
+ * call on its own connection. The watch then never has to turn on its Wi-Fi, which is what drained its battery.
+ * Answers are small and already shaped for the watch (a message over the data layer must stay under 100 KB).
+ * Only servers this phone knows are reached, with this phone's own keys.
+ */
+class WatchLink : WearableListenerService() {
+    private val pool = Executors.newFixedThreadPool(3)
+
+    override fun onRequest(nodeId: String, path: String, request: ByteArray): Task<ByteArray>? {
+        if (path != PATH) return null
+        return Tasks.call(pool) { runCatching { answer(JSONObject(String(request))) }.getOrElse { JSONObject().put("error", it.message ?: "failed") }.toString().toByteArray() }
+    }
+
+    private fun answer(q: JSONObject): JSONObject {
+        val m = Store.machines(this).firstOrNull { !it.guest && it.base.trimEnd('/') == q.optString("base").trimEnd('/') }
+            ?: return JSONObject().put("error", "This phone does not know that server any more")
+        val id = q.optString("id")
+        if (id.isNotEmpty() && !Regex("^[A-Za-z0-9_-]{1,80}$").matches(id)) return JSONObject().put("error", "bad chat")
+        return when (q.optString("op")) {
+            "usage" -> { val (c, b) = call(m, "GET", "/usage"); if (c != 200) fail(c) else JSONObject().put("usage", JSONObject(b)) }
+            "chats" -> {
+                val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)
+                val a = JSONArray(b); val out = JSONArray()
+                (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
+                    .sortedByDescending { it.optLong("mtime") }.take(20)
+                    .forEach { out.put(JSONObject().put("id", it.optString("id")).put("title", it.optString("title").take(120)).put("busy", it.optBoolean("running") || it.optBoolean("busy")).put("mtime", it.optLong("mtime"))) }
+                JSONObject().put("chats", out)
+            }
+            "turn" -> {
+                val (c, b) = call(m, "GET", "/sessions/$id/messages?tail=30"); if (c != 200) return fail(c)
+                val a = JSONArray(b); var asked = ""; var answer = ""
+                for (i in a.length() - 1 downTo 0) {
+                    val o = a.getJSONObject(i)
+                    when (o.optString("role")) { "assistant" -> if (answer.isEmpty() && asked.isEmpty()) answer = o.optString("text"); "user" -> if (asked.isEmpty()) asked = o.optString("text") }
+                    if (asked.isNotEmpty()) break
+                }
+                JSONObject().put("asked", asked.take(600)).put("answer", answer.take(4000))
+            }
+            "send" -> JSONObject().put("code", call(m, "POST", "/sessions/$id/send", JSONObject().put("text", q.optString("text").take(4000)).put("mode", "acceptEdits"), lines = 2, read = 20_000).first)
+            "stop" -> JSONObject().put("code", call(m, "POST", "/stop", JSONObject().put("session", id)).first)
+            else -> JSONObject().put("error", "unknown")
+        }
+    }
+
+    private fun fail(code: Int) = JSONObject().put("code", code).put("error", if (code == 401) "The phone needs to connect again" else "said $code")
+
+    /** One call to the server; for a send only the first lines are read (the run is started, the server keeps going). */
+    private fun call(m: Machine, method: String, path: String, body: JSONObject? = null, lines: Int = -1, read: Int = 15_000): Pair<Int, String> {
+        val c = (URL(m.base + path).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8_000; readTimeout = read; requestMethod = method
+            setRequestProperty("Authorization", "Bearer ${m.token}")
+            if (body != null) { doOutput = true; setRequestProperty("Content-Type", "application/json") }
+        }
+        try {
+            if (body != null) c.outputStream.use { it.write(body.toString().toByteArray()) }
+            val code = c.responseCode
+            if (code != 200) return code to ""
+            if (lines >= 0) { c.inputStream.bufferedReader().use { r -> repeat(lines) { r.readLine() ?: return code to "" } }; return code to "" }
+            return code to c.inputStream.bufferedReader().use { it.readText() }
+        } finally { c.disconnect() }
+    }
+
+    override fun onDestroy() { pool.shutdown(); super.onDestroy() }
+
+    companion object { const val PATH = "/hearth/rpc" }
+}

@@ -162,8 +162,9 @@ private fun Main() {
             Txt("Call with Claude · tap to return", T.small, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
             Txt("End", T.small.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.clickable { CallSession.end() })
         }
-        Box(Modifier.weight(1f)) {
-            androidx.compose.animation.AnimatedContent(targetState = tab, label = "tab", transitionSpec = {   // the page slides the way the tab bar moves
+        val backdrop = remember { Backdrop() }
+        Box(Modifier.weight(1f)) { androidx.compose.runtime.CompositionLocalProvider(LocalBackdrop provides backdrop) {
+            androidx.compose.animation.AnimatedContent(targetState = tab, modifier = if (Fx.m3 && Fx.glass) Modifier.fillMaxSize().backdropSource(backdrop) else Modifier, label = "tab", transitionSpec = {   // the page slides the way the tab bar moves
                 if (!Fx.motion) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
                 else if (Fx.m3) { val d = if (targetState > initialState) 1 else -1   // expressive: the page travels on a spring and settles; the old one sinks back as it leaves
                     (androidx.compose.animation.slideInHorizontally(Spr.slow()) { d * it / 3 } + androidx.compose.animation.fadeIn(Spr.fade()) + androidx.compose.animation.scaleIn(Spr.slow(), initialScale = .97f)) togetherWith
@@ -178,9 +179,9 @@ private fun Main() {
                 // the floating dock: the four places, and on Chats the add button that grows out of it
                 FloatingDock(tabs.mapIndexed { i, s -> s to listOf("chat", "home", "history", "gear")[i] }, listOf(Tap.Wiggle, Tap.Bounce, Tap.Rewind, Tap.Turn), tab, { Ui.tab = it },
                     showAdd = tab == 0 && Ui.hasMachines, addLabel = "New chat", onAdd = { Ui.startNew = true },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).tourTarget("tabs"), addModifier = Modifier.tourTarget("new"))
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).tourTarget("tabs"), addModifier = Modifier.tourTarget("new"), glass = Fx.glass)
             }
-        }
+        } }
         if (!Ui.chatOpen) {
             val cs = MaterialTheme.colorScheme
             if (Fx.m3) { /* the floating dock above */ } else if (false) {

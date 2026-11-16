@@ -879,9 +879,10 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                         if (i >= 0) side[i] = r.fold({ Triple(q, it.ifBlank { "No answer." }, false) }, { Triple(q, if ((it.message ?: "").contains("404")) "This server is too old for side questions. Update it first." else (it.message ?: "Could not answer."), true) })
                     }
                 }
-                if (working && sess.id.isNotEmpty() && !guest) TextAction("Add it now") {   // Claude stops what it is doing, takes this in, and carries on with the same chat
+                if (working && sess.id.isNotEmpty() && !guest) TextAction("Send now") {   // Claude stops what it is doing, takes this in, and carries on with the same chat
                     queued.removeAt(qi); queued.add(0, "Wait, one more thing before you continue what you were doing: $q")
-                    scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) } }
+                    // once the stop is through it goes out at once (if the run is still winding down, the server says so and it waits for the next check)
+                    scope.launch { if (withContext(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.isSuccess }) { delay(400); serverBusy = false } }
                 }
             } } }
             side.forEachIndexed { si, sq -> item("side$si") { Card {
@@ -948,10 +949,13 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 if (!guest) IconAction("camera", "Take a photo", Alignment.Center) { runCatching { val f = java.io.File(ctx.cacheDir, "shots").also { it.mkdirs() }.let { d -> java.io.File(d, "photo-" + System.currentTimeMillis() + ".jpg") }; val u = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f); photoUri = u; camera.launch(u) }.onFailure { err = "The camera could not be opened." } }
                 if (guest) Spacer(Modifier.width(12.dp))
                 Box(Modifier.weight(1f)) { Field(input, { input = it }, if (guest) "Ask ${m.label}'s Claude… they approve it first" else if (sess.id.isEmpty() && sess.kind != "talk") "Describe your idea" else "Message Claude", singleLine = false, bare = true) }
-                val stop = working && sess.id.isNotEmpty()
+val canStop = working && sess.id.isNotEmpty()
+                // while Claude works: what you type is queued with the send button (or sent at once with "Send now" on it), and Stop sits beside it
+                val stop = canStop && input.isBlank()
                 if (!guest && !working && input.isBlank()) IconAction("mic", "Speak your message", Alignment.Center) { runCatching { dictate.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)) }.onFailure { err = "This phone has no speech input." } }
-                Box(Modifier.size(40.dp).semantics { contentDescription = if (stop) "Stop" else if (sending) "Sending" else "Send"; role = androidx.compose.ui.semantics.Role.Button }.pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
-                    if (sending && !stop) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else MorphGlyph(if (stop) "stop" else "send", 22.dp, cs.onPrimary)
+                if (canStop && !stop) Box(Modifier.size(40.dp).semantics { contentDescription = "Stop"; role = androidx.compose.ui.semantics.Role.Button }.pressable { scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } }.clip(RoundedCornerShape(50)).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) { MorphGlyph("stop", 20.dp, cs.onSurface) }
+                Box(Modifier.size(40.dp).semantics { contentDescription = if (stop) "Stop" else if (canStop) "Queue this message" else if (sending) "Sending" else "Send"; role = androidx.compose.ui.semantics.Role.Button }.pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {
+                    if (sending && !canStop) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp) else MorphGlyph(if (stop) "stop" else "send", 22.dp, cs.onPrimary)
                 }
             }
         }

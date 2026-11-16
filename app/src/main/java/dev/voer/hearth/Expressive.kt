@@ -41,7 +41,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -272,6 +276,59 @@ fun SwipeRow(start: SwipeAction?, end: SwipeAction?, shape: Shape, modifier: Mod
     }
 }
 
+/**
+ * Frosted glass for the dock, done the way Android's own blur works: the page draws itself into a layer once per frame
+ * ([backdropSource]), and the dock draws that same layer again behind itself, blurred by the GPU ([frostedGlass]).
+ * Android 12 and newer; older phones get a slightly more opaque tint instead.
+ */
+class Backdrop { var layer: androidx.compose.ui.graphics.layer.GraphicsLayer? = null; var origin by mutableStateOf(Offset.Zero) }
+val LocalBackdrop = androidx.compose.runtime.staticCompositionLocalOf<Backdrop?> { null }
+
+fun Modifier.backdropSource(b: Backdrop): Modifier = composed {
+    val layer = androidx.compose.ui.graphics.rememberGraphicsLayer()
+    b.layer = layer
+    this.onGloballyPositioned { b.origin = it.positionInWindow() }
+        .drawWithContent { layer.record { this@drawWithContent.drawContent() }; drawLayer(layer) }
+}
+
+/** The glass itself: the page behind, blurred and brightened, a tint of the surface, a hairline edge and light catching its top. */
+@Composable
+fun GlassBack(shape: Shape, tint: Color, modifier: Modifier = Modifier) {
+    val b = LocalBackdrop.current
+    val cs = MaterialTheme.colorScheme
+    val dark = cs.surface.luminance() < .5f
+    var at by remember { mutableStateOf(Offset.Zero) }
+    val blurPx = with(LocalDensity.current) { 30.dp.toPx() }
+    val canBlur = android.os.Build.VERSION.SDK_INT >= 31 && b != null
+    Box(modifier.onGloballyPositioned { at = it.positionInWindow() }.clip(shape)) {
+        if (canBlur) Box(Modifier.matchParentSize()
+            .graphicsLayer {
+                renderEffect = androidx.compose.ui.graphics.BlurEffect(blurPx, blurPx, androidx.compose.ui.graphics.TileMode.Clamp)
+                clip = true; this.shape = shape
+            }
+            .drawBehind {
+                val l = b?.layer ?: return@drawBehind
+                val o = b.origin - at
+                drawContext.canvas.save(); drawContext.canvas.translate(o.x, o.y)
+                drawLayer(l)
+                drawContext.canvas.restore()
+            })
+        // the tint: thin where there is a blur to show, fuller where there is not
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(tint.copy(alpha = if (canBlur) .55f else .9f), tint.copy(alpha = if (canBlur) .38f else .82f)))))
+        // a hairline edge and the light on its top edge
+        Box(Modifier.matchParentSize().drawWithContent {
+            val outline = shape.createOutline(size, layoutDirection, this)
+            val stroke = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
+            val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) .22f else .7f), Color.White.copy(alpha = if (dark) .04f else .2f), Color.Black.copy(alpha = if (dark) .12f else .04f)))
+            when (outline) {
+                is Outline.Rounded -> drawRoundRect(edge, cornerRadius = outline.roundRect.topLeftCornerRadius, style = stroke)
+                is Outline.Generic -> drawPath(outline.path, edge, style = stroke)
+                is Outline.Rectangle -> drawRect(edge, style = stroke)
+            }
+        })
+    }
+}
+
 /** What an icon does when you tap its place in the dock. */
 enum class Tap { Wiggle, Bounce, Rewind, Turn }
 
@@ -291,6 +348,7 @@ fun FloatingDock(
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
     addModifier: Modifier = Modifier,
+    glass: Boolean = false,
 ) {
     val cs = MaterialTheme.colorScheme
     val dark = cs.surface.luminance() < .5f
@@ -312,7 +370,7 @@ fun FloatingDock(
                 .width(dockW).height(dockH)
                 .shadow(if (dark) 10.dp else 14.dp, RoundedCornerShape(50), ambientColor = if (dark) Color.Black else cs.primary.copy(alpha = .3f), spotColor = if (dark) Color.Black else cs.primary.copy(alpha = .35f))
                 .clip(RoundedCornerShape(50))
-                .background(if (dark) cs.surfaceContainerHigh else cs.surfaceContainerLow)
+                .let { if (glass) it else it.background(if (dark) cs.surfaceContainerHigh else cs.surfaceContainerLow) }
                 .pointerInput(items.size) {
                     val w = with(density) { itemW.toPx() }; val pad = with(density) { 4.dp.toPx() }
                     detectHorizontalDragGestures(
@@ -326,6 +384,7 @@ fun FloatingDock(
                         drag = nx
                     }
                 }) {
+                if (glass) GlassBack(RoundedCornerShape(50), if (dark) cs.surfaceContainerHighest else cs.surfaceContainerLow, Modifier.matchParentSize())
                 BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
                     val marker = 52.dp
                     val held = drag?.let { with(density) { (it.toDp() - 4.dp - marker / 2).coerceIn(0.dp, itemW * (items.size - 1) + (itemW - marker)) } }
@@ -347,8 +406,11 @@ fun FloatingDock(
                 .graphicsLayer { alpha = addAlpha; scaleX = addScale; scaleY = addScale; rotationZ = addTurn }
                 .shadow(if (showAdd) 12.dp else 0.dp, RoundedCornerShape(22.dp), ambientColor = cs.primary.copy(alpha = .4f), spotColor = cs.primary.copy(alpha = .5f))
                 .elastic(RoundedCornerShape(22.dp), enabled = showAdd, stretch = 0.08f, travel = 2.dp, label = addLabel, onClick = onAdd)
-                .background(cs.primaryContainer),
-                contentAlignment = Alignment.Center) { Glyph("plus", 28.dp, cs.onPrimaryContainer) }
+                .let { if (glass) it else it.background(cs.primaryContainer) },
+                contentAlignment = Alignment.Center) {
+                if (glass) GlassBack(RoundedCornerShape(22.dp), cs.primaryContainer, Modifier.matchParentSize())
+                Glyph("plus", 28.dp, cs.onPrimaryContainer)
+            }
         }
     }
 }

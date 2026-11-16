@@ -62,28 +62,33 @@
 :root[data-style="m3"] .muted { color: var(--m3-on-surface-variant); }
 
 /* ── the navigation rail ── */
-:root[data-style="m3"] #app { flex-direction: row; padding: 0; gap: 0; }
-:root[data-style="m3"] #nav { flex-direction: column !important; align-items: center; justify-content: flex-start; width: 88px !important; height: 100%; padding: 16px 0 20px !important; gap: 16px;
-  background: var(--m3-surface) !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; position: relative; }
-:root[data-style="m3"] #nav .brand { padding: 0; margin-bottom: 4px; }
-:root[data-style="m3"] #nav .brand .lbl { display: none; }
-:root[data-style="m3"] #nav .logo { width: 40px; height: 40px; border-radius: var(--m3-r-m); }
-:root[data-style="m3"] #nav button.newchat { order: 1; width: 56px; height: 56px; min-height: 56px; padding: 0 !important; border-radius: var(--m3-r-l); background: var(--m3-primary-container) !important; color: var(--m3-on-primary-container) !important; font-size: 0; margin: 0; flex: none;
-  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .3), 0 4px 8px 3px rgba(0, 0, 0, .12); }
-:root[data-style="m3"] #nav button.newchat::before { content: ""; width: 24px; height: 24px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14M12 5v14'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14M12 5v14'/%3E%3C/svg%3E") center / contain no-repeat; }
-:root[data-style="m3"] #nav .tabs { order: 2; position: static; transform: none; flex-direction: column; gap: 12px; padding: 0; background: none; border-radius: 0; width: 100%; align-items: center; }
+/* ── the floating dock (Material 3 Expressive): the places in one pill that floats over the page, the new-chat button beside it ── */
+:root[data-style="m3"] #app { flex-direction: column; padding: 0; gap: 0; }
+:root[data-style="m3"] #nav { position: fixed; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); width: auto !important; height: auto; flex-direction: row !important; align-items: center; justify-content: center; gap: 10px; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+:root[data-style="m3"] #nav .brand { display: none; }
+:root[data-style="m3"] #nav .tabs { order: 2; display: flex; flex-direction: row; gap: 2px; padding: 6px; height: 64px; box-sizing: border-box; border-radius: 999px; background: var(--m3-surface-high); box-shadow: 0 8px 24px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .14); align-items: center; width: auto; transform: none; }
 :root[data-style="m3"] #nav .tabs > .hl { display: none; }
-:root[data-style="m3"] #nav .tabs button { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 80px; padding: 0 !important; background: none !important; border-radius: 0; color: var(--m3-on-surface-variant); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .5px; min-height: 0; }
-:root[data-style="m3"] #nav .tabs button > .ic { display: flex; align-items: center; justify-content: center; width: 56px; height: 32px; border-radius: 16px; transition: background-color .2s var(--m3-ease); }
+:root[data-style="m3"] #nav .tabs button { display: flex; align-items: center; justify-content: center; width: 60px; height: 52px; min-height: 52px; padding: 0 !important; background: none !important; border-radius: 999px; color: var(--m3-on-surface-variant); box-shadow: none !important; }
+:root[data-style="m3"] #nav .tabs button > .lbl { display: none; }
+:root[data-style="m3"] #nav .tabs button > .ic { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 999px; transition: background-color .2s var(--m3-ease), color .2s var(--m3-ease); }
 :root[data-style="m3"] #nav .tabs button:hover > .ic { background: color-mix(in oklab, var(--m3-on-surface) 8%, transparent); }
-:root[data-style="m3"] #nav .tabs button.on { color: var(--m3-on-surface); }
-:root[data-style="m3"] #nav .tabs button.on > .ic { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
-:root[data-style="m3"] #nav .tabs button .ic svg { width: 24px; height: 24px; }
-:root[data-style="m3"] #nav .navfoot { order: 3; margin: auto 0 0 !important; padding: 8px 0 !important; border: 0 !important; background: none !important; flex-direction: column; gap: 6px; font-size: 11px; text-align: center; width: 72px; justify-content: center; }
-:root[data-style="m3"] #nav .navfoot .lbl { white-space: normal; line-height: 14px; }
+:root[data-style="m3"] #nav .tabs button.on { color: var(--m3-on-secondary-container); }
+:root[data-style="m3"] #nav .tabs button.on > .ic { background: var(--m3-secondary-container); }
+:root[data-style="m3"] #nav .tabs button .ic svg { width: 26px; height: 26px; }
+:root[data-style="m3"] #nav button.newchat { order: 3; width: 64px; height: 64px; min-height: 64px; padding: 0 !important; border-radius: 22px; background: var(--m3-primary-container) !important; color: var(--m3-on-primary-container) !important; font-size: 0 !important;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px color-mix(in oklab, var(--m3-primary) 28%, transparent), 0 1px 3px rgba(0, 0, 0, .18); }
+:root[data-style="m3"] #nav button.newchat::before { content: ""; width: 24px; height: 24px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14M12 5v14'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14M12 5v14'/%3E%3C/svg%3E") center / contain no-repeat; }
+:root[data-style="m3"] #nav .navfoot { order: 1; display: flex; flex-direction: row; align-items: center; gap: 8px; height: 40px; box-sizing: border-box; margin: 0 !important; padding: 0 14px !important; border: 0 !important; border-radius: 999px; background: var(--m3-surface-high) !important; font-size: 12px; white-space: nowrap; color: var(--m3-on-surface-variant); box-shadow: 0 4px 14px rgba(0, 0, 0, .14) !important; }
+:root[data-style="m3"] #nav .navfoot .lbl { white-space: nowrap; line-height: 16px; }
 :root[data-style="m3"] #nav .navfoot i { width: 8px; height: 8px; }
-:root[data-style="m3"] main { padding: 24px 32px; background: transparent; }
-:root[data-style="m3"] main.flush { padding: 16px 16px 16px 0; }
+:root[data-style="m3"] main { padding: 28px 40px 116px; background: transparent; }
+:root[data-style="m3"] main.flush { padding: 16px 16px 100px; }
+/* frosted glass for the dock (Settings → Appearance): the page shows through, blurred and brightened, with a hairline edge and a light catching its top */
+:root[data-style="m3"].dockglass #nav .tabs, :root[data-style="m3"].dockglass #nav .navfoot { background: linear-gradient(180deg, color-mix(in oklab, var(--m3-surface-highest) 46%, transparent), color-mix(in oklab, var(--m3-surface-high) 30%, transparent)) !important; -webkit-backdrop-filter: blur(30px) saturate(2) brightness(1.08) !important; backdrop-filter: blur(30px) saturate(2) brightness(1.08) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--m3-on-surface) 12%, transparent), inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .10), 0 12px 36px rgba(0, 0, 0, .26) !important; }
+:root[data-style="m3"].dockglass #nav button.newchat { background: linear-gradient(180deg, color-mix(in oklab, var(--m3-primary-container) 66%, transparent), color-mix(in oklab, var(--m3-primary-container) 46%, transparent)) !important; -webkit-backdrop-filter: blur(30px) saturate(2) brightness(1.08) !important; backdrop-filter: blur(30px) saturate(2) brightness(1.08) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--m3-primary) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, .18), 0 10px 32px color-mix(in oklab, var(--m3-primary) 26%, transparent) !important; }
+:root[data-style="m3"].dockglass #nav .tabs > .m3marker { background: color-mix(in oklab, var(--m3-secondary-container) 78%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
 
 /* the sliding highlights of the default look are not used here: a selected item is a tonal shape of its own */
 :root[data-style="m3"] .hl { display: none; }
@@ -182,7 +187,7 @@
 @media (prefers-color-scheme: dark) { :root[data-style="m3"] .m3light .glow { background: radial-gradient(circle var(--r, 120px) at var(--x, 50%) var(--y, 50%), rgba(255, 255, 255, .16), rgba(255, 255, 255, .05) 45%, transparent 100%); } }
 :root[data-style="m3"] .m3light .ring { position: absolute; width: 0; height: 0; border-radius: 50%; opacity: 0; background: radial-gradient(circle, transparent 52%, color-mix(in oklab, var(--m3-primary) 14%, transparent) 80%, transparent 100%); }
 :root[data-style="m3"] #nav .tabs, :root[data-style="m3"] #nav .tabs.hlready { position: relative !important; }
-:root[data-style="m3"] #nav .tabs > .m3marker { position: absolute; left: 0; top: 0; border-radius: 16px; background: var(--m3-secondary-container); pointer-events: none; will-change: transform; transition: opacity .15s; }
+:root[data-style="m3"] #nav .tabs > .m3marker { position: absolute; left: 0; top: 0; border-radius: 999px; background: var(--m3-secondary-container); pointer-events: none; will-change: transform; transition: opacity .15s; }
 :root[data-style="m3"].m3pill #nav .tabs button.on > .ic { background: transparent; }
 :root[data-style="m3"] #nav .tabs button > .ic { position: relative; }
 :root[data-style="m3"] #nav .tabs button .ic svg { transform-origin: 50% 50%; }
@@ -195,3 +200,25 @@
 :root[data-style="m3"] .toggle::after { transition: transform .42s cubic-bezier(.34, 1.56, .64, 1), width .25s cubic-bezier(.34, 1.56, .64, 1), height .25s cubic-bezier(.34, 1.56, .64, 1), top .25s cubic-bezier(.34, 1.56, .64, 1), left .25s cubic-bezier(.34, 1.56, .64, 1), background-color .2s; }
 :root[data-style="m3"].noanim .m3light { display: none; }
 :root[data-style="m3"] #nav { user-select: none; -webkit-user-select: none; }
+
+/* ── Expressive shapes and type ── */
+:root[data-style="m3"] .working .wflame { display: none; }
+:root[data-style="m3"] .working .m3load { display: inline-flex; color: var(--m3-primary); animation: m3turn 3.6s linear infinite; }
+:root[data-style="m3"].noanim .working .m3load, :root[data-style="m3"].noanim .working .m3load * { animation: none; }
+:root[data-style="m3"] .working { gap: 10px; align-items: center; }
+/* the usage rings sit on a soft nine-sided "cookie", the shape language of Material 3 Expressive */
+:root[data-style="m3"] .ringbox::before { content: ""; position: absolute; inset: 14px; background: color-mix(in oklab, var(--m3-primary) 14%, transparent); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24.00 6.00 L25.25 4.93 L26.59 4.32 L27.89 4.42 L29.02 5.25 L29.91 6.59 L30.60 8.08 L31.23 9.35 L32.00 10.14 L33.08 10.42 L34.49 10.33 L36.13 10.17 L37.73 10.27 L39.01 10.84 L39.75 11.92 L39.89 13.38 L39.59 15.00 L39.15 16.53 L38.92 17.82 L39.19 18.84 L40.02 19.71 L41.27 20.56 L42.60 21.55 L43.62 22.71 L44.00 24.00 L43.62 25.29 L42.60 26.45 L41.27 27.44 L40.02 28.29 L39.19 29.16 L38.92 30.18 L39.15 31.47 L39.59 33.00 L39.89 34.62 L39.75 36.08 L39.01 37.16 L37.73 37.73 L36.13 37.83 L34.49 37.67 L33.08 37.58 L32.00 37.86 L31.23 38.65 L30.60 39.92 L29.91 41.41 L29.02 42.75 L27.89 43.58 L26.59 43.68 L25.25 43.07 L24.00 42.00 L22.90 40.85 L21.89 40.01 L20.87 39.73 L19.71 40.02 L18.34 40.68 L16.82 41.34 L15.30 41.64 L14.00 41.32 L13.08 40.35 L12.58 38.89 L12.39 37.24 L12.27 35.73 L11.94 34.57 L11.19 33.83 L9.96 33.38 L8.41 33.00 L6.86 32.45 L5.66 31.60 L5.10 30.42 L5.25 29.02 L5.96 27.59 L6.91 26.25 L7.70 25.07 L8.00 24.00 L7.70 22.93 L6.91 21.75 L5.96 20.41 L5.25 18.98 L5.10 17.58 L5.66 16.40 L6.86 15.55 L8.41 15.00 L9.96 14.62 L11.19 14.17 L11.94 13.43 L12.27 12.27 L12.39 10.76 L12.58 9.11 L13.08 7.65 L14.00 6.68 L15.30 6.36 L16.82 6.66 L18.34 7.32 L19.71 7.98 L20.87 8.27 L21.89 7.99 L22.90 7.15Z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24.00 6.00 L25.25 4.93 L26.59 4.32 L27.89 4.42 L29.02 5.25 L29.91 6.59 L30.60 8.08 L31.23 9.35 L32.00 10.14 L33.08 10.42 L34.49 10.33 L36.13 10.17 L37.73 10.27 L39.01 10.84 L39.75 11.92 L39.89 13.38 L39.59 15.00 L39.15 16.53 L38.92 17.82 L39.19 18.84 L40.02 19.71 L41.27 20.56 L42.60 21.55 L43.62 22.71 L44.00 24.00 L43.62 25.29 L42.60 26.45 L41.27 27.44 L40.02 28.29 L39.19 29.16 L38.92 30.18 L39.15 31.47 L39.59 33.00 L39.89 34.62 L39.75 36.08 L39.01 37.16 L37.73 37.73 L36.13 37.83 L34.49 37.67 L33.08 37.58 L32.00 37.86 L31.23 38.65 L30.60 39.92 L29.91 41.41 L29.02 42.75 L27.89 43.58 L26.59 43.68 L25.25 43.07 L24.00 42.00 L22.90 40.85 L21.89 40.01 L20.87 39.73 L19.71 40.02 L18.34 40.68 L16.82 41.34 L15.30 41.64 L14.00 41.32 L13.08 40.35 L12.58 38.89 L12.39 37.24 L12.27 35.73 L11.94 34.57 L11.19 33.83 L9.96 33.38 L8.41 33.00 L6.86 32.45 L5.66 31.60 L5.10 30.42 L5.25 29.02 L5.96 27.59 L6.91 26.25 L7.70 25.07 L8.00 24.00 L7.70 22.93 L6.91 21.75 L5.96 20.41 L5.25 18.98 L5.10 17.58 L5.66 16.40 L6.86 15.55 L8.41 15.00 L9.96 14.62 L11.19 14.17 L11.94 13.43 L12.27 12.27 L12.39 10.76 L12.58 9.11 L13.08 7.65 L14.00 6.68 L15.30 6.36 L16.82 6.66 L18.34 7.32 L19.71 7.98 L20.87 8.27 L21.89 7.99 L22.90 7.15Z'/%3E%3C/svg%3E") center / contain no-repeat; transition: transform .6s cubic-bezier(.34, 1.56, .64, 1); }
+:root[data-style="m3"] .card:hover .ringbox::before { transform: rotate(40deg) scale(1.04); }
+:root[data-style="m3"] .ringbox .mid b { font-family: var(--m3-font); font-weight: 600; font-size: 44px; letter-spacing: -1.5px; }
+/* emphasized type: big, tight headlines */
+:root[data-style="m3"] .hero h1, :root[data-style="m3"] main h1 { font-family: var(--m3-font); font-size: 44px; line-height: 52px; font-weight: 500; letter-spacing: -1.2px; }
+:root[data-style="m3"] h2 { font-family: var(--m3-font); font-weight: 600; letter-spacing: -.3px; }
+/* bigger, softer cards; the hero cards of Home get the tonal primary container */
+:root[data-style="m3"] .card, :root[data-style="m3"] .rcard, :root[data-style="m3"] .tablecard { border-radius: 28px !important; }
+:root[data-style="m3"] .card .card, :root[data-style="m3"] .rcard .card { border-radius: 20px !important; }
+:root[data-style="m3"] .card:has(> .ringbox) { background-color: color-mix(in oklab, var(--m3-primary) 9%, var(--m3-surface-container)) !important; }
+/* a chosen chat in the list morphs from a rounded rectangle into a full pill */
+:root[data-style="m3"] .split > .side .item, :root[data-style="m3"] .item { transition: background-color .2s var(--m3-ease), border-radius .45s cubic-bezier(.34, 1.56, .64, 1); border-radius: 18px; }
+:root[data-style="m3"] .split > .side .item.on, :root[data-style="m3"] .item.on { border-radius: 999px; }
+:root[data-style="m3"] .chatmain { border-radius: 32px !important; }
+:root[data-style="m3"] .msg.user { border-radius: 26px 26px 8px 26px; }

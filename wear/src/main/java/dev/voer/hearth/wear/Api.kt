@@ -1,6 +1,11 @@
 package dev.voer.hearth.wear
 
+import android.content.Context
+import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.Wearable
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONArray
@@ -10,7 +15,45 @@ data class Usage(val session: Double?, val week: Double?, val sessionReset: Long
 data class Chat(val id: String, val title: String, val busy: Boolean, val mtime: Long, val server: Server)
 data class Turn(val asked: String, val answer: String)
 
-/** The few calls the watch needs, over the same HTTPS link as the phone (the watch borrows the phone's connection when it has none). */
+/**
+ * The phone, over Bluetooth: the watch asks the Hearth phone app and the phone makes the call to your server.
+ * That keeps the watch's Wi-Fi off, which is where its battery went. Only when no phone with Hearth is in reach does
+ * the watch call the server itself.
+ */
+object Phone {
+    const val PATH = "/hearth/rpc"
+    private const val CAPABILITY = "hearth_phone_link"
+    lateinit var app: Context
+    @Volatile private var node: String? = null
+    @Volatile private var checkedAt = 0L
+    /** How the last call went: true = through the phone, false = straight to the server, null = not yet. */
+    @Volatile var via: Boolean? = null
+
+    private fun node(): String? {
+        if (!::app.isInitialized) return null
+        if (System.currentTimeMillis() - checkedAt < 30_000) return node
+        checkedAt = System.currentTimeMillis()
+        node = runCatching {
+            val cap = Tasks.await(Wearable.getCapabilityClient(app).getCapability(CAPABILITY, CapabilityClient.FILTER_REACHABLE), 4, TimeUnit.SECONDS)
+            cap.nodes.firstOrNull { it.isNearby }?.id ?: cap.nodes.firstOrNull()?.id
+        }.getOrNull()
+        return node
+    }
+
+    /** Asks the phone; null when there is no phone to ask (then the caller goes straight to the server). */
+    fun ask(s: Server, op: String, extra: JSONObject.() -> Unit = {}): JSONObject? {
+        val n = node() ?: return null
+        val q = JSONObject().put("op", op).put("base", s.base).apply(extra)
+        val r = runCatching { Tasks.await(Wearable.getMessageClient(app).sendRequest(n, PATH, q.toString().toByteArray()), 30, TimeUnit.SECONDS) }
+            .getOrElse { checkedAt = 0; return null }   // the phone went out of reach: look again next time
+        via = true
+        val o = JSONObject(String(r))
+        if (o.has("error")) throw IOException(if (o.optInt("code") == 401) "The phone needs to connect again" else if (o.has("code")) "${s.name} ${o.getString("error")}" else o.getString("error"))
+        return o
+    }
+}
+
+/** The few calls the watch needs: through the phone over Bluetooth, or (no phone in reach) over the watch's own connection. */
 object Api {
     private fun open(s: Server, path: String, post: Boolean = false, read: Int = 15_000) = (URL(s.base + path).openConnection() as HttpURLConnection).apply {
         connectTimeout = 8_000; readTimeout = read
@@ -38,19 +81,21 @@ object Api {
     }
 
     fun usage(s: Server): Usage {
-        val o = JSONObject(get(s, "/usage"))
+        val o = Phone.ask(s, "usage")?.getJSONObject("usage") ?: JSONObject(get(s, "/usage")).also { Phone.via = false }
         fun pct(k: String) = o.optJSONObject(k)?.optDouble("pct")?.takeIf { !it.isNaN() }
         return Usage(pct("session"), pct("week"), o.optJSONObject("session")?.let { if (it.isNull("resetsAt")) null else it.optLong("resetsAt") })
     }
 
     fun chats(s: Server): List<Chat> {
-        val a = JSONArray(get(s, "/sessions"))
+        val a = Phone.ask(s, "chats")?.getJSONArray("chats") ?: JSONArray(get(s, "/sessions")).also { Phone.via = false }
         return (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
             .map { Chat(it.getString("id"), it.optString("title").ifBlank { "Chat" }, it.optBoolean("running") || it.optBoolean("busy"), it.optLong("mtime"), s) }
     }
 
     /** The last thing you asked and the last answer, without tool calls. */
     fun lastTurn(s: Server, id: String): Turn {
+        Phone.ask(s, "turn") { put("id", id) }?.let { return Turn(it.optString("asked"), it.optString("answer")) }
+        Phone.via = false
         val a = JSONArray(get(s, "/sessions/$id/messages?tail=30"))
         var asked = ""; var answer = ""
         for (i in a.length() - 1 downTo 0) {
@@ -65,12 +110,13 @@ object Api {
     }
 
     fun send(s: Server, id: String, text: String) {
-        val code = post(s, "/sessions/$id/send", JSONObject().put("text", text).put("mode", "acceptEdits"), read = 20_000)
+        val code = Phone.ask(s, "send") { put("id", id); put("text", text) }?.optInt("code")
+            ?: post(s, "/sessions/$id/send", JSONObject().put("text", text).put("mode", "acceptEdits"), read = 20_000)
         if (code == 409) throw IOException("Claude is still busy with this chat")
         if (code != 200) throw IOException("${s.name} said $code")
     }
 
-    fun stop(s: Server, id: String) { post(s, "/stop", JSONObject().put("session", id)) }
+    fun stop(s: Server, id: String) { if (Phone.ask(s, "stop") { put("id", id) } == null) post(s, "/stop", JSONObject().put("session", id)) }
 }
 
 /** Claude's markdown, made readable on a small round screen. */

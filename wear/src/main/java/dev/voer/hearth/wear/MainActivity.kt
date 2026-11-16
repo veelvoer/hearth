@@ -58,6 +58,7 @@ object Visible { @Volatile var now = true }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Phone.app = applicationContext
         testPair(intent)
         setContent { WatchApp() }
     }
@@ -142,6 +143,7 @@ private fun Home(servers: List<Server>, onOpen: (Chat) -> Unit) {
             }
             item { Spacer(Modifier.height(6.dp)) }
             if (err.isNotEmpty()) item { Text(err, fontSize = 12.sp, color = Clay, textAlign = TextAlign.Center) }
+            else if (Phone.via == false) item { Text("Phone not in reach · using the watch's own connection", fontSize = 10.sp, color = Muted, textAlign = TextAlign.Center) }
             val l = chats
             if (l == null) item { Text("Loading…", fontSize = 12.sp, color = Muted) }
             else if (l.isEmpty() && err.isEmpty()) item { Text("No chats yet", fontSize = 12.sp, color = Muted) }

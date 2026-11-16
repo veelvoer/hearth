@@ -356,7 +356,7 @@ function settingsView(only) {
     h('div', { class: 'modebtns' }, [['light', 'Light'], ['system', 'Auto'], ['dark', 'Dark']].map(([v, l]) => h('button', { class: 'modebtn' + ((st.theme || 'system') === v ? ' on' : ''), onclick: () => set({ theme: v }) }, l))),
     h('div', { class: 'subtitle' }, 'Style'),
     h('div', { class: 'modebtns' }, [['calm', 'Hearth'], ['material', 'Material 3']].map(([v, l]) => h('button', { class: 'modebtn' + ((st.style || 'calm') === v ? ' on' : ''), onclick: () => set({ style: v }) }, l))),
-    h('div', { class: 'small muted' }, 'Material 3 is Google’s design language: a navigation rail, tonal surfaces and round buttons. The accent color below becomes its color scheme.'),
+    h('div', { class: 'small muted' }, 'Material 3 Expressive is Google’s design language: a floating dock, tonal surfaces, springy motion and round buttons. The accent color below becomes its color scheme.'),
     h('div', { class: 'subtitle' }, 'Accent color'),
     h('div', { class: 'row wrap swatches' }, SW.map(([c, n]) => h('button', { class: 'swatch' + (cur.toLowerCase() === c.toLowerCase() ? ' on' : ''), title: n, style: 'background:' + c, onclick: () => set(c === SW[0][0] ? { palette: 'claude' } : { palette: 'custom', customAccent: c }) })),
       chip('My desktop', st.palette === 'system', () => set({ palette: 'system' })),
@@ -364,7 +364,7 @@ function settingsView(only) {
     h('div', { class: 'small muted' }, 'Hearth clay, or pick your own color.'),
     h('div', { class: 'subtitle' }, 'Preview'),
     h('div', { class: 'previewbox' }, h('div', { class: 'previewbubble' }, 'Can you fix the tests?'), h('div', { class: 'previewdone' }, 'Done — all 48 pass.'), h('div', {}, h('button', { class: 'primary sm', tabindex: '-1' }, 'Primary button'))),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Frosted glass', h('div', { class: 'small muted' }, 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass === true, () => set({ glass: st.glass !== true }))),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, st.style === 'material' ? 'Frosted glass dock' : 'Frosted glass', h('div', { class: 'small muted' }, st.style === 'material' ? 'The floating dock turns to frosted glass: the page shows through it, blurred. Turn off if the app feels slow.' : 'Blurred, see-through panels. Turn off if the app feels slow.')), toggle(st.glass === true, () => set({ glass: st.glass !== true }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Animations', h('div', { class: 'small muted' }, 'Gliding highlights, fades and counting numbers. Turn off for the lightest, fastest app.')), toggle(st.motion !== false, () => set({ motion: st.motion === false }))),
     h('div', { class: 'row' }, h('div', { class: 'grow' }, 'Simple view in chats', h('div', { class: 'small muted' }, 'Hides the tool and command details, so a chat only shows the conversation.')), toggle(st.simpleView === true, () => set({ simpleView: st.simpleView !== true })))));
   p.append(h('div', { class: 'card stack' }, ch('bell', 'Alerts', 'You get a notification when your usage crosses these levels. “Session reset” tells you when a heavy 5-hour session rolls over and you have a fresh one.'),
@@ -914,6 +914,7 @@ function applyPerf() {
   const m3 = st.style === 'material';   // Material 3: flat tonal surfaces (see m3.css), so the frosted glass is off
   if (m3) r.dataset.style = 'm3'; else delete r.dataset.style;
   r.classList.toggle('noglass', st.glass !== true || m3);
+  r.classList.toggle('dockglass', m3 && st.glass === true);   // in Material 3 the frosted glass is only the floating dock
   r.classList.toggle('noanim', st.motion === false);
   r.classList.toggle('simpleview', st.simpleView === true);   // the tool and command details are hidden: a chat only shows the conversation
 }

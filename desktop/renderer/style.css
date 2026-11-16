@@ -857,3 +857,7 @@ details.rcard.fold > summary::after { transition: transform .25s cubic-bezier(.2
 .snavitem { line-height: 1.25; }
 .noterow { align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
 .noterow:first-child { border-top: 0; }
+
+/* the Material 3 loading shape (m3.css shows it) */
+.m3load { display: none; }
+@keyframes m3turn { to { transform: rotate(360deg); } }

@@ -146,13 +146,18 @@
     const a = ic.getBoundingClientRect(), b = tabs.getBoundingClientRect();
     return { x: a.left - b.left, y: a.top - b.top + tabs.scrollTop, w: a.width, h: a.height };
   }
+  const horiz = (tabs) => getComputedStyle(tabs).flexDirection.startsWith('row');   // the floating dock runs sideways, the rail runs down
+  const along = (t, h) => (h ? t.x : t.y);
   function syncPill(animate) {
     if (!navOn()) { if (pill) { pill.remove(); pill = null; } root.classList.remove('m3pill'); return; }
     const tabs = nav.querySelector('.tabs'), btn = tabs.querySelector('button.on');
-    if (!pill || !tabs.contains(pill)) {
-      pill = document.createElement('span'); pill.className = 'm3marker'; tabs.prepend(pill);
-      pillY = new Spring(0, (v) => { pill.style.transform = `translate(${pill._x || 0}px, ${v}px) scale(${pillS ? pillS.v.toFixed(3) : 1}, ${(2 - (pillS ? pillS.v : 1)).toFixed(3)})`; });
-      pillS = new Spring(1, () => pillY.onChange(pillY.v));
+    const h = horiz(tabs);
+    if (!pill || !tabs.contains(pill) || pill._h !== h) {
+      if (pill) pill.remove();
+      pill = document.createElement('span'); pill.className = 'm3marker'; pill._h = h; tabs.prepend(pill);
+      const draw = () => { const p = pillY.v, s = pillS ? pillS.v : 1;
+        pill.style.transform = h ? `translate(${p}px, ${pill._o || 0}px) scale(${s.toFixed(3)}, ${(2 - s).toFixed(3)})` : `translate(${pill._o || 0}px, ${p}px) scale(${(2 - s).toFixed(3)}, ${s.toFixed(3)})`; };
+      pillY = new Spring(0, draw); pillS = new Spring(1, draw);
       pillFor = null; animate = false;
     }
     root.classList.add('m3pill');
@@ -160,15 +165,16 @@
     pill.style.opacity = '1';
     if (drag) return;
     const t = pillTarget(btn);
-    Object.assign(pill.style, { width: t.w + 'px', height: t.h + 'px' }); pill._x = t.x;
-    if (pillFor === btn.dataset.tab && animate !== 'force') return;
+    Object.assign(pill.style, { width: t.w + 'px', height: t.h + 'px' }); pill._o = h ? t.y : t.x;
+    if (pillFor === btn.dataset.tab && animate !== 'force') { pillY.onChange(pillY.v); return; }
     const moving = pillFor !== null && animate !== false;
     pillFor = btn.dataset.tab;
+    const to = along(t, h);
     if (moving) {
-      const dist = Math.abs(t.y - pillY.v);
-      pillS.v = 1; pillS.to(1, ...FAST); pillS.kick(dist > 4 ? -Math.min(4, dist / 30) : 0);   // stretches along its way and settles round
-      pillY.to(t.y, ...MOVE);
-    } else pillY.snap(t.y);
+      const dist = Math.abs(to - pillY.v);
+      pillS.to(1, ...FAST); pillS.kick(dist > 4 ? Math.min(5, dist / 25) : 0);   // stretches along its way and settles round
+      pillY.to(to, ...MOVE);
+    } else pillY.snap(to);
   }
   if (nav) {
     new MutationObserver(() => requestAnimationFrame(() => syncPill(true))).observe(nav, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
@@ -177,26 +183,27 @@
     nav.addEventListener('pointerdown', (e) => {
       if (!navOn() || !on() || e.button !== 0) return;
       const tabs = nav.querySelector('.tabs'); if (!tabs.contains(e.target)) return;
-      const btns = [...tabs.querySelectorAll('button[data-tab]')];
-      const y0 = e.clientY, start = pillY ? pillY.v : 0;
+      const btns = [...tabs.querySelectorAll('button[data-tab]')], h = horiz(tabs);
+      const p0 = h ? e.clientX : e.clientY, start = pillY ? pillY.v : 0;
       let moved = false;
       const mv = (ev) => {
-        const dy = ev.clientY - y0;
-        if (!moved && Math.abs(dy) < 6) return;
+        const d = (h ? ev.clientX : ev.clientY) - p0;
+        if (!moved && Math.abs(d) < 6) return;
         moved = true; drag = true;
-        const first = pillTarget(btns[0]).y, lastY = pillTarget(btns[btns.length - 1]).y;
-        let y = start + dy;
-        if (y < first) y = first - Math.sqrt(first - y) * 3; else if (y > lastY) y = lastY + Math.sqrt(y - lastY) * 3;   // past the ends it gets heavy
-        pillY.to(y, 1, 1600); pillS.to(1.12, ...FAST);
+        const first = along(pillTarget(btns[0]), h), last = along(pillTarget(btns[btns.length - 1]), h);
+        let p = start + d;
+        if (p < first) p = first - Math.sqrt(first - p) * 3; else if (p > last) p = last + Math.sqrt(p - last) * 3;   // past the ends it gets heavy
+        pillY.to(p, 1, 1600); pillS.to(1.14, ...FAST);
       };
       const end = (ev) => {
         removeEventListener('pointermove', mv); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
         if (!moved) return;
         drag = null; pillS.to(1, ...FAST);
-        const y = pillY.v; let best = btns[0], bd = Infinity;
-        for (const b of btns) { const d = Math.abs(pillTarget(b).y - y); if (d < bd) { bd = d; best = b; } }
-        const swallow = (c) => { c.stopPropagation(); c.preventDefault(); }; addEventListener('click', swallow, { capture: true, once: true }); setTimeout(() => removeEventListener('click', swallow, true), 50);
-        if (best.classList.contains('on')) syncPill('force'); else best.click();
+        const p = pillY.v; let best = btns[0], bd = Infinity;
+        for (const b of btns) { const dd = Math.abs(along(pillTarget(b), h) - p); if (dd < bd) { bd = dd; best = b; } }
+        // pick the place first, then swallow the click the browser sends after this pointerup (it would land on the place you started from)
+        if (best.classList.contains('on')) syncPill('force'); else if (typeof setTab === 'function') setTab(best.dataset.tab); else best.click();
+        const swallow = (c) => { c.stopPropagation(); c.preventDefault(); }; addEventListener('click', swallow, { capture: true, once: true }); setTimeout(() => removeEventListener('click', swallow, true), 60);
         if (ev) ev.preventDefault();
       };
       addEventListener('pointermove', mv); addEventListener('pointerup', end); addEventListener('pointercancel', end);

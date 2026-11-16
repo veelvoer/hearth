@@ -55,7 +55,7 @@ pub fn home() -> PathBuf {
 pub fn hostname() -> String {
     if let Ok(h) = std::fs::read_to_string("/proc/sys/kernel/hostname") { let h = h.trim(); if !h.is_empty() { return h.to_string(); } }
     if let Ok(h) = std::env::var("COMPUTERNAME") { return h; }
-    if let Ok(o) = std::process::Command::new("hostname").output() { let h = String::from_utf8_lossy(&o.stdout).trim().to_string(); if !h.is_empty() { return h; } }
+    if let Ok(o) = crate::util::cmd("hostname").output() { let h = String::from_utf8_lossy(&o.stdout).trim().to_string(); if !h.is_empty() { return h; } }
     "computer".into()
 }
 pub fn username() -> String {
@@ -205,4 +205,40 @@ pub fn local_ymd(ms: f64) -> String {
 pub fn iso(ms: f64) -> String {
     use chrono::TimeZone;
     chrono::Utc.timestamp_millis_opt(ms as i64).single().map(|d| d.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()).unwrap_or_default()
+}
+
+/// Inside an AppImage the app's own libraries are on LD_LIBRARY_PATH and friends; programs we start (claude, git, tar,
+/// notify-send...) must see the computer's normal environment, or they load the wrong libraries and crash.
+fn clean_env() -> &'static Vec<(String, Option<String>)> {
+    static E: std::sync::OnceLock<Vec<(String, Option<String>)>> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        let dir = std::env::var("APPDIR").unwrap_or_default();
+        if dir.len() < 2 || std::env::var_os("APPIMAGE").is_none() { return vec![]; }
+        let mut out = vec![];
+        for (k, v) in std::env::vars() {
+            if !v.contains(&dir) || k == "APPIMAGE" || k == "APPDIR" || k == "OWD" || k == "ARGV0" { continue; }
+            let kept: Vec<&str> = v.split(':').filter(|p| !p.is_empty() && !p.contains(&dir)).collect();
+            out.push((k, if kept.is_empty() { None } else { Some(kept.join(":")) }));
+        }
+        out
+    })
+}
+pub fn cmd(p: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    let mut c = std::process::Command::new(p);
+    for (k, v) in clean_env() { match v { Some(v) => { c.env(k, v); } None => { c.env_remove(k); } } }
+    c
+}
+pub fn tcmd(p: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command { tokio::process::Command::from(cmd(p)) }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn children_do_not_get_the_appimage_libraries() {
+        std::env::set_var("APPIMAGE", "/x/Hearth.AppImage");
+        std::env::set_var("APPDIR", "/tmp/.mount_HearthX");
+        std::env::set_var("LD_LIBRARY_PATH", "/tmp/.mount_HearthX/usr/lib");
+        std::env::set_var("XDG_DATA_DIRS", "/tmp/.mount_HearthX/usr/share:/usr/share");
+        let o = super::cmd("sh").args(["-c", "echo \"[$LD_LIBRARY_PATH|$XDG_DATA_DIRS|$APPIMAGE]\""]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&o.stdout).trim(), "[|/usr/share|/x/Hearth.AppImage]");
+    }
 }
