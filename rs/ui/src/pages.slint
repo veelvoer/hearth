@@ -1,6 +1,7 @@
 import { Palette, Type, Space, Shape, Motion } from "theme.slint";
 import { VC, Icon, Tap, IconButton, PillButton, Field, SectionLabel, Card, UsageRing, Switch } from "components.slint";
 import { ChatRow, ChatRowItem } from "chat.slint";
+import { UpdateCard } from "flows.slint";
 
 export struct Tile { label: string, value: string, sub: string }
 export struct NavItem { header: string, id: string, label: string, icon: string }
@@ -99,6 +100,8 @@ component StatTile inherits Rectangle {
 export component HomeScreen inherits Rectangle {
     in property <bool> wide;
     in property <[Tile]> tiles;
+    in property <bool> update;
+    callback dismiss-update();
     property <int> cols: root.wide ? 4 : 2;
     Flickable {
         content-width: self.width;
@@ -106,6 +109,7 @@ export component HomeScreen inherits Rectangle {
             alignment: center;
             VerticalLayout {
                 max-width: 1100px;
+                preferred-width: 1100px;
                 alignment: start;
                 padding: root.wide ? 40px : 16px;
                 padding-top: root.wide ? 32px : 28px;
@@ -123,6 +127,7 @@ export component HomeScreen inherits Rectangle {
                     VC { IconButton { icon: "mic"; kind: "primary"; size: 44px; } }
                 }
                 Text { text: "Usage updated just now"; color: Palette.faint; font-size: Type.small; }
+                if root.update: UpdateCard { later => { root.dismiss-update(); } }
                 if root.wide: HorizontalLayout {
                     spacing: 16px;
                     UsageCard { title: "Session"; reset: "Resets in 1h 59m"; at: "01:58 AM"; pace: "Under pace"; note: "~69% by reset"; pct: 42; }
@@ -355,6 +360,43 @@ component PageBody inherits Rectangle {
             ToggleRow { title: "Motion"; sub: "Springs and morphing transitions. Off turns every animation to zero."; on <=> root.motion; }
             ToggleRow { title: "Frosted dock"; sub: "A translucent dock that stays readable over any content."; on <=> root.frosted; }
             ToggleRow { title: "Expressive layout"; sub: "Floating dock and larger shapes."; on: true; }
+        }
+        if root.page == "updates": UpdateCard { }
+        if root.page == "updates": SettingCard {
+            title: "Update channel";
+            icon: "sync";
+            ToggleRow { title: "Check automatically"; sub: "Look for a new version once a day."; on: true; }
+            ToggleRow { title: "Install on quit"; sub: "Apply updates when you close Hearth."; on: false; }
+        }
+        if root.page == "routines": SettingCard {
+            title: "Routines";
+            icon: "clock";
+            body: "Runs that start on a schedule, on your server or this computer. Nothing is scheduled yet.";
+            PillButton { text: "New routine"; icon: "plus"; kind: "tonal"; horizontal-stretch: 0; }
+        }
+        if root.page == "server": SettingCard {
+            title: "Server";
+            icon: "server";
+            body: "hearth.example.com · version 1.40.0 · up for 6 days.";
+            ToggleRow { title: "Run work on the server"; sub: "Chats keep going when your laptop sleeps."; on: true; }
+            ToggleRow { title: "Keep a copy on this computer"; sub: "Chats stay readable offline."; on: true; }
+        }
+        if root.page == "keys": SettingCard {
+            title: "Keys and permissions";
+            icon: "key";
+            body: "API keys are stored in the system keychain. Tool permissions decide what Claude may do without asking.";
+            ToggleRow { title: "Ask before editing files"; sub: "Show a prompt for every Edit."; on: true; }
+            ToggleRow { title: "Ask before running commands"; sub: "Show a prompt for every shell command."; on: true; }
+        }
+        if root.page == "help": SettingCard {
+            title: "Help";
+            icon: "lifebuoy";
+            body: "Pairing, usage limits and sync are explained in the guide. Something broken? Send a report from About.";
+        }
+        if root.page == "about": SettingCard {
+            title: "About Hearth";
+            icon: "info";
+            body: "Version 1.40.0. Made for people who use Claude all day. Open source.";
         }
         if root.page == "notifications": SettingCard {
             title: "Notifications";

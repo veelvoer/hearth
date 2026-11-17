@@ -42,8 +42,8 @@ fn main() {
     slint::platform::set_platform(Box::new(P(Instant::now()))).unwrap();
     let out = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap()).join("hearth-shots/ui"));
     std::fs::create_dir_all(&out).unwrap();
-    let phone = [("chats-swipe", ""), ("chat-top", ""), ("chats", ""), ("chat", ""), ("home", ""), ("history", ""), ("settings", ""), ("settings", "devices")];
-    let wide = [("chat-top", ""), ("chat", ""), ("home", ""), ("history", ""), ("settings", "devices"), ("settings", "appearance")];
+    let phone = [("onboarding", ""), ("pairing", ""), ("call", ""), ("prompt", ""), ("settings", "updates"), ("settings", "keys"), ("chats-swipe", ""), ("chat-top", ""), ("chats", ""), ("chat", ""), ("home", ""), ("history", ""), ("settings", ""), ("settings", "devices")];
+    let wide = [("onboarding", ""), ("prompt", ""), ("settings", "updates"), ("chat-top", ""), ("chat", ""), ("home", ""), ("history", ""), ("settings", "devices"), ("settings", "appearance")];
     for dark in [true, false] {
         let tag = if dark { "dark" } else { "light" };
         for (size, name, list) in [((360, 800), "phone", &phone[..]), ((1180, 780), "wide", &wide[..])] {
@@ -57,7 +57,8 @@ fn main() {
                     v[1].swiped = true;
                     app.set_chats(slint::ModelRc::new(slint::VecModel::from(v)));
                 }
-                app.set_screen(match *screen { "chat-top" => "chat", "chats-swipe" => "chats", s => s }.into());
+                if *screen == "prompt" { app.set_prompt(true); }
+                app.set_screen(match *screen { "chat-top" | "prompt" => "chat", "chats-swipe" => "chats", s => s }.into());
                 app.set_page((*page).into());
                 app.show().unwrap();
                 let n = if page.is_empty() { screen.to_string() } else { format!("{screen}-{page}") };
@@ -83,7 +84,7 @@ fn main() {
     app.show().unwrap();
     render(360, 800, &out.join("motion-0-start.png"));
     app.set_screen("settings".into());
-    slint::platform::update_timers_and_animations();
+    render(360, 800, &out.join("motion-0b-first-frame.png"));
     println!("animations active right after change: {}", WIN.with(|c| c.borrow().as_ref().unwrap().has_active_animations()));
     std::thread::sleep(std::time::Duration::from_millis(110));
     render(360, 800, &out.join("motion-1-mid.png"));

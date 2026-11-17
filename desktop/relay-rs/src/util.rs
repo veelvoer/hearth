@@ -249,6 +249,7 @@ pub fn scratch(name: &str) -> PathBuf {
 mod memory_tests {
     // Memory share for the server (memory.test.js)
     use super::*;
+    use serde_json::json;
     const GB: f64 = 1024.0 * 1024.0 * 1024.0;
     #[test] fn default_is_75_percent() { assert_eq!(mem_pct_of(&Value::Null), 75); assert_eq!(mem_pct_of(&serde_json::json!({}).get("memoryPct").cloned().unwrap_or(Value::Null)), 75); }
     #[test] fn zero_means_no_limit() { assert_eq!(mem_pct_of(&serde_json::json!(0)), 0); assert_eq!(mem_limit_mb(0, 1.0, 1.0), None); }

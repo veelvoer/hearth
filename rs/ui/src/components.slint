@@ -286,22 +286,30 @@ export component Dock inherits HorizontalLayout {
         height: root.pad * 2 + root.item;
         border-radius: self.height / 2;
         background: Palette.dock;
-        // sliding marker: one value drives it, so quick repeated taps never jump
+        // sliding marker: one value drives it; drag it with the pointer or tap a slot
         Rectangle {
-            x: root.pad + root.current * (root.item + root.gap);
+            x: dragta.pressed ? clamp(dragta.mouse-x - root.item / 2, root.pad, root.pad + 3 * (root.item + root.gap)) : root.pad + root.current * (root.item + root.gap);
             y: root.pad;
             width: root.item;
             height: root.item;
             border-radius: root.item / 2;
             background: Palette.selected;
-            animate x { duration: Motion.move; easing: Motion.spring; }
+            animate x { duration: dragta.pressed ? 0ms : Motion.move; easing: Motion.spring; }
         }
-        for ic[i] in ["chat", "grid", "history", "settings"]: IconButton {
+        for ic[i] in ["chat", "grid", "history", "settings"]: Rectangle {
             x: root.pad + i * (root.item + root.gap);
             y: root.pad;
-            size: root.item;
-            icon: ic;
-            clicked => { root.go(i); }
+            width: root.item;
+            height: root.item;
+            Icon { name: ic; size: root.item * 0.46; color: i == root.current ? Palette.on-selected : Palette.muted; }
+        }
+        dragta := TouchArea {
+            mouse-cursor: pointer;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.up {
+                    root.go(clamp(Math.floor((self.mouse-x - root.pad) / (root.item + root.gap)), 0, 3));
+                }
+            }
         }
     }
     Tap {

@@ -1,0 +1,195 @@
+import { Palette, Type, Space, Shape, Motion } from "theme.slint";
+import { VC, Icon, Tap, IconButton, PillButton, Field, SectionLabel, Card, Cookie } from "components.slint";
+
+// ---------------------------------------------------------------- update card (home, settings > updates)
+export component UpdateCard inherits Card {
+    in property <string> version: "1.41.0";
+    in property <string> notes: "Faster chat opening and smoother motion.";
+    callback install();
+    callback later();
+    fill: Palette.selected;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 10px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 12px;
+            VC { Icon { name: "sync"; size: 22px; color: Palette.on-selected; } }
+            Text { text: "Hearth " + root.version + " is ready"; color: Palette.on-selected; font-size: 15px; font-weight: 600; vertical-alignment: center; }
+        }
+        Text { text: root.notes; wrap: word-wrap; color: Palette.on-selected; font-size: Type.body; }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            PillButton { text: "Later"; kind: "text"; h: 36px; clicked => { root.later(); } }
+            PillButton { text: "Install and restart"; kind: "primary"; h: 36px; clicked => { root.install(); } }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- onboarding
+export component OnboardingScreen inherits Rectangle {
+    in-out property <int> step: 0;
+    callback finish();
+    callback skip();
+    property <[string]> titles: ["Your Claude, everywhere", "Chats follow you", "Stay under the limit"];
+    property <[string]> bodies: [
+        "Hearth is one app on your laptop, phone and watch. Start a chat on one and carry on with another.",
+        "Connect a server once. Your chats, projects and work stay in sync, and tasks move to your laptop whenever it is online.",
+        "Usage rings show how much of your session and week is left, and warn you before you hit the limit."
+    ];
+    VerticalLayout {
+        padding: 28px;
+        padding-top: 40px;
+        padding-bottom: 36px;
+        spacing: 20px;
+        HorizontalLayout { alignment: end; PillButton { text: "Skip"; kind: "text"; h: 36px; clicked => { root.skip(); } } }
+        Rectangle {
+            Cookie { width: min(parent.width, parent.height, 240px); height: self.width; tone: Palette.selected; }
+            Cookie { width: min(parent.width, parent.height, 240px) * 0.55; height: self.width; tone: Palette.accent; }
+        }
+        Text { text: root.titles[root.step]; color: Palette.text; font-size: Type.display; wrap: word-wrap; horizontal-alignment: center; }
+        Text { text: root.bodies[root.step]; color: Palette.muted; font-size: Type.read; wrap: word-wrap; horizontal-alignment: center; }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            for i in 3: Rectangle {
+                width: i == root.step ? 28px : 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: i == root.step ? Palette.accent : Palette.outline-soft;
+                animate width { duration: Motion.move; easing: Motion.spring; }
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            PillButton {
+                text: root.step == 2 ? "Get started" : "Next";
+                kind: "primary";
+                h: 52px;
+                preferred-width: 240px;
+                clicked => { if root.step == 2 { root.finish(); } else { root.step += 1; } }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- pairing
+export component PairingScreen inherits Rectangle {
+    in-out property <string> link;
+    in property <string> error;
+    callback connect(string);
+    callback scan();
+    callback back();
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            max-width: 560px;
+            preferred-width: 560px;
+            padding: 20px;
+            padding-top: 28px;
+            spacing: 14px;
+            alignment: start;
+            HorizontalLayout { spacing: 8px; IconButton { icon: "back"; clicked => { root.back(); } } Text { text: "Connect a server"; color: Palette.text; font-size: 22px; vertical-alignment: center; } }
+            Card {
+                VerticalLayout {
+                    padding: 18px;
+                    spacing: 12px;
+                    HorizontalLayout { spacing: 12px; VC { Icon { name: "server"; size: 20px; color: Palette.muted; } } Text { text: "Pairing link"; color: Palette.muted; font-size: Type.small; font-weight: 600; vertical-alignment: center; } }
+                    Text { text: "Paste the link your server printed, or scan its QR code with the camera."; wrap: word-wrap; color: Palette.muted; font-size: Type.small; }
+                    Field { placeholder: "hearth://pair?…"; icon: "key"; text <=> root.link; }
+                    if root.error != "": Text { text: root.error; wrap: word-wrap; color: Palette.error; font-size: Type.small; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        PillButton { text: "Scan QR"; kind: "outline"; icon: "devices"; clicked => { root.scan(); } }
+                        Rectangle { }
+                        PillButton { text: "Connect"; kind: "primary"; clicked => { root.connect(root.link); } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- permission prompt (bottom sheet over a scrim)
+export component PermissionPrompt inherits Rectangle {
+    in property <string> tool: "Edit";
+    in property <string> target: "Settings.tsx";
+    in property <string> detail: "Claude wants to change 14 lines in src/Settings.tsx.";
+    callback deny();
+    callback allow-once();
+    callback allow-always();
+    background: Palette.scrim;
+    TouchArea { }
+    VerticalLayout {
+        alignment: end;
+        padding: 12px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                max-width: 560px;
+                preferred-width: 560px;
+                background: Palette.card-high;
+                border-radius: 28px;
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 14px;
+                    Text { text: "Allow this action?"; color: Palette.text; font-size: Type.lead; font-weight: 500; }
+                    Rectangle {
+                        height: 38px;
+                        background: Palette.card;
+                        border-radius: 14px;
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            spacing: 10px;
+                            Text { text: root.tool; color: Palette.accent; font-size: Type.small; font-weight: 700; vertical-alignment: center; horizontal-stretch: 0; }
+                            Text { text: root.target; color: Palette.muted; font-size: Type.small; font-family: Type.mono; vertical-alignment: center; horizontal-alignment: left; horizontal-stretch: 1; overflow: elide; }
+                        }
+                    }
+                    Text { text: root.detail; wrap: word-wrap; color: Palette.muted; font-size: Type.body; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        PillButton { text: "Deny"; kind: "text"; clicked => { root.deny(); } }
+                        PillButton { text: "Always"; kind: "outline"; clicked => { root.allow-always(); } }
+                        PillButton { text: "Allow once"; kind: "primary"; clicked => { root.allow-once(); } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- voice call
+export component CallScreen inherits Rectangle {
+    in property <string> time: "02:14";
+    in property <string> state: "Listening";
+    in-out property <bool> muted;
+    callback hangup();
+    VerticalLayout {
+        padding: 28px;
+        padding-top: 60px;
+        padding-bottom: 48px;
+        spacing: 12px;
+        Text { text: "Claude"; color: Palette.text; font-size: Type.display; horizontal-alignment: center; }
+        Text { text: root.state + " · " + root.time; color: Palette.muted; font-size: Type.body; horizontal-alignment: center; }
+        Rectangle {
+            Cookie { width: min(parent.width, parent.height, 220px); height: self.width; tone: Palette.selected; }
+            Cookie { width: min(parent.width, parent.height, 220px) * 0.6; height: self.width; tone: Palette.accent; }
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 24px;
+            IconButton { icon: "mic"; size: 64px; kind: root.muted ? "primary" : "tonal"; clicked => { root.muted = !root.muted; } }
+            Tap {
+                width: 64px;
+                height: 64px;
+                border-radius: 32px;
+                background: Palette.error;
+                tint: Palette.bg;
+                Icon { name: "close"; size: 30px; color: Palette.bg; }
+                clicked => { root.hangup(); }
+            }
+        }
+    }
+}

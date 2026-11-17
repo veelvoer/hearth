@@ -1,6 +1,7 @@
 import { Palette, Type, Space, Shape, Motion } from "theme.slint";
 import { Icon, Dock } from "components.slint";
 import { ChatRow, Msg, ChatList, ChatPane } from "chat.slint";
+import { OnboardingScreen, PairingScreen, PermissionPrompt, CallScreen } from "flows.slint";
 import { HomeScreen, HistoryScreen, SettingsScreen, Tile, NavItem, Device } from "pages.slint";
 export { Palette, Motion, Type }
 export { ChatRow }
@@ -14,9 +15,11 @@ export component App inherits Window {
     background: Palette.bg;
     preferred-width: 360px;
     preferred-height: 800px;
-    in-out property <string> screen: "chats";   // chats | chat | home | history | settings
+    in-out property <string> screen: "chats";   // chats | chat | home | history | settings | onboarding | pairing | call
     in-out property <string> page: "";          // settings page ("" = list on phone, devices on wide)
     in property <bool> chat-top: false;
+    in-out property <bool> prompt: false;
+    in-out property <bool> update: true;
     in property <string> status: "Server online";
     callback new-chat();
     property <bool> wide: self.width >= 820px;
@@ -111,7 +114,7 @@ export component App inherits Window {
         messages: root.messages;
         back => { root.screen = "chats"; }
     }
-    if root.screen == "home": HomeScreen { wide: root.wide; tiles: root.tiles; }
+    if root.screen == "home": HomeScreen { wide: root.wide; tiles: root.tiles; update: root.update; dismiss-update => { root.update = false; } }
     if root.screen == "history": HistoryScreen { items: root.history; wide: root.wide; }
     if root.screen == "settings": SettingsScreen {
         wide: root.wide;
@@ -121,6 +124,9 @@ export component App inherits Window {
         pick(id) => { root.page = id; }
         back => { root.page = ""; }
     }
+    if root.screen == "onboarding": OnboardingScreen { finish => { root.screen = "pairing"; } skip => { root.screen = "chats"; } }
+    if root.screen == "pairing": PairingScreen { back => { root.screen = "settings"; } }
+    if root.screen == "call": CallScreen { hangup => { root.screen = "chat"; } }
     // dock: compact at the foot of the list on wide, floating elsewhere
     if root.split: Dock {
         compact: true;
@@ -132,7 +138,7 @@ export component App inherits Window {
         go(i) => { root.go(i); }
         new-chat => { root.new-chat(); }
     }
-    if !root.split && root.screen != "chat": Dock {
+    if !root.split && root.screen != "chat" && root.screen != "onboarding" && root.screen != "pairing" && root.screen != "call": Dock {
         x: 0px;
         y: root.height - 64px - 20px;
         width: root.width;
@@ -142,4 +148,5 @@ export component App inherits Window {
         go(i) => { root.go(i); }
         new-chat => { root.new-chat(); }
     }
+    if root.prompt: PermissionPrompt { deny => { root.prompt = false; } allow-once => { root.prompt = false; } allow-always => { root.prompt = false; } }
 }

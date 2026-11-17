@@ -105,6 +105,8 @@ jobs:
         run: cargo test --lib --manifest-path desktop/relay-rs/Cargo.toml
       - name: Every test through the Rust front
         run: HEARTH_RUST_FRONT=$PWD/desktop/relay-rs/target/release/hearth-relay sh desktop/test/run-all.sh
+      - name: Rust integration tests (hearth-tests, the ported desktop/test suite)
+        run: cargo test -p hearth-tests --release --manifest-path rs/Cargo.toml -- --test-threads=2
   desktop-app:
     runs-on: ubuntu-22.04
     steps:
