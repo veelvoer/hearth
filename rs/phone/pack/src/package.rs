@@ -1,7 +1,7 @@
 //! hearth-pack: builds the Rust Hearth apps into signed debug APKs without Gradle.
 //!
-//!   cargo run -p hearth-pack -- phone            # dev.voer.hearth.rust
-//!   cargo run -p hearth-pack -- watch            # dev.voer.hearth.rust.watch
+//!   cargo run -p hearth-pack -- phone            # dev.voer.hearth (replaces the Kotlin app in place)
+//!   cargo run -p hearth-pack -- watch            # dev.voer.hearth (on the watch)
 //!   options: --abi arm64-v8a,armeabi-v7a,x86_64 (--all-abis)   --debug-lib   --out <dir>   --skip-rust
 //!   --release-sign: sign with $HEARTH_KEYSTORE / $HEARTH_KEYSTORE_PASS [/ HEARTH_KEY_ALIAS / HEARTH_KEY_PASS] instead of the debug key
 //!
@@ -31,8 +31,8 @@ struct App {
     watch: bool,
 }
 
-const PHONE: App = App { kind: "phone", app_id: "dev.voer.hearth.rust", crate_name: "hearth-phone", lib: "hearth_phone", label: "Hearth (Rust)", min_sdk: 26, watch: false };
-const WATCH: App = App { kind: "watch", app_id: "dev.voer.hearth.rust.watch", crate_name: "hearth-watch", lib: "hearth_watch", label: "Hearth (Rust)", min_sdk: 30, watch: true };
+const PHONE: App = App { kind: "phone", app_id: "dev.voer.hearth", crate_name: "hearth-phone", lib: "hearth_phone", label: "Hearth", min_sdk: 26, watch: false };
+const WATCH: App = App { kind: "watch", app_id: "dev.voer.hearth", crate_name: "hearth-watch", lib: "hearth_watch", label: "Hearth", min_sdk: 30, watch: true };
 
 fn home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))

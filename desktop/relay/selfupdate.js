@@ -52,9 +52,7 @@ async function apply(tag, relayDir) {
     const want = tag.replace(/^v/, '');
     if (require(path.join(src, 'version.js')) !== want) throw new Error('the update says it is another version than ' + want);
     for (const f of files) { const c = await run(process.execPath, ['--check', path.join(src, f)]); if (!c.ok) throw new Error('the update did not pass a check (' + f + ')'); }
-    const prev = path.join(relayDir, '.prev');   // inside the program folder: its parent may belong to someone else
-    fs.rmSync(prev, { recursive: true, force: true }); fs.mkdirSync(prev, { recursive: true });
-    for (const f of fs.readdirSync(relayDir)) if (f.endsWith('.js')) fs.copyFileSync(path.join(relayDir, f), path.join(prev, f));
+    fs.rmSync(path.join(relayDir, '.prev'), { recursive: true, force: true });   // no copy of the old version is kept: every version is on GitHub, and a full disk must never block an update
     for (const f of files) { const t = path.join(relayDir, f + '.new'); fs.copyFileSync(path.join(src, f), t); fs.renameSync(t, path.join(relayDir, f)); }
     const inst = path.join(tmp, 'server', 'hearth-server.js'), instDest = path.join(relayDir, '..', 'installer', 'hearth-server.js');
     try { if (fs.existsSync(inst) && fs.existsSync(path.dirname(instDest))) fs.copyFileSync(inst, instDest); } catch { /* the installer is optional */ }

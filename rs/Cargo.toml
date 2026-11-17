@@ -4,7 +4,7 @@ members = ["client", "ui", "xtask", "server", "tests", "desktop", "phone/glue", 
 # desktop, phone and watch join as they come up (they need system libraries / the Android toolchain)
 
 [workspace.package]
-version = "1.41.0"
+version = "1.41.1"
 edition = "2021"
 
 [profile.release]

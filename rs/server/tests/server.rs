@@ -449,7 +449,7 @@ fn update_downloads_verifies_and_replaces_both_programs() {
     assert_eq!((up.from.as_str(), up.to.as_str(), up.relay, up.server), ("1.0.0", "2.0.0", true, true));
     assert_eq!(update::program_version(&dir.join("hearth-relay")).as_deref(), Some("2.0.0"));
     assert_eq!(update::program_version(&dir.join("hearth-server")).as_deref(), Some("2.0.0"));
-    assert_eq!(update::program_version(&dir.join("hearth-relay.prev")).as_deref(), Some("1.0.0"), "the old one is kept");
+    assert!(!dir.join("hearth-relay.prev").exists(), "no copy of the old version is kept");
     assert!(!dir.join("hearth-relay.new").exists());
     update::bump_meta(&env, &dir, "2.0.0").unwrap();
     assert_eq!(serde_json::from_str::<Value>(&std::fs::read_to_string(dir.join("install.json")).unwrap()).unwrap()["version"], "2.0.0");

@@ -119,7 +119,7 @@ jobs:
           for d in all/*; do case "$(basename "$d")" in rust-*) cp "$d"/* rust/ ;; *) cp "$d"/* out/ ;; esac; done
           ls -la out rust
           # the server installer's checksum file belongs with the program, in the main release as well
-          cp rust/hearth-server-linux-x64 rust/hearth-server.sha256 out/ 2>/dev/null || true
+          mv rust/hearth-server-linux-x64 rust/hearth-server.sha256 out/
       - name: The notes of this version become the text of the release
         run: cp "release-notes/${GITHUB_REF_NAME#v}.md" NOTES.md
       - uses: softprops/action-gh-release@v2
@@ -131,4 +131,4 @@ jobs:
           name: Hearth ${{ github.ref_name }} in Rust (early versions)
           prerelease: true
           files: rust/*
-          body: "Early versions of Hearth written in Rust: the desktop app (Linux, Windows), the phone and watch apps (they install next to the current apps, they do not replace them) and the server installer. In the phone app: Settings → Updates → Hearth in Rust. Notes: see the main release."
+          body: "Early versions of Hearth written in Rust: the desktop app (Linux, Windows), the phone and watch apps (they take the place of the current apps, same app id and key) and the server installer. In the phone app: Settings → Updates → Hearth in Rust. Notes: see the main release."

@@ -140,6 +140,8 @@ object Updates {
     /** Looks on GitHub. Sets [release] when something newer is there. Returns an error text or null. */
     suspend fun check(c: Context): String? {
         busy = true; message = ""
+        runCatching { File(c.cacheDir, "hearth-update.apk").delete() }   // the file of an earlier update is not kept
+
         return try {
             val r = latest(); checkedAt = System.currentTimeMillis(); latestVersion = r.version
             release = if (newer(r.version, current(c))) r else null
@@ -259,7 +261,7 @@ fun UpdatesCard() {
         Spacer(Modifier.height(10.dp))
         Label("Hearth in Rust (early version)")
         val ra = Updates.rust
-        Txt(if (ra == null) "A faster Hearth, written in Rust. It installs next to this app and does not replace it." else "Version ${ra.version}: installs as a separate app.", T.small, muted = true)
+        Txt(if (ra == null) "A faster Hearth, written in Rust. It takes the place of this app (same app, updated in place). Your servers have to be paired again." else "Version ${ra.version}: replaces this app, you pair your servers again.", T.small, muted = true)
         androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides androidx.compose.ui.Alignment.CenterStart) { @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class) FlowRow(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
             if (ra == null) TextAction("Look for the Rust app") { if (!Updates.busy) scope.launch { note = Updates.checkRust() ?: "" } }
             if (ra?.phoneUrl != null) Button("Install the Rust phone app", Modifier) { if (!Updates.busy) scope.launch { Updates.install(c, Updates.Release("v" + ra.version, ra.version, "", ra.phoneUrl)) } }

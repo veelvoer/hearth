@@ -80,16 +80,16 @@ pub fn program_version(p: &Path) -> Option<String> {
     None
 }
 
-/// Puts `bytes` in place of `target`: staged and checked first (it must report `want`), the old one kept as `.prev`, then renamed over.
+/// Puts `bytes` in place of `target`: staged and checked first (it must report `want`), no copy of the old one is kept, then renamed over.
 pub fn atomic_replace(env: &Env, bytes: &[u8], target: &Path, want: &str) -> Result<()> {
     let scratch = std::env::temp_dir().join(format!("hearth-upd-{}-{}", std::process::id(), target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
     std::fs::write(&scratch, bytes)?;
     crate::sysx::set_mode(&scratch, 0o755)?;
     let got = program_version(&scratch);
     if got.as_deref() != Some(want) { let _ = std::fs::remove_file(&scratch); bail!("the update says it is another version ({})", got.unwrap_or_else(|| "it does not run".into())); }
-    if target.exists() && !env.dry {
+    if !env.dry {   // no copy of the old program is kept (every version is on GitHub); a leftover one goes first, so a full disk cannot block the update
         let prev = target.with_file_name(format!("{}.prev", target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
-        let _ = env.copy_file(target, &prev, 0o755);
+        let _ = std::fs::remove_file(&prev);
     }
     let r = env.copy_file(&scratch, target, 0o755);
     let _ = std::fs::remove_file(&scratch);

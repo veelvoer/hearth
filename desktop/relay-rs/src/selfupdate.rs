@@ -29,12 +29,13 @@ pub async fn apply(tag: &str) -> Result<String, String> {
     let bin = c.get(format!("{base}{name}")).timeout(std::time::Duration::from_secs(300)).send().await.map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
     if sha256_hex(&bin) != line.split_whitespace().next().unwrap_or("") { return Err("the download did not match its checksum".into()); }
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
+    // nothing of an older version is kept (every version is on GitHub), and leftovers are removed before anything new is written: a full disk must never block an update
+    let _ = std::fs::remove_file(me.with_extension("prev")); let _ = std::fs::remove_file(me.with_extension("new"));
     let next = me.with_extension("new");
     std::fs::write(&next, &bin).map_err(|e| format!("This installation cannot update itself ({e}). On the server run: hearth-server update"))?;
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; let _ = std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755)); }
     let v = std::process::Command::new(&next).arg("--version").output().map_err(|e| e.to_string())?;
     if String::from_utf8_lossy(&v.stdout).trim() != want { let _ = std::fs::remove_file(&next); return Err("the update says it is another version".into()); }
-    let prev = me.with_extension("prev"); let _ = std::fs::copy(&me, &prev);
     std::fs::rename(&next, &me).map_err(|e| e.to_string())?;
     Ok(want)
 }

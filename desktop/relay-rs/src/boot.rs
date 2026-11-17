@@ -19,7 +19,18 @@ pub fn build_sig() -> String {
     sha1_hex(id.as_bytes())[..12].to_string()
 }
 
+/// Nothing of an older version stays on the computer (every version is on GitHub): what earlier updates left next to this program goes.
+pub fn clean_old_versions() {
+    let Ok(me) = std::env::current_exe() else { return };
+    let _ = std::fs::remove_file(me.with_extension("prev")); let _ = std::fs::remove_file(me.with_extension("new"));
+    if let Some(d) = me.parent() {
+        let _ = std::fs::remove_dir_all(d.join(".prev"));
+        if let Ok(rd) = std::fs::read_dir(d) { for e in rd.flatten() { let n = e.file_name().to_string_lossy().to_string(); if n.ends_with(".js.new") || n.ends_with(".prev") { let _ = std::fs::remove_file(e.path()); } } }
+    }
+}
+
 pub fn make(o: Opts) -> Result<Arc<Relay>, String> {
+    clean_old_versions();
     let dir = PathBuf::from(&o.dir);
     let _ = std::fs::create_dir_all(&dir);
     let root = match &o.projects_root { Some(p) if !p.is_empty() => { let _ = std::fs::create_dir_all(p); Some(realpath(p).ok_or_else(|| format!("The projects folder {p} cannot be used"))?) } _ => None };
