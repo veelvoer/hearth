@@ -66,7 +66,7 @@ jobs:
           export ANDROID_NDK_HOME="$(ls -d $ANDROID_HOME/ndk/* | sort -V | tail -1)"
           cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- phone
           cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- watch
-      - name: Name the files (zipped: older phone apps take any .apk of a release as their own update)
+      - name: Name the files, zipped so older phone apps do not take the .apk as their own update
         run: |
           V="$(grep -m1 '^version = ' rs/Cargo.toml | cut -d'"' -f2)"; mkdir out
           for k in phone watch; do
