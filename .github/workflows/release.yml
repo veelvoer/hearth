@@ -105,6 +105,7 @@ jobs:
   rust-apps:
     needs: check
     uses: ./.github/workflows/rust-apps.yml
+    secrets: inherit
   publish:
     needs: [desktop, android, relay-front, rust-apps]
     runs-on: ubuntu-latest

@@ -59,18 +59,27 @@ jobs:
         run: |
           rustup target add aarch64-linux-android x86_64-linux-android
           cargo install cargo-ndk --locked
-      - name: Phone and watch apps (no Gradle, no Kotlin)
+      - name: Phone and watch apps (no Gradle, no Kotlin), signed with the release key when this run has it, else with a throwaway test key
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           export ANDROID_NDK_HOME="$(ls -d $ANDROID_HOME/ndk/* | sort -V | tail -1)"
-          cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- phone
-          cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- watch
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export HEARTH_KEYSTORE="$RUNNER_TEMP/release.jks" HEARTH_KEYSTORE_PASS="$KEYSTORE_PASS" HEARTH_KEY_ALIAS=hearth HEARTH_KEY_PASS="$KEY_PASS"; SIGN=--release-sign
+          else
+            mkdir -p ~/.android && keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1; SIGN=
+          fi
+          cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- phone $SIGN
+          cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- watch $SIGN
       - name: Name the files, zipped so older phone apps do not take the .apk as their own update
         run: |
           V="$(grep -m1 '^version = ' rs/Cargo.toml | cut -d'"' -f2)"; mkdir out
           for k in phone watch; do
-            cp "rs/target/apk/hearth-$k-rust-debug.apk" "Hearth-rust-$k-$V.apk"
+            cp "$(ls rs/target/apk/hearth-$k-rust-*.apk | head -1)" "Hearth-rust-$k-$V.apk"
             zip -q "out/Hearth-rust-$k-$V.zip" "Hearth-rust-$k-$V.apk"
           done
       - uses: actions/upload-artifact@v4
