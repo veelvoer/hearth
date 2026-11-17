@@ -112,8 +112,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { path: out, merge-multiple: true }
+        with: { path: all }
+      - name: Sort the files (the Rust apps go in their own pre-release, so the phone app's normal update never sees them)
+        run: |
+          mkdir out rust
+          for d in all/*; do case "$(basename "$d")" in rust-*) cp "$d"/* rust/ ;; *) cp "$d"/* out/ ;; esac; done
+          ls -la out rust
+          # the server installer's checksum file belongs with the program, in the main release as well
+          cp rust/hearth-server-linux-x64 rust/hearth-server.sha256 out/ 2>/dev/null || true
       - name: The notes of this version become the text of the release
         run: cp "release-notes/${GITHUB_REF_NAME#v}.md" NOTES.md
       - uses: softprops/action-gh-release@v2
         with: { files: out/*, body_path: NOTES.md }
+      - name: The Rust apps
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}-rust
+          name: Hearth ${{ github.ref_name }} in Rust (early versions)
+          prerelease: true
+          files: rust/*
+          body: "Early versions of Hearth written in Rust: the desktop app (Linux, Windows), the phone and watch apps (they install next to the current apps, they do not replace them) and the server installer. In the phone app: Settings → Updates → Hearth in Rust. Notes: see the main release."

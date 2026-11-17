@@ -75,12 +75,9 @@ jobs:
           fi
           cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- phone $SIGN
           cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- watch $SIGN
-      - name: Name the files, zipped so older phone apps do not take the .apk as their own update
+      - name: Name the files (they go in their own pre-release, so the phone app's normal update never sees them)
         run: |
           V="$(grep -m1 '^version = ' rs/Cargo.toml | cut -d'"' -f2)"; mkdir out
-          for k in phone watch; do
-            cp "$(ls rs/target/apk/hearth-$k-rust-*.apk | head -1)" "Hearth-rust-$k-$V.apk"
-            zip -q "out/Hearth-rust-$k-$V.zip" "Hearth-rust-$k-$V.apk"
-          done
+          for k in phone watch; do cp "$(ls rs/target/apk/hearth-$k-rust-*.apk | head -1)" "out/Hearth-rust-$k-$V.apk"; done
       - uses: actions/upload-artifact@v4
         with: { name: rust-android, path: out/* }
