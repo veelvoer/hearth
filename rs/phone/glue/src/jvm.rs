@@ -90,3 +90,14 @@ pub(crate) fn icon_id(env: &mut JNIEnv, ctx: &JObject) -> jni::errors::Result<i3
         .i()?;
     Ok(if id != 0 { id } else { 0x0108_0077 })
 }
+
+/// True when the system is in dark mode (uiMode night flag of the current configuration).
+pub fn dark_mode() -> bool {
+    with_env(|env, ctx| {
+        let res = env.call_method(ctx, "getResources", "()Landroid/content/res/Resources;", &[])?.l()?;
+        let cfg = env.call_method(&res, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?.l()?;
+        let ui = env.get_field(&cfg, "uiMode", "I")?.i()?;
+        Ok(ui & 0x30 == 0x20)
+    })
+    .unwrap_or(true)
+}

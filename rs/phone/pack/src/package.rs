@@ -2,7 +2,8 @@
 //!
 //!   cargo run -p hearth-pack -- phone            # dev.voer.hearth.rust
 //!   cargo run -p hearth-pack -- watch            # dev.voer.hearth.rust.watch
-//!   options: --abi arm64-v8a,x86_64   --debug-lib   --out <dir>   --skip-rust
+//!   options: --abi arm64-v8a,armeabi-v7a,x86_64 (--all-abis)   --debug-lib   --out <dir>   --skip-rust
+//!   --release-sign: sign with $HEARTH_KEYSTORE / $HEARTH_KEYSTORE_PASS [/ HEARTH_KEY_ALIAS / HEARTH_KEY_PASS] instead of the debug key
 //!
 //! Steps: `cargo ndk` (the cdylib per ABI) -> generate manifest, resources and the few Java classes Android forces
 //! -> aapt2 compile/link -> javac + d8 (own Java and the Google Play services client from the Gradle cache)
@@ -75,9 +76,12 @@ impl Tools {
     fn find() -> R<Tools> {
         let sdk = env_path("ANDROID_HOME", home().join("Android/sdk"));
         let bt = newest_subdir(&sdk.join("build-tools"))?;
-        let android_jar = sdk.join("platforms").join(COMPILE_SDK).join("android.jar");
+        let mut android_jar = sdk.join("platforms").join(COMPILE_SDK).join("android.jar");
         if !android_jar.exists() {
-            return Err(format!("missing {}", android_jar.display()));
+            // any installed platform with an android.jar (newest first)
+            let mut v: Vec<PathBuf> = fs::read_dir(sdk.join("platforms")).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.join("android.jar").exists()).collect();
+            v.sort_by_key(|p| p.file_name().map(|n| version_key(&n.to_string_lossy())).unwrap_or_default());
+            android_jar = v.pop().map(|p| p.join("android.jar")).ok_or_else(|| format!("no platform with android.jar under {}/platforms (install platforms;android-35)", sdk.display()))?;
         }
         let mut cands: Vec<PathBuf> = vec![];
         if let Ok(j) = std::env::var("JAVA_HOME") {
@@ -223,6 +227,19 @@ fn manifest(app: &App, version: &str) -> String {
             pkg = JAVA_PKG
         ));
     }
+    if app.watch {
+        m.push_str(&format!(
+            r#"        <!-- the phone hands over its servers here -->
+        <service android:name="{pkg}.PhoneLink" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/hearth" />
+            </intent-filter>
+        </service>
+"#,
+            pkg = JAVA_PKG
+        ));
+    }
     m.push_str("    </application>\n</manifest>\n");
     m
 }
@@ -260,6 +277,7 @@ final class HearthNative {{
     static native void onResult(int req, boolean ok, String data);
     static native void onPermission(String perm, boolean granted);
     static native byte[] watchRequest(String filesDir, byte[] request);
+    static native void machinesChanged(String filesDir, String json);
 }}
 "#,
             lib = app.lib
@@ -296,6 +314,32 @@ public class HearthActivity extends android.app.NativeActivity {{
 "#
         ),
     ));
+    if app.watch {
+        v.push((
+            "PhoneLink",
+            "WearableListenerService is instantiated by Play services by class name; it only forwards the server list to Rust (HearthNative.machinesChanged)",
+            format!(
+                r#"package {JAVA_PKG};
+
+import com.google.android.gms.wearable.DataEvent;
+import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.WearableListenerService;
+
+public class PhoneLink extends WearableListenerService {{
+    @Override public void onDataChanged(DataEventBuffer events) {{
+        for (DataEvent e : events) {{
+            if (e.getType() == DataEvent.TYPE_CHANGED && "/hearth/machines".equals(e.getDataItem().getUri().getPath())) {{
+                String j = DataMapItem.fromDataItem(e.getDataItem()).getDataMap().getString("json");
+                if (j != null) HearthNative.machinesChanged(getFilesDir().getAbsolutePath(), j);
+            }}
+        }}
+    }}
+}}
+"#
+            ),
+        ));
+    }
     if !app.watch {
         v.push((
             "CallService",
@@ -360,29 +404,47 @@ public class WatchLink extends WearableListenerService {{
 
 // ---------- pipeline ----------
 
-fn gms_jars(t: &Tools, work: &Path) -> R<Vec<PathBuf>> {
+/// Play services client AARs (versions the Kotlin apps use). Found in the Gradle cache, or in `$HEARTH_GMS_DIR`
+/// (Gradle cache layout), else downloaded from Google Maven into `$HEARTH_TMP/gms` (needs `curl`).
+const GMS: [(&str, &str); 4] = [("play-services-wearable", "19.0.0"), ("play-services-tasks", "18.3.2"), ("play-services-basement", "18.9.0"), ("play-services-base", "18.7.2")];
+
+fn find_aar(lib: &str) -> Option<PathBuf> {
     let base = env_path("HEARTH_GMS_DIR", home().join(".gradle/caches/modules-2/files-2.1/com.google.android.gms"));
+    let v = newest_subdir(&base.join(lib)).ok()?;
+    fs::read_dir(&v).ok()?.filter_map(|e| e.ok()).flat_map(|h| fs::read_dir(h.path()).into_iter().flatten().filter_map(|e| e.ok())).map(|e| e.path()).find(|p| p.extension().map(|x| x == "aar").unwrap_or(false))
+}
+
+fn fetch_aar(t: &Tools, lib: &str, ver: &str) -> R<PathBuf> {
+    let dir = t.tmp.parent().map(|p| p.join("gms")).unwrap_or_else(|| t.tmp.join("gms"));
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let out = dir.join(format!("{lib}-{ver}.aar"));
+    if out.exists() && fs::metadata(&out).map(|m| m.len() > 1000).unwrap_or(false) {
+        return Ok(out);
+    }
+    let url = format!("https://dl.google.com/dl/android/maven2/com/google/android/gms/{lib}/{ver}/{lib}-{ver}.aar");
+    let part = out.with_extension("part");
+    run(Command::new("curl").args(["-fsSL", "--retry", "3", "-o"]).arg(&part).arg(&url))?;
+    fs::rename(&part, &out).map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+fn gms_jars(t: &Tools, work: &Path) -> R<Vec<PathBuf>> {
     let mut jars = vec![];
-    for lib in ["play-services-wearable", "play-services-tasks", "play-services-basement", "play-services-base"] {
-        let v = newest_subdir(&base.join(lib)).map_err(|e| format!("{e} (the Play services AARs come from the Gradle cache; set HEARTH_GMS_DIR)"))?;
-        let aar = fs::read_dir(&v)
-            .map_err(|e| e.to_string())?
-            .filter_map(|e| e.ok())
-            .flat_map(|h| fs::read_dir(h.path()).into_iter().flatten().filter_map(|e| e.ok()))
-            .map(|e| e.path())
-            .find(|p| p.extension().map(|x| x == "aar").unwrap_or(false))
-            .ok_or_else(|| format!("no .aar for {lib}"))?;
+    for (lib, ver) in GMS {
+        let aar = match find_aar(lib) {
+            Some(a) => a,
+            None => fetch_aar(t, lib, ver)?,
+        };
         let mut z = zip::ZipArchive::new(File::open(&aar).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         let out = work.join(format!("{lib}.jar"));
         let mut f = z.by_name("classes.jar").map_err(|e| format!("{}: {e}", aar.display()))?;
         io::copy(&mut f, &mut File::create(&out).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         jars.push(out);
     }
-    let _ = t;
     Ok(jars)
 }
 
-fn build_apk(app: &App, abis: &[String], debug_lib: bool, skip_rust: bool, out_dir: Option<PathBuf>) -> R<PathBuf> {
+fn build_apk(app: &App, abis: &[String], debug_lib: bool, skip_rust: bool, out_dir: Option<PathBuf>, release_sign: bool) -> R<PathBuf> {
     let t = Tools::find()?;
     let version = format!("{}-rust", workspace_version(&t.root));
     let work = t.tmp.join(app.kind);
@@ -395,7 +457,7 @@ fn build_apk(app: &App, abis: &[String], debug_lib: bool, skip_rust: bool, out_d
     let jnilibs = work.join("jniLibs");
     if !skip_rust {
         let mut c = Command::new("cargo");
-        c.current_dir(&t.root).env("ANDROID_NDK_HOME", t.ndk()?).env("ANDROID_HOME", &t.sdk).env("ANDROID_JAR", &t.android_jar).env("ANDROID_PLATFORM", COMPILE_SDK).arg("ndk");
+        c.current_dir(&t.root).env("ANDROID_NDK_HOME", t.ndk()?).env("ANDROID_HOME", &t.sdk).env("ANDROID_JAR", &t.android_jar).env("ANDROID_PLATFORM", t.android_jar.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| COMPILE_SDK.into())).arg("ndk");
         if let Some(j) = &t.java_home {
             c.env("JAVA_HOME", j);
         }
@@ -491,9 +553,26 @@ fn build_apk(app: &App, abis: &[String], debug_lib: bool, skip_rust: bool, out_d
     run(Command::new(t.bt.join("zipalign")).args(["-f", "-P", "16", "4"]).arg(&unsigned).arg(&aligned))?;
     let out_dir = out_dir.unwrap_or_else(|| t.root.join(format!("target/apk")));
     fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
-    let final_apk = out_dir.join(format!("hearth-{}-rust-debug.apk", app.kind));
-    let ks = env_path("HEARTH_KEYSTORE", home().join(".android/debug.keystore"));
-    run(t.apksigner().arg("sign").arg("--ks").arg(&ks).args(["--ks-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--key-pass", "pass:android"]).arg("--out").arg(&final_apk).arg(&aligned))?;
+    let final_apk = out_dir.join(format!("hearth-{}-rust-{}.apk", app.kind, if release_sign { "release" } else { "debug" }));
+    let mut sign = t.apksigner();
+    sign.arg("sign");
+    if release_sign {
+        // keys never live in the repo: the keystore path and the passwords come from the environment
+        let var = |k: &str| std::env::var(k).map_err(|_| format!("--release-sign needs {k} in the environment"));
+        let ks = var("HEARTH_KEYSTORE")?;
+        var("HEARTH_KEYSTORE_PASS")?;
+        sign.arg("--ks").arg(ks).args(["--ks-pass", "env:HEARTH_KEYSTORE_PASS"]);
+        if let Ok(a) = std::env::var("HEARTH_KEY_ALIAS") {
+            sign.args(["--ks-key-alias", &a]);
+        }
+        if std::env::var("HEARTH_KEY_PASS").is_ok() {
+            sign.args(["--key-pass", "env:HEARTH_KEY_PASS"]);
+        }
+    } else {
+        let ks = env_path("HEARTH_KEYSTORE", home().join(".android/debug.keystore"));
+        sign.arg("--ks").arg(&ks).args(["--ks-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--key-pass", "pass:android"]);
+    }
+    run(sign.arg("--out").arg(&final_apk).arg(&aligned))?;
     run(t.apksigner().arg("verify").arg("--verbose").arg(&final_apk))?;
 
     // 7. report
@@ -530,7 +609,7 @@ fn walk(dir: &Path, ext: &str) -> Vec<PathBuf> {
 fn main() {
     let mut args = std::env::args().skip(1);
     let Some(kind) = args.next() else {
-        eprintln!("usage: hearth-pack <phone|watch> [--abi arm64-v8a,x86_64] [--debug-lib] [--skip-rust] [--out dir]");
+        eprintln!("usage: hearth-pack <phone|watch> [--abi arm64-v8a,x86_64] [--all-abis] [--debug-lib] [--skip-rust] [--release-sign] [--out dir]");
         std::process::exit(2);
     };
     let app = match kind.as_str() {
@@ -541,12 +620,14 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let (mut abis, mut debug_lib, mut skip, mut out) = (vec!["arm64-v8a".to_string(), "x86_64".to_string()], false, false, None);
+    let (mut abis, mut debug_lib, mut skip, mut out, mut rel) = (vec!["arm64-v8a".to_string(), "x86_64".to_string()], false, false, None, false);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--abi" => abis = args.next().unwrap_or_default().split(',').map(String::from).collect(),
             "--debug-lib" => debug_lib = true,
             "--skip-rust" => skip = true,
+            "--release-sign" => rel = true,
+            "--all-abis" => abis = vec!["arm64-v8a".into(), "armeabi-v7a".into(), "x86_64".into()],
             "--out" => out = args.next().map(PathBuf::from),
             _ => {
                 eprintln!("unknown option {a}");
@@ -554,7 +635,7 @@ fn main() {
             }
         }
     }
-    if let Err(e) = build_apk(app, &abis, debug_lib, skip, out) {
+    if let Err(e) = build_apk(app, &abis, debug_lib, skip, out, rel) {
         eprintln!("hearth-pack: {e}");
         std::process::exit(1);
     }

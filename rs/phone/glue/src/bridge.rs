@@ -107,3 +107,27 @@ pub fn answer_blocking(files_dir: &str, q: Request) -> Reply {
 pub fn watch_handler(files_dir: &str, request: &[u8]) -> Vec<u8> {
     crate::wear::serve(request, |q| answer_blocking(files_dir, q))
 }
+
+/// Watch side: store the servers the phone handed over (JSON `[{name, base, token}]`), replacing the old list.
+/// Returns how many were saved (0 and no change when the JSON is not a list, like `Servers.save` in Kotlin).
+pub fn save_machines(files_dir: &str, json: &str) -> usize {
+    let Ok(serde_json::Value::Array(list)) = serde_json::from_str::<serde_json::Value>(json) else { return 0 };
+    let mut ms = vec![];
+    for o in &list {
+        let s = |k: &str| o.get(k).and_then(|v| v.as_str()).unwrap_or("");
+        if !s("base").starts_with("http") || s("token").is_empty() {
+            continue;
+        }
+        let name = if s("name").is_empty() { "Server" } else { s("name") };
+        if let Some(m) = hearth_client::pair::parse_machine(s("base"), name, s("token")) {
+            ms.push(m);
+        }
+    }
+    let n = ms.len();
+    if let Ok(mut st) = Store::open(std::path::Path::new(files_dir).join("hearth.json")) {
+        if st.machines() != ms {
+            let _ = st.set_machines(ms);
+        }
+    }
+    n
+}

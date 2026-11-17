@@ -44,6 +44,18 @@ macro_rules! export_natives {
         ) -> $crate::natives::jni::sys::jbyteArray {
             $crate::natives::watch_request(env, files_dir, request, $watch)
         }
+
+        #[no_mangle]
+        pub extern "system" fn Java_dev_voer_hearth_rust_HearthNative_machinesChanged(
+            mut env: $crate::natives::jni::JNIEnv,
+            _class: $crate::natives::jni::objects::JClass,
+            files_dir: $crate::natives::jni::objects::JString,
+            json: $crate::natives::jni::objects::JString,
+        ) {
+            let dir = env.get_string(&files_dir).map(String::from).unwrap_or_default();
+            let json = env.get_string(&json).map(String::from).unwrap_or_default();
+            $crate::bridge::save_machines(&dir, &json);
+        }
     };
 }
 

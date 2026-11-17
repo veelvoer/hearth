@@ -102,8 +102,11 @@ jobs:
           path: |
             Hearth-*.apk
             Hearth-watch-*.zip
+  rust-apps:
+    needs: check
+    uses: ./.github/workflows/rust-apps.yml
   publish:
-    needs: [desktop, android, relay-front]
+    needs: [desktop, android, relay-front, rust-apps]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

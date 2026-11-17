@@ -1,0 +1,77 @@
+name: Rust apps
+# The all-Rust apps (Slint): desktop for Linux and Windows, the phone and watch apps for Android, and the server installer.
+# Runs on every change of rs/ (as a check) and is called by the release workflow (which publishes what it makes).
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['rs/**', 'desktop/relay-rs/**', '.github/workflows/rust-apps.yml']
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Libraries the window needs (Wayland, X11, keyboard, fonts)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libfontconfig1-dev libfreetype-dev libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-x11-dev libdbus-1-dev musl-tools >/dev/null
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rs }
+      - name: Desktop app
+        run: cargo build --release --manifest-path rs/Cargo.toml -p hearth-desktop
+      - name: Server installer (a static program that runs on any Linux)
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --manifest-path rs/Cargo.toml -p hearth-server --target x86_64-unknown-linux-musl
+      - name: Tests of the Rust code
+        run: cargo test --release --manifest-path rs/Cargo.toml -p hearth-client -p hearth-desktop -p hearth-ui -p xtask -p hearth-server
+      - name: Name the files
+        run: |
+          V="$(grep -m1 '^version = ' rs/Cargo.toml | cut -d'"' -f2)"; mkdir out
+          cp rs/target/release/hearth "out/Hearth-rust-$V-linux-x86_64"
+          cp rs/target/x86_64-unknown-linux-musl/release/hearth-server "out/hearth-server-linux-x64"
+          (cd out && sha256sum hearth-server-linux-x64 > hearth-server.sha256)
+      - uses: actions/upload-artifact@v4
+        with: { name: rust-linux, path: out/* }
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rs }
+      - name: Desktop app
+        run: cargo build --release --manifest-path rs/Cargo.toml -p hearth-desktop
+      - name: Name the file
+        shell: bash
+        run: |
+          V="$(grep -m1 '^version = ' rs/Cargo.toml | cut -d'"' -f2)"; mkdir out
+          cp rs/target/release/hearth.exe "out/Hearth-rust-$V-windows-x64.exe"
+      - uses: actions/upload-artifact@v4
+        with: { name: rust-windows, path: out/* }
+  android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rs }
+      - name: Android build tools for Rust
+        run: |
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked
+      - name: Phone and watch apps (no Gradle, no Kotlin)
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          export ANDROID_NDK_HOME="$(ls -d $ANDROID_HOME/ndk/* | sort -V | tail -1)"
+          cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- phone
+          cargo run --release --manifest-path rs/Cargo.toml -p hearth-pack -- watch
+      - name: Name the files (zipped: older phone apps take any .apk of a release as their own update)
+        run: |
+          V="$(grep -m1 '^version = ' rs/Cargo.toml | cut -d'"' -f2)"; mkdir out
+          for k in phone watch; do
+            cp "rs/target/apk/hearth-$k-rust-debug.apk" "Hearth-rust-$k-$V.apk"
+            zip -q "out/Hearth-rust-$k-$V.zip" "Hearth-rust-$k-$V.apk"
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: rust-android, path: out/* }

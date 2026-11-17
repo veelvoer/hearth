@@ -1,5 +1,8 @@
-//! Hearth for Wear OS (watch), Slint on android-activity. The crate is empty on a desktop host.
-//! It asks the phone over the Wear data layer (`/hearth/rpc`) and falls back to the server over HTTP.
+//! Hearth for Wear OS (watch), Slint on android-activity. It asks the phone over the Wear data layer
+//! (`/hearth/rpc`), falls back to the server over HTTP, and takes its servers from the phone (`/hearth/machines`).
+
+pub mod binding;
+pub mod core;
 
 /// The watch does not answer RPCs; the symbol only has to exist for `HearthNative`.
 pub fn no_rpc(_files_dir: &str, _request: &[u8]) -> Vec<u8> {

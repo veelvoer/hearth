@@ -206,3 +206,56 @@ mod tests {
         assert_eq!(Reply { code: Some(401), error: Some("x".into()), ..Default::default() }.error_text("S").unwrap(), "The phone needs to connect again");
     }
 }
+
+// ---- servers: phone -> watch through the DataClient (`WearSync.kt` / `Link.kt`) ----
+
+pub const MACHINES_PATH: &str = "/hearth/machines";
+
+/// Phone side: put the server list (JSON `[{name, base, token}]`) in the data layer. Does nothing useful when no watch exists.
+pub fn push_machines(json: &str) -> crate::Result<()> {
+    with_env(|env, ctx| {
+        let w = load_class(env, ctx, "com.google.android.gms.wearable.Wearable")?;
+        let dc = env.call_static_method(&w, "getDataClient", "(Landroid/content/Context;)Lcom/google/android/gms/wearable/DataClient;", &[ctx.into()])?.l()?;
+        let pdm = load_class(env, ctx, "com.google.android.gms.wearable.PutDataMapRequest")?;
+        let p = env.new_string(MACHINES_PATH)?;
+        let req = env.call_static_method(&pdm, "create", "(Ljava/lang/String;)Lcom/google/android/gms/wearable/PutDataMapRequest;", &[(&p).into()])?.l()?;
+        let map = env.call_method(&req, "getDataMap", "()Lcom/google/android/gms/wearable/DataMap;", &[])?.l()?;
+        let (k, v) = (env.new_string("json")?, env.new_string(json)?);
+        env.call_method(&map, "putString", "(Ljava/lang/String;Ljava/lang/String;)V", &[(&k).into(), (&v).into()])?;
+        let r = env.call_method(&req, "asPutDataRequest", "()Lcom/google/android/gms/wearable/PutDataRequest;", &[])?.l()?;
+        env.call_method(&r, "setUrgent", "()Lcom/google/android/gms/wearable/PutDataRequest;", &[])?;
+        env.call_method(&dc, "putDataItem", "(Lcom/google/android/gms/wearable/PutDataRequest;)Lcom/google/android/gms/tasks/Task;", &[(&r).into()])?;
+        Ok(())
+    })
+}
+
+/// Watch side: what the phone last put in the data layer (read at start, in case it changed while the app was closed).
+/// Blocks up to 5 s: not on the UI thread.
+pub fn fetch_machines() -> crate::Result<Option<String>> {
+    with_env(|env, ctx| {
+        let w = load_class(env, ctx, "com.google.android.gms.wearable.Wearable")?;
+        let dc = env.call_static_method(&w, "getDataClient", "(Landroid/content/Context;)Lcom/google/android/gms/wearable/DataClient;", &[ctx.into()])?.l()?;
+        let task = env.call_method(&dc, "getDataItems", "()Lcom/google/android/gms/tasks/Task;", &[])?.l()?;
+        let buf = await_task(env, ctx, &task, 5)?;
+        let n = env.call_method(&buf, "getCount", "()I", &[])?.i()?;
+        let dmi = load_class(env, ctx, "com.google.android.gms.wearable.DataMapItem")?;
+        let mut out = None;
+        for i in 0..n {
+            let item = env.call_method(&buf, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])?.l()?;
+            let uri = env.call_method(&item, "getUri", "()Landroid/net/Uri;", &[])?.l()?;
+            let path = env.call_method(&uri, "getPath", "()Ljava/lang/String;", &[])?.l()?;
+            if path.is_null() || String::from(env.get_string(&path.into())?) != MACHINES_PATH {
+                continue;
+            }
+            let m = env.call_static_method(&dmi, "fromDataItem", "(Lcom/google/android/gms/wearable/DataItem;)Lcom/google/android/gms/wearable/DataMapItem;", &[(&item).into()])?.l()?;
+            let dm = env.call_method(&m, "getDataMap", "()Lcom/google/android/gms/wearable/DataMap;", &[])?.l()?;
+            let k = env.new_string("json")?;
+            let s = env.call_method(&dm, "getString", "(Ljava/lang/String;)Ljava/lang/String;", &[(&k).into()])?.l()?;
+            if !s.is_null() {
+                out = Some(String::from(env.get_string(&s.into())?));
+            }
+        }
+        env.call_method(&buf, "release", "()V", &[])?;
+        Ok(out)
+    })
+}

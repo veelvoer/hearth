@@ -14,3 +14,9 @@
 
 ## Missing
 - WatchApp from rs/ui wired in; send/stop/speech-dictation UI; the Kotlin watch's PhoneLink (DATA_CHANGED server push from the phone) is not ported, so servers come only from pasting a link; tiles/complications if the Kotlin watch has any.
+
+## Update: PhoneLink, voice reply, stop, WatchApp (verified on the host)
+- Servers come from the phone: phone `wear::push_machines` (DataClient `/hearth/machines`, JSON [{name,base,token}], like WearSync.kt); watch Java `PhoneLink` (WearableListenerService, 18 lines) -> `HearthNative.machinesChanged` -> `bridge::save_machines` (same filtering as `Servers.save`); at start `wear::fetch_machines` reads what was pushed while closed. The pasted-link button is gone.
+- `watch/src/core.rs` (usage, chats, tap = stop if working else dictate+send; `Transport` = phone via `wear::ask` or `Direct` HTTP) and `watch/src/binding.rs` (`hearth_ui::WatchApp` props/callbacks). Voice uses the system recogniser (`recognize_speech`).
+- `cargo test -p hearth-watch` (tests/watch_flow.rs, in-process relay, headless): 1 passed (20 s, waits for the seed chat to stop looking busy). Covers: no server message, save_machines (bad JSON ignored, non-http skipped), WatchApp refresh -> chats/week line, tap on a working chat -> "Stopped", tap on an idle chat -> dictation "voice reply" reaches the relay (stub log) and status "Sent", stop op.
+- WatchApp has no detail/turn screen or reply/stop buttons: tap does stop-or-reply; the last question/answer ("turn" op exists in the bridge) cannot be shown until rs/ui adds a screen. Not tested on a device: the DataClient and MessageClient JNI calls, PhoneLink, speech.
