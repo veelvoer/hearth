@@ -257,6 +257,14 @@ impl Relay {
         let (p0, p1, p2) = (q.p(0).to_string(), q.p(1).to_string(), q.p(2).to_string()); let n = q.n();
         let qn = |k: &str| q.qs(k).parse::<f64>().ok().filter(|x| x.is_finite());
         match (p0.as_str(), p1.as_str()) {
+            // the look of this computer for the watch and phone: the Oxide window manager's theme when there is one (colors as #rrggbb), else nothing
+            ("theme", _) => {
+                let f = std::env::var("XDG_CONFIG_HOME").ok().filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home().join(".config")).join("oxide/theme.json");
+                let o = read_json(&f).unwrap_or(Value::Null);
+                let hex = |k: &str| { let s = o.s(k); if s.len() >= 7 && s.starts_with('#') && s[1..7].chars().all(|c| c.is_ascii_hexdigit()) { json!(&s[..7]) } else { Value::Null } };
+                if hex("accent").is_null() || hex("bg").is_null() || hex("text").is_null() { return j(200, json!({"theme": null})); }
+                return j(200, json!({"theme": {"name": o.s("name"), "light": o.t("light"), "bg": hex("bg"), "surface": hex("surface"), "text": hex("text"), "muted": hex("muted"), "accent": hex("accent"), "ink": hex("ink"), "error": hex("bad")}}));
+            }
             ("status", _) => return j(200, json!({"away": self.away(), "build": self.build, "version": crate::VERSION, "canSelfUpdate": self.o.self_update, "listeners": self.clients(), "root": self.root, "allowBypass": self.o.allow_bypass, "moveRoot": self.move_root, "laptop": crate::agent::laptop_online(self), "queued": self.hub.lock().unwrap().work.len()})),
             ("voice", "status") => return self.proxy_voice(q).await,
             ("usage-report", _) => { let d = qn("days"); let days = if d == Some(0.0) { 0 } else { d.unwrap_or(30.0).clamp(1.0, 365.0) as i64 }; let extra = self.usage_report_extra(); let r = tokio::task::spawn_blocking(move || crate::core::report(days, &extra)).await.unwrap_or_default(); return j(200, merge(&r, &json!({"scope": if self.hub_sync.is_some() { "account" } else { "device" }}))); }

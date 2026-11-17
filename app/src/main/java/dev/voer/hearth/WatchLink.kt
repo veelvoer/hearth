@@ -30,6 +30,7 @@ class WatchLink : WearableListenerService() {
         if (id.isNotEmpty() && !Regex("^[A-Za-z0-9_-]{1,80}$").matches(id)) return JSONObject().put("error", "bad chat")
         return when (q.optString("op")) {
             "usage" -> { val (c, b) = call(m, "GET", "/usage"); if (c != 200) fail(c) else JSONObject().put("usage", JSONObject(b)) }
+            "theme" -> { val (c, b) = call(m, "GET", "/theme"); if (c != 200) fail(c) else JSONObject(b) }
             "chats" -> {
                 val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)
                 val a = JSONArray(b); val out = JSONArray()

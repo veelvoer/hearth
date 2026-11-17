@@ -86,6 +86,12 @@ object Api {
         return Usage(pct("session"), pct("week"), o.optJSONObject("session")?.let { if (it.isNull("resetsAt")) null else it.optLong("resetsAt") })
     }
 
+    /** The look of the computer (colors), or null when it has none to share. */
+    fun theme(s: Server): JSONObject? {
+        val o = Phone.ask(s, "theme") ?: JSONObject(get(s, "/theme")).also { Phone.via = false }
+        return o.optJSONObject("theme")
+    }
+
     fun chats(s: Server): List<Chat> {
         val a = Phone.ask(s, "chats")?.getJSONArray("chats") ?: JSONArray(get(s, "/sessions")).also { Phone.via = false }
         return (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }

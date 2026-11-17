@@ -47,10 +47,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Clay = Color(0xFFF0643C)
-private val Ink = Color(0xFFF4F2EC)
-private val Muted = Color(0xFF9A968C)
-private val Card = Color(0xFF252422)
+private val Clay get() = Pal.cur.clay
+private val Ink get() = Pal.cur.ink
+private val Muted get() = Pal.cur.muted
+private val Card get() = Pal.cur.card
 
 /** Polling stops while the watch app is not on screen. */
 object Visible { @Volatile var now = true }
@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Phone.app = applicationContext
+        Pal.load(applicationContext); Update.cleanup(applicationContext)
         testPair(intent)
         setContent { WatchApp() }
     }
@@ -78,16 +79,18 @@ private suspend fun pause(ms: Long) { delay(ms); while (!Visible.now) delay(500)
 @Composable
 fun WatchApp() {
     val c = LocalContext.current
-    MaterialTheme(colors = Colors(primary = Clay, onPrimary = Color(0xFF1B1A19), surface = Card, onSurface = Ink, onSurfaceVariant = Muted, background = Color.Black, onBackground = Ink)) {
+    MaterialTheme(colors = Colors(primary = Clay, onPrimary = Pal.cur.onClay, surface = Card, onSurface = Ink, onSurfaceVariant = Muted, background = Pal.cur.bg, onBackground = Ink)) {
         val rev = Servers.rev
         val servers = remember(rev) { Servers.all(c) }
         LaunchedEffect(Unit) { Servers.fetchFromPhone(c) }
         var open by remember { mutableStateOf<Chat?>(null) }
-        BackHandler(open != null) { open = null }
+        var settings by remember { mutableStateOf(false) }
+        BackHandler(open != null || settings) { if (open != null) open = null else settings = false }
         val o = open
         when {
+            settings -> SettingsScreen(servers)
             servers.isEmpty() -> NotPaired()
-            o == null -> Home(servers) { open = it }
+            o == null -> Home(servers, { settings = true }) { open = it }
             else -> ChatScreen(o)
         }
     }
@@ -115,7 +118,7 @@ private fun ago(ms: Long): String {
 }
 
 @Composable
-private fun Home(servers: List<Server>, onOpen: (Chat) -> Unit) {
+private fun Home(servers: List<Server>, onSettings: () -> Unit, onOpen: (Chat) -> Unit) {
     var usage by remember { mutableStateOf<Usage?>(null) }
     var chats by remember { mutableStateOf<List<Chat>?>(null) }
     var err by remember { mutableStateOf("") }
@@ -155,6 +158,35 @@ private fun Home(servers: List<Server>, onOpen: (Chat) -> Unit) {
                         colors = ChipDefaults.secondaryChipColors())
                 }
             }
+            item { Chip(onClick = onSettings, modifier = Modifier.fillMaxWidth(), label = { Text("Settings") }, secondaryLabel = { Text("Theme, updates") }, colors = ChipDefaults.secondaryChipColors()) }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(servers: List<Server>) {
+    val c = LocalContext.current; val scope = rememberCoroutineScope()
+    val state = rememberScalingLazyListState()
+    LaunchedEffect(servers) {   // the computer's own look, when one of the servers has it
+        val got = withContext(Dispatchers.IO) { servers.firstNotNullOfOrNull { s -> runCatching { Api.theme(s) }.getOrNull() } }
+        if (got != null) Pal.savePc(c, got)
+    }
+    Scaffold(timeText = { TimeText() }, positionIndicator = { PositionIndicator(scalingLazyListState = state) }) {
+        ScalingLazyColumn(Modifier.fillMaxSize(), state = state, horizontalAlignment = Alignment.CenterHorizontally) {
+            item { Text("Theme", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+            fun row(id: String, label: String, sub: String?) = item(key = id) {
+                Chip(onClick = { Pal.pick(c, id) }, modifier = Modifier.fillMaxWidth(), label = { Text(label) },
+                    secondaryLabel = sub?.let { { Text(it) } }, icon = { if (Pal.choice == id) Text("✓", color = Clay) },
+                    colors = if (Pal.choice == id) ChipDefaults.primaryChipColors() else ChipDefaults.secondaryChipColors())
+            }
+            row("watch", "My watch", "Hearth's own look")
+            row("pc", "My computer", if (Pal.pcName.isNotBlank()) Pal.pcName else "Not shared by your computer yet")
+            Pal.PRESETS.forEach { row(it.name, it.name, null) }
+            item { Spacer(Modifier.height(8.dp)) }
+            item { Text("Updates", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+            item { Text("Hearth ${Update.current(c)}" + (if (Update.status.isNotBlank()) "\n" + Update.status else ""), fontSize = 12.sp, color = Muted, textAlign = TextAlign.Center) }
+            item { Chip(onClick = { if (!Update.busy) scope.launch { Update.check(c) } }, modifier = Modifier.fillMaxWidth(), enabled = !Update.busy, label = { Text("Check for updates") }, colors = ChipDefaults.secondaryChipColors()) }
+            if (Update.ready(c)) item { Chip(onClick = { if (!Update.busy) scope.launch { Update.install(c) } }, modifier = Modifier.fillMaxWidth(), enabled = !Update.busy, label = { Text("Update to ${Update.latest}") }, colors = ChipDefaults.primaryChipColors()) }
         }
     }
 }
