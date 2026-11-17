@@ -2053,6 +2053,7 @@ version = "1.40.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "chrono",
  "futures-util",
  "hearth-client",
  "hearth-relay",
@@ -2086,11 +2087,15 @@ dependencies = [
 name = "hearth-phone"
 version = "1.40.0"
 dependencies = [
+ "futures-util",
  "hearth-android",
  "hearth-client",
+ "hearth-relay",
+ "hearth-ui",
+ "reqwest",
  "serde_json",
  "slint",
- "slint-build",
+ "tempfile",
  "tokio",
 ]
 
@@ -2167,9 +2172,11 @@ version = "1.40.0"
 dependencies = [
  "hearth-android",
  "hearth-client",
+ "hearth-relay",
+ "hearth-ui",
  "serde_json",
  "slint",
- "slint-build",
+ "tempfile",
  "tokio",
 ]
 

@@ -10,5 +10,8 @@ pub mod theme;
 pub mod tray;
 pub mod ui;
 pub mod upd;
+pub mod chatview;
+pub mod view;
+pub mod wire;
 
 pub use app::{App, Event, PopupSpec};

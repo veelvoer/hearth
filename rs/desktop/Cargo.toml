@@ -30,6 +30,7 @@ sha2 = "0.10"
 hex = "0.4"
 rfd = "0.17"
 png = "0.17"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"
@@ -45,5 +46,4 @@ tauri-winrt-notification = "0.7"
 slint-build = "1.19"
 
 [dev-dependencies]
-png = "0.17"
 tempfile = "3"

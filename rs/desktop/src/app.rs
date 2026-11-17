@@ -46,6 +46,14 @@ pub enum Event {
     RingMe(bool),
     Quit,
     Relaunch,
+    /// Chats, history, tiles and computers loaded for the screens.
+    Screens(Box<crate::screens::ScreenData>),
+    /// The messages of a chat (`key` = "machine/session"); `more`: older ones exist.
+    ChatLoaded { key: String, msgs: Vec<Value>, more: bool },
+    /// The user picked a folder for a new chat.
+    NewChat { cwd: String },
+    /// Pairing a computer by link or address finished (None = it worked).
+    PairDone(Option<String>),
 }
 pub type Sink = Arc<dyn Fn(Event) + Send + Sync>;
 pub type Notifier = Arc<dyn Fn(&str, &str) + Send + Sync>;

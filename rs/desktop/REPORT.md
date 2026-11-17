@@ -20,7 +20,7 @@ Crate `hearth-desktop`, bin `hearth`, in the `rs` workspace. No webview. No comm
 ## Measurements (release, lto, strip, panic=abort; test config, nested kwin)
 | | hearth (Rust/Slint) | desktop/tauri release |
 |---|---|---|
-| binary | 25,316,664 bytes (includes the relay, rustls, winit, zbus, rfd) | 20,444,248 bytes (plus the system WebKitGTK libs) |
+| binary | 25,837,144 bytes (final, with the wiring) (includes the relay, rustls, winit, zbus, rfd) | 20,444,248 bytes (plus the system WebKitGTK libs) |
 | idle, window shown, RSS | 32.3 MB (26 threads) | 163 + 57 + 215 = 435 MB (app + 2 WebKit processes) |
 | idle, started `--hidden`, RSS | 24.7 MB | not measured |
 | idle CPU over 30 s, window shown | 2 ticks = 0.07 % | 591 ticks = 19.7 % (all three processes) |
@@ -33,3 +33,13 @@ Notes: the Tauri run had no usable tray (CM_NO_TRAY); numbers are one 30 s sampl
 - Popups: Slint/winit cannot set always-on-top or position on Wayland (compositor decides); skip-taskbar not available. Not seen on a real compositor.
 - Not run: tray with a real host (menu, ring toggle), notify-send delivery, Windows build/registry/toast/tray (code written, not compiled for Windows), rfd dialogs, drag-drop of a real file, project move/continue (needs a server relay; only unit-level helpers tested), voice install/stt/tts, hub status, share join, updater end to end (only the download+verify part), autostart on a real session, terminal open, system accent/dark from a real portal, the Oxide file against the user's real theme.
 - Binary is 5 MB larger than the Tauri binary (but needs no WebKitGTK).
+
+## Update: rs/ui root App fully wired (test run, passing)
+- `src/wire.rs` binds every callback of rs/ui's root `App` to the controller and pours controller events into its properties: chats/history (grouped, pinned, tags, search, project filter), the open chat's messages (relay history as markdown rows, live run records appended, queued follow-ups, working row), send/stop/send-now/remove-queued/show-earlier, composer pills (mode/model/effort go to the relay with the message), pin/rename (name taken from the search box, because rs/ui has no text prompt)/delete, usage numbers + tiles (+range), settings switches -> settings keys, theme, devices add/remove/refresh, update card, permission sheet (used when the window is in front, otherwise the separate popup window), pairing by `host code` or hearth:// link, onboarding (shown while `onboarded` is unset), and the Oxide/system palette written into every `Palette` token (the own dark/light values are restored when the desktop gives none).
+- Test `tests/wire.rs` (headless, real relay with a stub claude): fires the root callbacks and checks the effect: onboarding finish saved; chats from relay; open chat shows history; send resumes `--resume seed1` and streams the answer into `messages`; a follow-up is queued, Stop ends the run, the queued one then runs; remove-queued; pin and rename stored in the relay's chat-tags; search filter; setting toggles and theme persisted; new chat in a folder with the chosen mode reaching the relay (`--permission-mode plan`); delete removes the session; a permission hook shows the sheet and `prompt-answered("deny")` answers the hook with deny; pair-connect adds a computer, device-remove removes it; the Oxide palette lands in `Palette` and is undone.
+
+## Final run (after the wiring)
+- `cargo test -p hearth-desktop`: 39 unit tests + controller + render + wire tests all pass.
+- Release binary 25,837,144 bytes. Under the nested headless kwin with the test config (CM_PORT=47699, tray off): window shown, idle 30 s = 1 tick (0.03 % CPU), RSS 32.3 MB; `--hidden` 1 tick, RSS 25.1 MB. (Tauri baseline above: 19.7 % CPU, 435 MB.)
+- Not seen: a screenshot of the mapped real window (nested kwin has no screencopy); the wiring was checked by the headless callback test, not by pointer input.
+- Still not done: voice calls (no audio capture/playback; stt/tts controller calls exist), rename uses the search box text (rs/ui has no text prompt), "allow always" is treated as allow once, undo of a deleted chat has no UI, routines screen action only shows a hint, Windows build never compiled, tray with a real host and notify-send delivery not run.

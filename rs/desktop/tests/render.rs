@@ -29,9 +29,9 @@ fn render_real_screens_and_popup() {
     let app = hearth_ui::App::new().unwrap();
     let d = ScreenData {
         chats: vec![Row { header: "Working now".into(), title: "Fix the login bug".into(), sub: "webshop · working now".into(), working: true, ..Default::default() }, Row { header: "Today".into(), title: "Plan the trip".into(), sub: "Talk · 1h".into(), ..Default::default() }],
-        history: vec![], tiles: vec![("Session (5h)".into(), "80%".into(), "plan usage".into())], devices: vec![("laptop (this computer)".into(), "This computer".into(), false)], status: String::new(),
+        history: vec![], tiles: vec![("Session (5h)".into(), "80%".into(), "plan usage".into())], devices: vec![("laptop (this computer)".into(), "This computer".into(), false)], device_ids: vec![], status: String::new(),
     };
-    apply(&app, &d);
+    apply(&app, &d, "");
     app.show().unwrap();
     let dark = shot(&win, 1180, 760, "chats-dark.png");
     assert!(distinct(&dark) > 20, "the screen is not blank");

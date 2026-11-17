@@ -33,13 +33,6 @@ fn set_pal<C: ComponentHandle>(c: &C, k: &Tokens) where for<'a> Pal<'a>: slint::
     p.set_accent(k.accent.slint()); p.set_on_accent(k.on_accent.slint()); p.set_error(k.error.slint());
 }
 
-/// rs/ui's Palette: dark or light, and the accent (its other tokens are derived inside that crate; the desktop's whole palette needs in-properties there).
-fn set_real_theme(w: &hearth_ui::App, t: &ResolvedTheme) {
-    let p = w.global::<hearth_ui::Palette>();
-    p.set_dark(t.dark);
-    p.set_accent_override(t.accent.map(|(a, _)| a.slint()).unwrap_or(slint::Color::from_argb_u8(0, 0, 0, 0)));
-}
-
 fn rows(v: Vec<(String, String)>) -> ModelRc<Row> { ModelRc::new(VecModel::from(v.into_iter().map(|(t, s)| Row { title: t.into(), sub: s.into() }).collect::<Vec<_>>())) }
 
 /// What the main window shows, from the app's state.
@@ -65,7 +58,7 @@ pub fn fill_main(w: &MainWindow, a: &App, log: &VecDeque<(String, String)>) {
 pub struct Ui {
     pub app: Arc<App>,
     main: RefCell<Option<MainWindow>>,
-    real: RefCell<Option<hearth_ui::App>>,
+    real: RefCell<Option<Rc<crate::wire::Wire>>>,
     popups: RefCell<HashMap<String, PopupWindow>>,
     log: RefCell<VecDeque<(String, String)>>,
     theme: RefCell<Option<ResolvedTheme>>,
@@ -117,15 +110,12 @@ impl Ui {
     }
 
     fn wiring() -> bool { std::env::var("HEARTH_UI").map(|v| v == "wiring").unwrap_or(false) }
-    /// The screens of rs/ui with real data. Only what rs/ui exposes is wired: lists, usage tiles, computers, status; its chat/composer callbacks are not exposed yet.
-    fn create_real(self: &Rc<Self>) -> hearth_ui::App {
-        let w = hearth_ui::App::new().expect("ui window");
-        w.set_status("".into()); w.set_update(false);
-        w.set_messages(ModelRc::new(VecModel::from(Vec::<hearth_ui::Msg>::new())));   // rs/ui ships demo messages; a chat is opened through the controller (send/stream) once rs/ui exposes its callbacks
+    /// The screens of rs/ui, wired to the controller (see wire.rs).
+    fn create_real(self: &Rc<Self>) -> Rc<crate::wire::Wire> {
+        let win = hearth_ui::App::new().expect("ui window");
         let a = self.app.clone();
-        w.on_new_chat({ let a = a.clone(); move || { let a = a.clone(); a.clone().rt.spawn(async move { if let Some(f) = a.pick_folder().await { a.emit(Event::MoveProgress(format!("New chat in {f}"))); } }); } });
-        w.window().on_close_requested({ let a = a.clone(); move || { if !a.quitting.load(std::sync::atomic::Ordering::SeqCst) && a.keep_running() { a.main_visible.store(false, std::sync::atomic::Ordering::SeqCst); a.main_focused.store(false, std::sync::atomic::Ordering::SeqCst); } else { a.quit(); } slint::CloseRequestResponse::HideWindow } });
-        w.window().on_winit_window_event({ let a = a.clone(); move |_, ev| {
+        win.window().on_close_requested({ let a = a.clone(); move || { if !a.quitting.load(std::sync::atomic::Ordering::SeqCst) && a.keep_running() { a.main_visible.store(false, std::sync::atomic::Ordering::SeqCst); a.main_focused.store(false, std::sync::atomic::Ordering::SeqCst); } else { a.quit(); } slint::CloseRequestResponse::HideWindow } });
+        win.window().on_winit_window_event({ let a = a.clone(); move |_, ev| {
             use winit::event::WindowEvent as E;
             match ev {
                 E::Focused(f) => { a.main_focused.store(*f, std::sync::atomic::Ordering::SeqCst); if *f { a.on_focus(); } }
@@ -134,20 +124,17 @@ impl Ui {
             }
             EventResult::Propagate
         } });
-        if let Some(t) = self.theme.borrow().as_ref() { set_real_theme(&w, t); }
-        w
-    }
-    fn reload_real(&self) {
-        let a = self.app.clone();
-        a.rt.clone().spawn(async move { let d = crate::screens::load(&a).await; let _ = slint::invoke_from_event_loop(move || { if let Some(u) = UI.with(|u| u.borrow().clone()) { if let Some(w) = u.real.borrow().as_ref() { crate::screens::apply(w, &d); } } }); });
+        let wire = crate::wire::Wire::new(self.app.clone(), win);
+        if let Some(t) = self.theme.borrow().as_ref() { wire.apply_theme(t); }
+        wire
     }
 
     pub fn show_main(self: &Rc<Self>) {
         if !Self::wiring() {
             if self.real.borrow().is_none() { let w = self.create_real(); *self.real.borrow_mut() = Some(w); }
-            { let r = self.real.borrow(); let w = r.as_ref().unwrap(); let _ = w.show(); w.window().with_winit_window(|x| { x.set_minimized(false); x.focus_window(); }); }
+            { let r = self.real.borrow(); let w = &r.as_ref().unwrap().w; let _ = w.show(); w.window().with_winit_window(|x| { x.set_minimized(false); x.focus_window(); }); }
             self.app.main_visible.store(true, std::sync::atomic::Ordering::SeqCst);
-            self.reload_real();
+            self.real.borrow().as_ref().unwrap().refresh();
             return;
         }
         let mut m = self.main.borrow_mut();
@@ -159,7 +146,7 @@ impl Ui {
         self.app.main_visible.store(true, std::sync::atomic::Ordering::SeqCst);
         let _ = self.hidden_start;
     }
-    fn redraw(&self) { if self.real.borrow().is_some() && self.app.main_visible.load(std::sync::atomic::Ordering::SeqCst) { self.reload_real(); } if let Some(w) = self.main.borrow().as_ref() { if self.app.main_visible.load(std::sync::atomic::Ordering::SeqCst) { fill_main(w, &self.app, &self.log.borrow()); } } }
+    fn redraw(&self) { if let Some(w) = self.main.borrow().as_ref() { if self.app.main_visible.load(std::sync::atomic::Ordering::SeqCst) { fill_main(w, &self.app, &self.log.borrow()); } } }
     fn push_log(&self, title: String, sub: String) { let mut l = self.log.borrow_mut(); l.push_front((title, sub)); l.truncate(50); }
 
     /// Reads the desktop's colors off the UI thread and paints every window with them when they changed.
@@ -171,7 +158,7 @@ impl Ui {
         if self.theme.borrow().as_ref() == Some(&t) { return; }
         let k = tokens_for(&t);
         if let Some(w) = self.main.borrow().as_ref() { set_pal(w, &k); }
-        if let Some(w) = self.real.borrow().as_ref() { set_real_theme(w, &t); }
+        if let Some(w) = self.real.borrow().as_ref() { w.apply_theme(&t); }
         for p in self.popups.borrow().values() { set_pal(p, &k); }
         *self.theme.borrow_mut() = Some(t);
     }
@@ -193,11 +180,13 @@ impl Ui {
     }
 
     pub fn handle(self: &Rc<Self>, e: Event) {
+        let wire = self.real.borrow().clone();
+        if let Some(w) = &wire { if w.handle(&e) { return; } }
         match e {
             Event::State => self.redraw(),
             Event::Relay { ev, .. } => { if ev.s("kind") != "resolved" { let cwd = ev.s("cwd"); let proj = cwd.trim_end_matches('/').rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or("Claude").to_string(); self.push_log(format!("{proj}: {}", ev.s("kind")), if ev.s("text").is_empty() { ev.s("title") } else { ev.s("text") }); self.redraw(); } }
-            Event::MoveProgress(t) => { if let Some(w) = self.real.borrow().as_ref() { w.set_status(t.clone().into()); } if let Some(w) = self.main.borrow().as_ref() { w.set_status(t.into()); } }
-            Event::UpdateAvailable(n) => { if let Some(w) = self.real.borrow().as_ref() { w.set_update(true); } if let Some(w) = self.main.borrow().as_ref() { w.set_update_text(format!("Version {} is ready.", n.s("latest")).into()); } *self.update.borrow_mut() = n; }
+            Event::MoveProgress(t) => { if let Some(w) = self.main.borrow().as_ref() { w.set_status(t.into()); } }
+            Event::UpdateAvailable(n) => { if let Some(w) = self.main.borrow().as_ref() { w.set_update_text(format!("Version {} is ready.", n.s("latest")).into()); } *self.update.borrow_mut() = n; }
             Event::UpdateProgress(p) => { if let Some(w) = self.main.borrow().as_ref() { w.set_status(p.s("text").into()); } if p.s("step") == "end" && p.s("state") == "ok" { if let Some(w) = self.main.borrow().as_ref() { w.set_update_text(SharedString::new()); } } }
             Event::ShowMain => self.show_main(),
             Event::Popup(s) => self.open_popup(s),
@@ -208,7 +197,7 @@ impl Ui {
                 if let Some(icon) = decode_icon(&png) { if let Some(w) = self.main.borrow().as_ref() { w.window().with_winit_window(|x| x.set_window_icon(Some(icon))); } } }
             Event::Quit => { let _ = slint::quit_event_loop(); }
             Event::Relaunch => { RELAUNCH.store(true, std::sync::atomic::Ordering::SeqCst); let _ = slint::quit_event_loop(); }
-            Event::Goto(_) | Event::OpenSession { .. } | Event::Stream { .. } | Event::VoiceInstall(_) | Event::PendingProjects(_) | Event::PairRequests(_) => {}
+            _ => {}
         }
     }
 }
