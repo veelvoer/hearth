@@ -3,6 +3,7 @@ pub mod app;
 pub mod color;
 pub mod ctl;
 pub mod net;
+pub mod screens;
 pub mod single;
 pub mod sys;
 pub mod theme;

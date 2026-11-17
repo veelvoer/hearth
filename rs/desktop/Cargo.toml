@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 hearth-relay = { path = "../../desktop/relay-rs" }
 hearth-client = { path = "../client" }
+hearth-ui = { path = "../ui" }
 slint = { version = "1.19", default-features = false, features = ["std", "compat-1-2", "backend-winit", "backend-winit-wayland", "backend-winit-x11", "renderer-software", "software-renderer-systemfonts", "unstable-winit-030"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "time", "sync", "io-util"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "json"] }
@@ -44,4 +45,5 @@ tauri-winrt-notification = "0.7"
 slint-build = "1.19"
 
 [dev-dependencies]
+png = "0.17"
 tempfile = "3"

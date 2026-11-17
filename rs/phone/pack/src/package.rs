@@ -395,7 +395,10 @@ fn build_apk(app: &App, abis: &[String], debug_lib: bool, skip_rust: bool, out_d
     let jnilibs = work.join("jniLibs");
     if !skip_rust {
         let mut c = Command::new("cargo");
-        c.current_dir(&t.root).env("ANDROID_NDK_HOME", t.ndk()?).env("ANDROID_HOME", &t.sdk).arg("ndk");
+        c.current_dir(&t.root).env("ANDROID_NDK_HOME", t.ndk()?).env("ANDROID_HOME", &t.sdk).env("ANDROID_JAR", &t.android_jar).env("ANDROID_PLATFORM", COMPILE_SDK).arg("ndk");
+        if let Some(j) = &t.java_home {
+            c.env("JAVA_HOME", j);
+        }
         for a in abis {
             c.arg("-t").arg(a);
         }

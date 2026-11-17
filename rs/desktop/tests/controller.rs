@@ -169,7 +169,7 @@ async fn controller_end_to_end() {
     assert_eq!(app.support_verify("me@example.com", "123456").await.unwrap().s("email"), "me@example.com"); assert!(app.support_state().t("signedIn"));
     app.support_call("GET", "/auth/whoami", None, true).await.err(); // 404 from the fake: an error, token stays
     assert!(app.support_state().t("signedIn")); app.support_logout().await; assert!(!app.support_state().t("signedIn"));
-    assert!(support_seen.lock().unwrap().iter().any(|r| r.contains("Authorization: Bearer tok123") || r.contains("authorization: bearer tok123")));
+    assert!(support_seen.lock().unwrap().iter().any(|r| r.to_lowercase().contains("authorization: bearer tok123")));
 
     // the updater's download: size and sha256 are checked
     let payload = b"pretend this is an AppImage".to_vec();
