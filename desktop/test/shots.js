@@ -94,6 +94,12 @@ window.cm = new Proxy({}, { get: (t, k) => {
       if (tb) { const before = await page.evaluate(() => tab); await page.mouse.move(...mv(0)); await page.mouse.down(); await page.mouse.move(...mv(70), { steps: 6 }); await page.waitForTimeout(120); await shot('8-drag');
         await page.mouse.move(...mv(125), { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(900); await shot('9-drag-dropped');
         console.log('motion: drag moved the tab from', before, 'to', await page.evaluate(() => tab)); }
+      // the marker must sit on the chosen place after every switch, also from Chats (compact dock) to elsewhere (full dock)
+      const offBy = async () => page.evaluate(() => { const m = document.querySelector('#nav .tabs > .m3marker'), on = document.querySelector('#nav .tabs button.on .ic'); if (!m || !on) return 'none'; const a = m.getBoundingClientRect(), b = on.getBoundingClientRect(); return Math.round(Math.abs((a.left + a.width / 2) - (b.left + b.width / 2)) + Math.abs((a.top + a.height / 2) - (b.top + b.height / 2))); });
+      const seq = ['Chats', 'Settings', 'Chats', 'History', 'Home', 'Chats', 'Home'];
+      const res = [];
+      for (const s of seq) { await page.locator('#nav .tabs button', { hasText: s }).first().click(); await page.waitForTimeout(1300); res.push(s + ':' + (await offBy()) + 'px'); }
+      console.log('motion: marker distance from the chosen place after each switch:', res.join(' '));
       await page.mouse.move(600, 740); await page.waitForTimeout(1500);
       const frames = await page.evaluate(() => new Promise((res) => { let n = 0; const o = window.requestAnimationFrame; window.requestAnimationFrame = (f) => { n++; return o(f); }; setTimeout(() => { window.requestAnimationFrame = o; res(n); }, 1500); }));
       console.log('motion: rAF calls while idle for 1.5 s:', frames, '· tab now:', await page.evaluate(() => tab), '· light layers left:', await page.evaluate(() => document.querySelectorAll('.m3light').length));

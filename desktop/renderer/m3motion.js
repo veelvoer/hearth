@@ -165,10 +165,11 @@
     if (drag) return;
     const t = pillTarget(btn);
     Object.assign(pill.style, { width: t.w + 'px', height: t.h + 'px' }); pill._o = h ? t.y : t.x;
-    if (pillFor === btn.dataset.tab && animate !== 'force') { pillY.onChange(pillY.v); return; }
+    const to = along(t, h);
+    // the same place, but the dock changed size (compact on Chats, full elsewhere): follow it, never stay on an old spot
+    if (pillFor === btn.dataset.tab && animate !== 'force' && Math.abs(to - pillY.t) < 0.5) { pillY.onChange(pillY.v); return; }
     const moving = pillFor !== null && animate !== false;
     pillFor = btn.dataset.tab;
-    const to = along(t, h);
     if (moving) {
       const dist = Math.abs(to - pillY.v);
       pillS.to(1, ...FAST); pillS.kick(dist > 4 ? Math.min(5, dist / 25) : 0);   // stretches along its way and settles round
@@ -178,6 +179,8 @@
   if (nav) {
     new MutationObserver(() => requestAnimationFrame(() => syncPill(true))).observe(nav, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
     addEventListener('resize', () => syncPill(false));
+    // the dock grows and shrinks between screens: measure again whenever a place changes size, so the marker always sits on the chosen place
+    if (window.ResizeObserver) { const ro = new ResizeObserver(() => syncPill(true)); const watch = () => { const tb = nav.querySelector('.tabs'); if (tb && !tb._ro) { tb._ro = true; ro.observe(tb); tb.querySelectorAll('button[data-tab]').forEach((b) => ro.observe(b)); } }; watch(); new MutationObserver(watch).observe(nav, { childList: true }); }
     // drag the marker along the places; letting go picks the nearest one
     nav.addEventListener('pointerdown', (e) => {
       if (!navOn() || !on() || e.button !== 0) return;

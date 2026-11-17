@@ -46,7 +46,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -282,45 +282,61 @@ fun SwipeRow(start: SwipeAction?, end: SwipeAction?, shape: Shape, modifier: Mod
  * ([backdropSource]), and the dock draws that same layer again behind itself, blurred by the GPU ([frostedGlass]).
  * Android 12 and newer; older phones get a slightly more opaque tint instead.
  */
-class Backdrop { var layer: androidx.compose.ui.graphics.layer.GraphicsLayer? = null; var origin by mutableStateOf(Offset.Zero) }
+class Backdrop { var layer: androidx.compose.ui.graphics.layer.GraphicsLayer? = null; var coords: androidx.compose.ui.layout.LayoutCoordinates? = null }
 val LocalBackdrop = androidx.compose.runtime.staticCompositionLocalOf<Backdrop?> { null }
 
 fun Modifier.backdropSource(b: Backdrop): Modifier = composed {
     val layer = androidx.compose.ui.graphics.rememberGraphicsLayer()
     b.layer = layer
-    this.onGloballyPositioned { b.origin = it.positionInWindow() }
+    this.onPlaced { b.coords = it }
         .drawWithContent { layer.record { this@drawWithContent.drawContent() }; drawLayer(layer) }
 }
 
-/** The glass itself: the page behind, blurred and brightened, a tint of the surface, a hairline edge and light catching its top. */
+/** More colour in the blurred page, as real frosted glass has (1 = unchanged). */
+private fun saturate(s: Float) = androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(s) }
+
+/**
+ * The glass itself: the page behind, blurred and a little more colourful, a light tint of the surface, a hairline edge
+ * and light catching its top. Where the page is behind it is worked out at the moment it is drawn, from the real
+ * positions (including every animation of the dock), so the blurred picture never lags behind or jumps.
+ * [motion] is any value that changes while the glass moves (the dock's slide, the add button's scale): reading it redraws the glass.
+ * [settling]: while the dock flies in or out, a plain tint is shown instead (moving glass over a moving page only flickers).
+ */
 @Composable
-fun GlassBack(shape: Shape, tint: Color, modifier: Modifier = Modifier) {
+fun GlassBack(shape: Shape, tint: Color, modifier: Modifier = Modifier, motion: () -> Float = { 0f }, settling: Boolean = false) {
     val b = LocalBackdrop.current
     val cs = MaterialTheme.colorScheme
     val dark = cs.surface.luminance() < .5f
-    var at by remember { mutableStateOf(Offset.Zero) }
-    val blurPx = with(LocalDensity.current) { 30.dp.toPx() }
-    val canBlur = android.os.Build.VERSION.SDK_INT >= 31 && b != null
-    Box(modifier.onGloballyPositioned { at = it.positionInWindow() }.clip(shape)) {
+    var me by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
+    val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
+    val canBlur = android.os.Build.VERSION.SDK_INT >= 31 && b != null && !settling
+    val paint = remember { androidx.compose.ui.graphics.Paint().apply { colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(saturate(1.6f)) } }
+    Box(modifier.onPlaced { me = it }.clip(shape)) {
         if (canBlur) Box(Modifier.matchParentSize()
             .graphicsLayer {
                 renderEffect = androidx.compose.ui.graphics.BlurEffect(blurPx, blurPx, androidx.compose.ui.graphics.TileMode.Clamp)
                 clip = true; this.shape = shape
             }
             .drawBehind {
+                motion()   // redraw while the glass moves
                 val l = b?.layer ?: return@drawBehind
-                val o = b.origin - at
-                drawContext.canvas.save(); drawContext.canvas.translate(o.x, o.y)
+                val src = b.coords ?: return@drawBehind; val mine = me ?: return@drawBehind
+                if (!src.isAttached || !mine.isAttached) return@drawBehind
+                val at = src.localPositionOf(mine, Offset.Zero)   // where this glass is on the page, with every transform
+                val c = drawContext.canvas
+                c.saveLayer(androidx.compose.ui.geometry.Rect(Offset.Zero, size), paint)
+                c.translate(-at.x, -at.y)
                 drawLayer(l)
-                drawContext.canvas.restore()
+                c.restore()
             })
-        // the tint: thin where there is a blur to show, fuller where there is not
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(tint.copy(alpha = if (canBlur) .55f else .9f), tint.copy(alpha = if (canBlur) .38f else .82f)))))
+        // the tint: light where there is a blur to show, fuller where there is not (older Android, or while the dock moves)
+        val a = if (canBlur) (if (dark) .34f to .22f else .55f to .40f) else (if (dark) .92f to .86f else .94f to .88f)
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(tint.copy(alpha = a.first), tint.copy(alpha = a.second)))))
         // a hairline edge and the light on its top edge
         Box(Modifier.matchParentSize().drawWithContent {
             val outline = shape.createOutline(size, layoutDirection, this)
             val stroke = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
-            val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) .22f else .7f), Color.White.copy(alpha = if (dark) .04f else .2f), Color.Black.copy(alpha = if (dark) .12f else .04f)))
+            val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) .26f else .75f), Color.White.copy(alpha = if (dark) .05f else .22f), Color.Black.copy(alpha = if (dark) .10f else .04f)))
             when (outline) {
                 is Outline.Rounded -> drawRoundRect(edge, cornerRadius = outline.roundRect.topLeftCornerRadius, style = stroke)
                 is Outline.Generic -> drawPath(outline.path, edge, style = stroke)
@@ -350,6 +366,7 @@ fun FloatingDock(
     modifier: Modifier = Modifier,
     addModifier: Modifier = Modifier,
     glass: Boolean = false,
+    settling: Boolean = false,   // the dock is flying in or out
 ) {
     val cs = MaterialTheme.colorScheme
     val dark = cs.surface.luminance() < .5f
@@ -369,7 +386,7 @@ fun FloatingDock(
             Box(Modifier
                 .graphicsLayer { translationX = shift.toPx() }
                 .width(dockW).height(dockH)
-                .shadow(if (dark) 10.dp else 14.dp, RoundedCornerShape(50), ambientColor = if (dark) Color.Black else cs.primary.copy(alpha = .3f), spotColor = if (dark) Color.Black else cs.primary.copy(alpha = .35f))
+                .let { if (glass) it else it.shadow(if (dark) 10.dp else 14.dp, RoundedCornerShape(50), ambientColor = if (dark) Color.Black else cs.primary.copy(alpha = .3f), spotColor = if (dark) Color.Black else cs.primary.copy(alpha = .35f)) }   // glass shows its edge, not a shadow through itself
                 .clip(RoundedCornerShape(50))
                 .let { if (glass) it else it.background(if (dark) cs.surfaceContainerHigh else cs.surfaceContainerLow) }
                 .pointerInput(items.size) {
@@ -385,7 +402,7 @@ fun FloatingDock(
                         drag = nx
                     }
                 }) {
-                if (glass) GlassBack(RoundedCornerShape(50), if (dark) cs.surfaceContainerHighest else cs.surfaceContainerLow, Modifier.matchParentSize())
+                if (glass) GlassBack(RoundedCornerShape(50), if (dark) cs.surfaceContainerHighest else cs.surfaceContainerLow, Modifier.matchParentSize(), motion = { shift.value }, settling = settling)
                 BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
                     val marker = 52.dp
                     val held = drag?.let { with(density) { (it.toDp() - 4.dp - marker / 2).coerceIn(0.dp, itemW * (items.size - 1) + (itemW - marker)) } }
@@ -404,12 +421,12 @@ fun FloatingDock(
             }
             Box(addModifier
                 .size(dockH)
-                .graphicsLayer { alpha = addAlpha; scaleX = addScale; scaleY = addScale; rotationZ = addTurn }
-                .shadow(if (showAdd) 12.dp else 0.dp, RoundedCornerShape(22.dp), ambientColor = cs.primary.copy(alpha = .4f), spotColor = cs.primary.copy(alpha = .5f))
+                .graphicsLayer { alpha = addAlpha; scaleX = addScale; scaleY = addScale; if (!glass) rotationZ = addTurn }   // glass does not turn: the page behind it must stay upright
+                .let { if (glass) it else it.shadow(if (showAdd) 12.dp else 0.dp, RoundedCornerShape(22.dp), ambientColor = cs.primary.copy(alpha = .4f), spotColor = cs.primary.copy(alpha = .5f)) }
                 .elastic(RoundedCornerShape(22.dp), enabled = showAdd, stretch = 0.08f, travel = 2.dp, label = addLabel, onClick = onAdd)
                 .let { if (glass) it else it.background(cs.primaryContainer) },
                 contentAlignment = Alignment.Center) {
-                if (glass) GlassBack(RoundedCornerShape(22.dp), cs.primaryContainer, Modifier.matchParentSize())
+                if (glass) GlassBack(RoundedCornerShape(22.dp), cs.primaryContainer, Modifier.matchParentSize(), motion = { addScale }, settling = settling)
                 Glyph("plus", 28.dp, cs.onPrimaryContainer)
             }
         }

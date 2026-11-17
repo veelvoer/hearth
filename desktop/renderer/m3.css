@@ -235,3 +235,6 @@
 :root[data-style="m3"].m3side .split > .side { padding-bottom: 84px; }
 /* the update card comes in at the top right, where it never covers the message box or the dock */
 :root[data-style="m3"] .updcard { top: 18px; bottom: auto; border-radius: 24px; border: 0; background: var(--m3-surface-high); box-shadow: 0 10px 32px rgba(0, 0, 0, .28); }
+/* the plus sits exactly in the middle of its button, whatever the hidden label does */
+:root[data-style="m3"] #nav button.newchat { position: relative; overflow: hidden; line-height: 0; letter-spacing: 0; }
+:root[data-style="m3"] #nav button.newchat::before { position: absolute; left: 50%; top: 50%; margin: -12px 0 0 -12px; }

@@ -179,7 +179,7 @@ private fun Main() {
                 // the floating dock: the four places, and on Chats the add button that grows out of it
                 FloatingDock(tabs.mapIndexed { i, s -> s to listOf("chat", "home", "history", "gear")[i] }, listOf(Tap.Wiggle, Tap.Bounce, Tap.Rewind, Tap.Turn), tab, { Ui.tab = it },
                     showAdd = tab == 0 && Ui.hasMachines, addLabel = "New chat", onAdd = { Ui.startNew = true },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).tourTarget("tabs"), addModifier = Modifier.tourTarget("new"), glass = Fx.glass)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).tourTarget("tabs"), addModifier = Modifier.tourTarget("new"), glass = Fx.glass, settling = transition.isRunning)
             }
         } }
         if (!Ui.chatOpen) {
