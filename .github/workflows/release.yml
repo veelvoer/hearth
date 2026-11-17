@@ -73,6 +73,11 @@ jobs:
           rustup target add aarch64-unknown-linux-musl
           CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc cargo build --release --manifest-path desktop/relay-rs/Cargo.toml --target aarch64-unknown-linux-musl
           cp desktop/relay-rs/target/aarch64-unknown-linux-musl/release/hearth-relay out/hearth-relay-linux-arm64
+      - name: The server installer (a static Rust program)
+        run: |
+          cargo build --release --manifest-path rs/Cargo.toml -p hearth-server --target x86_64-unknown-linux-musl
+          cp rs/target/x86_64-unknown-linux-musl/release/hearth-server out/hearth-server-linux-x64
+          (cd out && sha256sum hearth-server-linux-x64 > hearth-server.sha256)
       - name: Checksums
         run: cd out && sha256sum hearth-relay-linux-* > hearth-relay.sha256
       - uses: actions/upload-artifact@v4
@@ -102,33 +107,14 @@ jobs:
           path: |
             Hearth-*.apk
             Hearth-watch-*.zip
-  rust-apps:
-    needs: check
-    uses: ./.github/workflows/rust-apps.yml
-    secrets: inherit
   publish:
-    needs: [desktop, android, relay-front, rust-apps]
+    needs: [desktop, android, relay-front]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { path: all }
-      - name: Sort the files (the Rust apps go in their own pre-release, so the phone app's normal update never sees them)
-        run: |
-          mkdir out rust
-          for d in all/*; do case "$(basename "$d")" in rust-*) cp "$d"/* rust/ ;; *) cp "$d"/* out/ ;; esac; done
-          ls -la out rust
-          # the server installer's checksum file belongs with the program, in the main release as well
-          mv rust/hearth-server-linux-x64 rust/hearth-server.sha256 out/
+        with: { path: out, merge-multiple: true }
       - name: The notes of this version become the text of the release
         run: cp "release-notes/${GITHUB_REF_NAME#v}.md" NOTES.md
       - uses: softprops/action-gh-release@v2
         with: { files: out/*, body_path: NOTES.md }
-      - name: The Rust apps
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}-rust
-          name: Hearth ${{ github.ref_name }} in Rust (early versions)
-          prerelease: true
-          files: rust/*
-          body: "Early versions of Hearth written in Rust: the desktop app (Linux, Windows), the phone and watch apps (they take the place of the current apps, same app id and key) and the server installer. In the phone app: Settings → Updates → Hearth in Rust. Notes: see the main release."

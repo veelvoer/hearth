@@ -109,32 +109,9 @@ object Updates {
             val o = JSONObject(c.inputStream.bufferedReader().readText())
             val assets = o.optJSONArray("assets")
             var apk: String? = null
-            if (assets != null) for (i in 0 until assets.length()) { val a = assets.getJSONObject(i); val n = a.getString("name"); if (n.endsWith(".apk") && !n.contains("watch", true) && !n.contains("rust", true)) apk = a.getString("browser_download_url") }
+            if (assets != null) for (i in 0 until assets.length()) { val a = assets.getJSONObject(i); val n = a.getString("name"); if (n.endsWith(".apk") && !n.contains("watch", true)) apk = a.getString("browser_download_url") }
             return Release(o.getString("tag_name"), o.getString("tag_name").removePrefix("v"), o.optString("body"), apk)
         } finally { c.disconnect() }
-    }
-
-    /** The Rust apps (early versions, installed next to this app) live in a pre-release "v<version>-rust". Returns phone and watch APK addresses and the version, or null. */
-    data class RustApps(val version: String, val phoneUrl: String?, val watchUrl: String?)
-    var rust by mutableStateOf<RustApps?>(null)
-    suspend fun checkRust(): String? = withContext(Dispatchers.IO) {
-        try {
-            val c = URL("https://api.github.com/repos/veelvoer/hearth/releases?per_page=8").openConnection() as HttpURLConnection
-            c.connectTimeout = 8_000; c.readTimeout = 12_000; c.setRequestProperty("Accept", "application/vnd.github+json"); c.setRequestProperty("User-Agent", "Hearth-app")
-            try {
-                if (c.responseCode != 200) return@withContext "GitHub said ${c.responseCode}"
-                val list = org.json.JSONArray(c.inputStream.bufferedReader().readText())
-                for (i in 0 until list.length()) {
-                    val o = list.getJSONObject(i); val tag = o.getString("tag_name")
-                    if (!tag.endsWith("-rust")) continue
-                    val assets = o.optJSONArray("assets"); var phone: String? = null; var watch: String? = null
-                    if (assets != null) for (k in 0 until assets.length()) { val a = assets.getJSONObject(k); val n = a.getString("name"); val u = a.getString("browser_download_url")
-                        if (n.startsWith("Hearth-rust-phone-") && n.endsWith(".apk")) phone = u else if (n.startsWith("Hearth-rust-watch-") && n.endsWith(".apk")) watch = u }
-                    rust = RustApps(tag.removePrefix("v").removeSuffix("-rust"), phone, watch); return@withContext null
-                }
-                rust = null; "There is no Rust app release yet."
-            } finally { c.disconnect() }
-        } catch (e: Exception) { "Could not look: ${e.message ?: "no connection"}" }
     }
 
     /** Looks on GitHub. Sets [release] when something newer is there. Returns an error text or null. */
@@ -256,15 +233,6 @@ fun UpdatesCard() {
             TextAction("Check for updates") { if (!Updates.busy) scope.launch { look() } }
             TextAction("What changed") { history = true }
             if (r != null) Button("Update", Modifier) { if (!Updates.busy) scope.launch { Updates.install(c, r) } }
-        } }
-        // the Rust apps: early versions that install next to this app (they do not replace it)
-        Spacer(Modifier.height(10.dp))
-        Label("Hearth in Rust (early version)")
-        val ra = Updates.rust
-        Txt(if (ra == null) "A faster Hearth, written in Rust. It takes the place of this app (same app, updated in place). Your servers have to be paired again." else "Version ${ra.version}: replaces this app, you pair your servers again.", T.small, muted = true)
-        androidx.compose.runtime.CompositionLocalProvider(LocalIconAlign provides androidx.compose.ui.Alignment.CenterStart) { @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class) FlowRow(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-            if (ra == null) TextAction("Look for the Rust app") { if (!Updates.busy) scope.launch { note = Updates.checkRust() ?: "" } }
-            if (ra?.phoneUrl != null) Button("Install the Rust phone app", Modifier) { if (!Updates.busy) scope.launch { Updates.install(c, Updates.Release("v" + ra.version, ra.version, "", ra.phoneUrl)) } }
         } }
         servers.forEach { m ->
             val info = infos[m.host]

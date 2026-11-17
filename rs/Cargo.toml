@@ -1,10 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["client", "ui", "xtask", "server", "tests", "desktop", "phone/glue", "phone", "phone/pack", "watch"]
-# desktop, phone and watch join as they come up (they need system libraries / the Android toolchain)
+members = ["xtask", "server", "tests"]
 
 [workspace.package]
-version = "1.41.1"
+version = "1.41.2"
 edition = "2021"
 
 [profile.release]
