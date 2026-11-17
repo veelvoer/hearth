@@ -22,7 +22,7 @@
 
 ## Missing
 - Wiring `hearth-ui` App to hearth-client: rs/ui `App` only exposes `new-chat()` at the root (open/send/pin/delete/connect callbacks live inside child components, not forwarded), so it cannot be driven from Rust yet; rs/ui must forward them. Not done: chats, streaming chat, home/usage, history, settings, relay-event notifications, call audio, attach flow in the UI.
-- armv7 build, release signing, phone x86_64 APK (only arm64 verified for phone).
+
 
 ## Controller (rs/phone/src/controller.rs), verified
 - Plain Rust view-model: `State` (screen, chats, history, messages, queued, draft, attachments, usage tiles, settings, call, devices) + `Controller` actions: pair (link or address+code), refresh, search, pin/rename, open_chat, send (queues while working), stop, send_now, remove_queued, set_draft, dictate, attach_file/attach_photo (upload to relay `/upload`, `@path` in the prompt like the Kotlin app), share_last_answer, copy, start_call/hang_up/set_muted, relay `/events` -> notifications, settings persistence, remove_device, load_projects/set_cwd for new chats. Effects go through the `Platform` trait; `platform_android.rs` implements it with hearth-android (compiled for android only).
@@ -34,3 +34,20 @@
 - `cargo test -p hearth-phone` (needs PKG_CONFIG_SYSROOT_DIR/PKG_CONFIG_LIBDIR from the brief for the host Slint build): 2 tests pass. `tests/app_binding.rs` fires root callbacks headlessly (MinimalSoftwareWindow platform, no event loop; state applied by `apply`) against the in-process relay: onboarding -> pair-connect "addr code" -> chats -> open-chat -> messages -> send + queued + streaming reply -> setting-toggled/theme-picked (Palette.dark flips) -> pin-chat -> permission prompt from a relay event, prompt-answered closes it -> mic/call-hangup -> tab-changed -> device-remove back to onboarding.
 - Not wired (no controller action behind them): delete-chat, rename-chat, update-install/later, routine-new, pair-scan (no QR scanner), filter-clicked, show-earlier, usage-range-picked, chat/settings search, most settings toggles besides motion/notifications/theme. Home usage shows pct and reset only (greeting, pace, notes keep the demo defaults). Call screen: foreground service starts, but no audio/speech pipeline.
 - Slint on Android with the `software-renderer-systemfonts` feature (pulled by hearth-ui) is unverified on a device; the arm64 build compiles.
+
+## Final APKs (rebuilt after the wiring, verified with aapt2/apksigner, `llvm-nm -D`)
+- `rs/target/apk/hearth-phone-rust-debug.apk` 36.3 MB (arm64-v8a + x86_64, classes.dex 0.9 MB), v3 signature verified, package dev.voer.hearth.rust. `libhearth_phone.so` exports `android_main` and the four `Java_dev_voer_hearth_rust_HearthNative_*` symbols. Watch: `hearth-watch-rust-debug.apk` 31.6 MB, package dev.voer.hearth.rust.watch, watch feature present. Neither was installed or run on a device.
+- armv7: `rustup target add armv7-linux-androideabi` works, but the Slint Android backend always pulls `skia-safe`, and rust-skia publishes no prebuilt Skia for armv7-linux-androideabi, so the armv7 build fails in `skia-bindings` (seen in the log). Not available without building Skia from source. `--all-abis` exists but will fail until that changes; default ABIs are arm64-v8a + x86_64.
+- Note: the Android backend renders with Skia (GL/Vulkan), not the software renderer; `renderer-software` in Cargo.toml only matters on the host (tests).
+- Release signing: `hearth-pack <app> --release-sign` reads HEARTH_KEYSTORE, HEARTH_KEYSTORE_PASS (+ optional HEARTH_KEY_ALIAS, HEARTH_KEY_PASS) from the environment, writes `hearth-<app>-rust-release.apk`; without HEARTH_KEYSTORE it stops with a message (seen). A real release signing run was not done (no key used).
+
+## Building on a clean machine / CI (ubuntu-latest)
+Needs: Rust stable + `cargo install cargo-ndk`, `rustup target add aarch64-linux-android x86_64-linux-android`, Android SDK with `platforms;android-35` and build-tools (aapt2, zipalign, apksigner, d8; newest installed is used), NDK 27 (`ANDROID_NDK_HOME`, else newest under `$ANDROID_HOME/ndk`), a JDK 17+ with `javac` (`JAVA_HOME`; also used for d8 and for Slint's build script), `curl`, and a debug keystore at `~/.android/debug.keystore` (or `HEARTH_KEYSTORE`; create with `keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -validity 10000 -dname CN=Android Debug`).
+```
+export ANDROID_HOME=$ANDROID_SDK_ROOT ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018 JAVA_HOME=$JAVA_HOME_17_X64
+cd rs && cargo run -p hearth-pack -- phone && cargo run -p hearth-pack -- watch   # -> rs/target/apk/
+```
+The Play services client AARs are taken from the Gradle cache if present, else downloaded (curl, Google Maven, pinned wearable 19.0.0, tasks 18.3.2, basement 18.9.0, base 18.7.2) into `$HEARTH_TMP/gms` (default ~/hearth-tmp/gms). Verified: with HEARTH_GMS_DIR pointing nowhere the four AARs were downloaded and unpacked; a full clean-runner build was not run (only this machine). Host tests need the PKG_CONFIG_* variables from the brief (fontconfig) here; on ubuntu `libfontconfig1-dev` is enough.
+
+## What the user should expect on first run (untested on any device)
+Onboarding -> pairing (paste a `hearth://` link, or "address 123456") -> chats. The app asks for the notification permission at start. Chat streaming, queue, stop, pin, usage numbers, theme/motion/notification settings, permission prompts from the relay, call button (starts the foreground service only), share (chat menu), dictation/attach/photo plumbing exist in the controller but the App has no visible buttons wired for attach/photo/dictation except what rs/ui exposes (`mic` starts a call). Expect rough edges: the first real run is also the first time Skia/fonts/JNI run on Android. Debug app ids never touch the existing Kotlin apps.
