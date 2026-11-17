@@ -164,8 +164,9 @@ export component PermissionPrompt inherits Rectangle {
 export component CallScreen inherits Rectangle {
     in property <string> time: "02:14";
     in property <string> state: "Listening";
-    in-out property <bool> muted;
+    in property <bool> muted;
     callback hangup();
+    callback mute(bool);
     VerticalLayout {
         padding: 28px;
         padding-top: 60px;
@@ -180,7 +181,7 @@ export component CallScreen inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             spacing: 24px;
-            IconButton { icon: "mic"; size: 64px; kind: root.muted ? "primary" : "tonal"; clicked => { root.muted = !root.muted; } }
+            IconButton { icon: "mic"; size: 64px; kind: root.muted ? "primary" : "tonal"; clicked => { root.mute(!root.muted); } }
             Tap {
                 width: 64px;
                 height: 64px;

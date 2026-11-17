@@ -81,7 +81,6 @@ export component Tap inherits Rectangle {
     callback clicked();
     transform-scale: (ta.pressed && root.elastic && root.enabled) ? 0.94 : 1.0;
     animate transform-scale { duration: Motion.fast; easing: Motion.spring; }
-    animate background { duration: Motion.hover; easing: Motion.out; }
     Rectangle {
         border-radius: root.border-radius;
         background: !root.enabled ? transparent : ta.pressed ? root.tint.with-alpha(0.16) : ta.has-hover ? root.tint.with-alpha(0.08) : transparent;
@@ -140,7 +139,7 @@ export component PillButton inherits Tap {
 
 // ---------------------------------------------------------------- Switch (M3)
 export component Switch inherits Rectangle {
-    in-out property <bool> checked;
+    in property <bool> checked;
     callback toggled(bool);
     width: 52px;
     height: 32px;
@@ -148,7 +147,6 @@ export component Switch inherits Rectangle {
     background: root.checked ? Palette.accent : Palette.card-highest;
     border-width: root.checked ? 0px : 2px;
     border-color: Palette.outline;
-    animate background { duration: Motion.hover; easing: Motion.out; }
     Rectangle {
         width: ta.pressed ? 28px : root.checked ? 24px : 16px;
         height: self.width;
@@ -158,9 +156,8 @@ export component Switch inherits Rectangle {
         background: root.checked ? Palette.on-accent : Palette.outline;
         animate x { duration: Motion.move; easing: Motion.spring; }
         animate width { duration: Motion.fast; easing: Motion.spring; }
-        animate background { duration: Motion.hover; easing: Motion.out; }
     }
-    ta := TouchArea { mouse-cursor: pointer; clicked => { root.checked = !root.checked; root.toggled(root.checked); } }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.toggled(!root.checked); } }
 }
 
 // ---------------------------------------------------------------- Field (pill, tonal)
@@ -168,6 +165,7 @@ export component Field inherits Rectangle {
     in property <string> placeholder;
     in property <string> icon;
     in-out property <string> text;
+    callback edited(string);
     height: 48px;
     border-radius: 24px;
     background: Palette.card-high;
@@ -185,6 +183,7 @@ export component Field inherits Rectangle {
                 width: parent.width;
                 y: (parent.height - self.height) / 2;
                 text <=> root.text;
+                edited => { root.edited(self.text); }
                 font-size: Type.body;
                 color: Palette.text;
                 single-line: true;

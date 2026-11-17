@@ -6,6 +6,22 @@ import { UpdateCard } from "flows.slint";
 export struct Tile { label: string, value: string, sub: string }
 export struct NavItem { header: string, id: string, label: string, icon: string }
 export struct Device { name: string, sub: string, removable: bool }
+export struct Usage {
+    greeting: string, date-line: string, updated: string,
+    session-pct: float, session-reset: string, session-at: string, session-pace: string, session-note: string,
+    week-pct: float, week-reset: string, week-at: string, week-pace: string, week-note: string,
+    opus-pct: float, sonnet-pct: float,
+    range: string, scope: string,
+}
+// all settings values the pages show; the app owns them and writes them back through `toggled` / `theme`
+export struct SettingsState {
+    theme: string,
+    motion: bool, frosted: bool, expressive: bool,
+    notify-finished: bool, notify-usage: bool,
+    auto-update: bool, install-on-quit: bool,
+    run-on-server: bool, keep-copy: bool,
+    ask-edit: bool, ask-cmd: bool,
+}
 
 // ---------------------------------------------------------------- Home (usage)
 component PaceChip inherits Rectangle {
@@ -51,6 +67,8 @@ component UsageCard inherits Card {
     in property <string> note;
     in property <float> pct;
     in property <bool> bars;
+    in property <float> opus;
+    in property <float> sonnet;
     in property <length> ring: 148px;
     fill: Palette.card-high;
     HorizontalLayout {
@@ -74,8 +92,8 @@ component UsageCard inherits Card {
             Text { text: root.note; color: Palette.muted; font-size: Type.caption; wrap: word-wrap; }
             if root.bars: VerticalLayout {
                 spacing: 6px;
-                Bar { label: "Opus"; pct: 21; }
-                Bar { label: "Sonnet"; pct: 48; }
+                Bar { label: "Opus"; pct: root.opus; }
+                Bar { label: "Sonnet"; pct: root.sonnet; }
             }
         }
     }
@@ -101,7 +119,14 @@ export component HomeScreen inherits Rectangle {
     in property <bool> wide;
     in property <[Tile]> tiles;
     in property <bool> update;
+    in property <string> update-version;
+    in property <string> update-notes;
+    in property <Usage> usage;
     callback dismiss-update();
+    callback install-update();
+    callback refresh();
+    callback mic();
+    callback range-picked(string);
     property <int> cols: root.wide ? 4 : 2;
     Flickable {
         content-width: self.width;
@@ -119,24 +144,24 @@ export component HomeScreen inherits Rectangle {
                     spacing: 8px;
                     VerticalLayout {
                         spacing: 2px;
-                        Text { text: "Good evening"; color: Palette.text; font-size: Type.display; }
-                        Text { text: "Monday, November 16 · Claude Max"; color: Palette.muted; font-size: Type.body; }
+                        Text { text: root.usage.greeting; color: Palette.text; font-size: Type.display; }
+                        Text { text: root.usage.date-line; color: Palette.muted; font-size: Type.body; }
                     }
                     Rectangle { }
-                    VC { IconButton { icon: "refresh"; } }
-                    VC { IconButton { icon: "mic"; kind: "primary"; size: 44px; } }
+                    VC { IconButton { icon: "refresh"; clicked => { root.refresh(); } } }
+                    VC { IconButton { icon: "mic"; kind: "primary"; size: 44px; clicked => { root.mic(); } } }
                 }
-                Text { text: "Usage updated just now"; color: Palette.faint; font-size: Type.small; }
-                if root.update: UpdateCard { later => { root.dismiss-update(); } }
+                Text { text: root.usage.updated; color: Palette.faint; font-size: Type.small; }
+                if root.update: UpdateCard { version: root.update-version; notes: root.update-notes; later => { root.dismiss-update(); } install => { root.install-update(); } }
                 if root.wide: HorizontalLayout {
                     spacing: 16px;
-                    UsageCard { title: "Session"; reset: "Resets in 1h 59m"; at: "01:58 AM"; pace: "Under pace"; note: "~69% by reset"; pct: 42; }
-                    UsageCard { title: "Week"; reset: "Resets in 2d 23h"; at: "Thu 11:58 PM"; pace: "Ahead of pace"; note: "Limit in 2d 8h"; pct: 63; bars: true; }
+                    UsageCard { title: "Session"; reset: root.usage.session-reset; at: root.usage.session-at; pace: root.usage.session-pace; note: root.usage.session-note; pct: root.usage.session-pct; }
+                    UsageCard { title: "Week"; reset: root.usage.week-reset; at: root.usage.week-at; pace: root.usage.week-pace; note: root.usage.week-note; pct: root.usage.week-pct; bars: true; opus: root.usage.opus-pct; sonnet: root.usage.sonnet-pct; }
                 }
                 if !root.wide: VerticalLayout {
                     spacing: 12px;
-                    UsageCard { title: "Session"; reset: "Resets in 1h 59m"; at: "01:58 AM"; pace: "Under pace"; note: "~69% by reset"; pct: 42; ring: 116px; }
-                    UsageCard { title: "Week"; reset: "Resets in 2d 23h"; at: "Thu 11:58 PM"; pace: "Ahead of pace"; note: "Limit in 2d 8h"; pct: 63; bars: true; ring: 116px; }
+                    UsageCard { title: "Session"; reset: root.usage.session-reset; at: root.usage.session-at; pace: root.usage.session-pace; note: root.usage.session-note; pct: root.usage.session-pct; ring: 116px; }
+                    UsageCard { title: "Week"; reset: root.usage.week-reset; at: root.usage.week-at; pace: root.usage.week-pace; note: root.usage.week-note; pct: root.usage.week-pct; bars: true; opus: root.usage.opus-pct; sonnet: root.usage.sonnet-pct; ring: 116px; }
                 }
                 Card {
                     height: 84px;
@@ -158,14 +183,14 @@ export component HomeScreen inherits Rectangle {
                             spacing: 8px;
                             Text { text: "Usage and cost"; color: Palette.muted; font-size: Type.small; font-weight: 600; vertical-alignment: center; }
                             Rectangle { }
-                            PillButton { text: "7 days"; kind: "outline"; h: 32px; font-size: Type.small; }
-                            PillButton { text: "30 days"; kind: "tonal"; h: 32px; font-size: Type.small; }
-                            if root.wide: PillButton { text: "All time"; kind: "outline"; h: 32px; font-size: Type.small; }
+                            PillButton { text: "7 days"; kind: root.usage.range == "7d" ? "tonal" : "outline"; h: 32px; font-size: Type.small; clicked => { root.range-picked("7d"); } }
+                            PillButton { text: "30 days"; kind: root.usage.range == "30d" ? "tonal" : "outline"; h: 32px; font-size: Type.small; clicked => { root.range-picked("30d"); } }
+                            if root.wide: PillButton { text: "All time"; kind: root.usage.range == "all" ? "tonal" : "outline"; h: 32px; font-size: Type.small; clicked => { root.range-picked("all"); } }
                         }
                         HorizontalLayout {
                             spacing: 8px;
                             VC { Icon { name: "devices"; size: 18px; color: Palette.muted; } }
-                            Text { text: "This computer only"; color: Palette.muted; font-size: Type.small; vertical-alignment: center; }
+                            Text { text: root.usage.scope; color: Palette.muted; font-size: Type.small; vertical-alignment: center; }
                             VC { Icon { name: "info"; size: 16px; color: Palette.faint; } }
                             Rectangle { }
                         }
@@ -184,6 +209,9 @@ export component HomeScreen inherits Rectangle {
 export component HistoryScreen inherits Rectangle {
     in property <[ChatRow]> items;
     in property <bool> wide;
+    in-out property <string> search;
+    callback open(int);
+    callback search-edited(string);
     HorizontalLayout {
         alignment: center;
         VerticalLayout {
@@ -193,7 +221,7 @@ export component HistoryScreen inherits Rectangle {
             padding-top: 28px;
             spacing: 12px;
             Text { text: "History"; color: Palette.text; font-size: Type.display; }
-            Field { placeholder: "Search history"; icon: "search"; }
+            Field { placeholder: "Search history"; icon: "search"; text <=> root.search; edited(t) => { root.search-edited(t); } }
             Flickable {
                 content-width: self.width;
                 VerticalLayout {
@@ -209,7 +237,7 @@ export component HistoryScreen inherits Rectangle {
                             height: 36px;
                             vertical-alignment: bottom;
                         }
-                        ChatRowItem { item: row; swipe: false; }
+                        ChatRowItem { item: row; swipe: false; open => { root.open(i); } }
                     }
                 }
             }
@@ -224,6 +252,8 @@ component SettingCard inherits Card {
     in property <string> info;
     in property <string> body;
     in property <bool> has-actions;
+    callback refresh();
+    callback add();
     VerticalLayout {
         padding: 18px;
         spacing: 14px;
@@ -234,8 +264,8 @@ component SettingCard inherits Card {
             Text { text: root.title; color: Palette.muted; font-size: Type.small; font-weight: 600; vertical-alignment: center; }
             Rectangle { }
             VC { Icon { name: "info"; size: 18px; color: Palette.faint; } }
-            if root.has-actions: VC { IconButton { icon: "refresh"; size: 32px; } }
-            if root.has-actions: VC { IconButton { icon: "plus"; size: 32px; } }
+            if root.has-actions: VC { IconButton { icon: "refresh"; size: 32px; clicked => { root.refresh(); } } }
+            if root.has-actions: VC { IconButton { icon: "plus"; size: 32px; clicked => { root.add(); } } }
         }
         if root.body != "": Text { text: root.body; wrap: word-wrap; color: Palette.muted; font-size: Type.small; }
         @children
@@ -245,7 +275,9 @@ component SettingCard inherits Card {
 component ToggleRow inherits Rectangle {
     in property <string> title;
     in property <string> sub;
-    in-out property <bool> on;
+    in property <bool> on;
+    in property <string> id;
+    callback toggled(string, bool);
     height: 56px;
     HorizontalLayout {
         spacing: 12px;
@@ -255,7 +287,7 @@ component ToggleRow inherits Rectangle {
             Text { text: root.title; color: Palette.text; font-size: Type.body; font-weight: 500; }
             Text { text: root.sub; color: Palette.muted; font-size: Type.small; wrap: word-wrap; }
         }
-        VC { Switch { checked <=> root.on; } }
+        VC { Switch { checked: root.on; toggled(v) => { root.toggled(root.id, v); } } }
     }
 }
 
@@ -290,13 +322,15 @@ component SettingsNav inherits Rectangle {
     in property <[NavItem]> items;
     in property <string> page;
     in property <string> title: "Settings";
+    in-out property <string> search;
     callback pick(string);
+    callback search-edited(string);
     VerticalLayout {
         padding: 16px;
         padding-top: 28px;
         spacing: 12px;
         Text { text: root.title; color: Palette.text; font-size: Type.display; }
-        Field { placeholder: "Find a setting"; }
+        Field { placeholder: "Find a setting"; text <=> root.search; edited(t) => { root.search-edited(t); } }
         Flickable {
             content-width: self.width;
             VerticalLayout {
@@ -311,8 +345,17 @@ component SettingsNav inherits Rectangle {
 component PageBody inherits Rectangle {
     in property <string> page;
     in property <[Device]> devices;
-    in-out property <bool> motion: true;
-    in-out property <bool> frosted: true;
+    in property <SettingsState> st;
+    in property <string> update-version;
+    in property <string> update-notes;
+    callback toggled(string, bool);
+    callback theme(string);
+    callback device-remove(int);
+    callback device-add();
+    callback device-refresh();
+    callback update-install();
+    callback update-later();
+    callback routine-new();
     VerticalLayout {
         spacing: 12px;
         alignment: start;
@@ -330,7 +373,9 @@ component PageBody inherits Rectangle {
             title: "Computers and servers";
             icon: "server";
             has-actions: true;
-            for d in root.devices: Rectangle {
+            refresh => { root.device-refresh(); }
+            add => { root.device-add(); }
+            for d[di] in root.devices: Rectangle {
                 height: 48px;
                 HorizontalLayout {
                     VerticalLayout {
@@ -339,7 +384,7 @@ component PageBody inherits Rectangle {
                         Text { text: d.sub; color: Palette.muted; font-size: Type.small; }
                     }
                     Rectangle { }
-                    if d.removable: VC { PillButton { text: "Remove"; kind: "text"; h: 36px; } }
+                    if d.removable: VC { PillButton { text: "Remove"; kind: "text"; h: 36px; clicked => { root.device-remove(di); } } }
                 }
             }
         }
@@ -348,45 +393,45 @@ component PageBody inherits Rectangle {
             icon: "palette";
             HorizontalLayout {
                 spacing: 8px;
-                PillButton { text: "System"; kind: "outline"; h: 36px; }
-                PillButton { text: "Dark"; kind: "tonal"; h: 36px; icon: "check"; }
-                PillButton { text: "Light"; kind: "outline"; h: 36px; }
+                PillButton { text: "System"; kind: root.st.theme == "system" ? "tonal" : "outline"; icon: root.st.theme == "system" ? "check" : ""; h: 36px; clicked => { root.theme("system"); } }
+                PillButton { text: "Dark"; kind: root.st.theme == "dark" ? "tonal" : "outline"; icon: root.st.theme == "dark" ? "check" : ""; h: 36px; clicked => { root.theme("dark"); } }
+                PillButton { text: "Light"; kind: root.st.theme == "light" ? "tonal" : "outline"; icon: root.st.theme == "light" ? "check" : ""; h: 36px; clicked => { root.theme("light"); } }
                 Rectangle { }
             }
         }
         if root.page == "appearance": SettingCard {
             title: "Look and motion";
             icon: "settings";
-            ToggleRow { title: "Motion"; sub: "Springs and morphing transitions. Off turns every animation to zero."; on <=> root.motion; }
-            ToggleRow { title: "Frosted dock"; sub: "A translucent dock that stays readable over any content."; on <=> root.frosted; }
-            ToggleRow { title: "Expressive layout"; sub: "Floating dock and larger shapes."; on: true; }
+            ToggleRow { id: "motion"; title: "Motion"; sub: "Springs and morphing transitions. Off turns every animation to zero."; on: root.st.motion; toggled(i, v) => { root.toggled(i, v); } }
+            ToggleRow { id: "frosted"; title: "Frosted dock"; sub: "A translucent dock that stays readable over any content."; on: root.st.frosted; toggled(i, v) => { root.toggled(i, v); } }
+            ToggleRow { id: "expressive"; title: "Expressive layout"; sub: "Floating dock and larger shapes."; on: root.st.expressive; toggled(i, v) => { root.toggled(i, v); } }
         }
-        if root.page == "updates": UpdateCard { }
+        if root.page == "updates": UpdateCard { version: root.update-version; notes: root.update-notes; install => { root.update-install(); } later => { root.update-later(); } }
         if root.page == "updates": SettingCard {
             title: "Update channel";
             icon: "sync";
-            ToggleRow { title: "Check automatically"; sub: "Look for a new version once a day."; on: true; }
-            ToggleRow { title: "Install on quit"; sub: "Apply updates when you close Hearth."; on: false; }
+            ToggleRow { id: "auto-update"; title: "Check automatically"; sub: "Look for a new version once a day."; on: root.st.auto-update; toggled(i, v) => { root.toggled(i, v); } }
+            ToggleRow { id: "install-on-quit"; title: "Install on quit"; sub: "Apply updates when you close Hearth."; on: root.st.install-on-quit; toggled(i, v) => { root.toggled(i, v); } }
         }
         if root.page == "routines": SettingCard {
             title: "Routines";
             icon: "clock";
             body: "Runs that start on a schedule, on your server or this computer. Nothing is scheduled yet.";
-            PillButton { text: "New routine"; icon: "plus"; kind: "tonal"; horizontal-stretch: 0; }
+            PillButton { text: "New routine"; icon: "plus"; kind: "tonal"; horizontal-stretch: 0; clicked => { root.routine-new(); } }
         }
         if root.page == "server": SettingCard {
             title: "Server";
             icon: "server";
             body: "hearth.example.com · version 1.40.0 · up for 6 days.";
-            ToggleRow { title: "Run work on the server"; sub: "Chats keep going when your laptop sleeps."; on: true; }
-            ToggleRow { title: "Keep a copy on this computer"; sub: "Chats stay readable offline."; on: true; }
+            ToggleRow { id: "run-on-server"; title: "Run work on the server"; sub: "Chats keep going when your laptop sleeps."; on: root.st.run-on-server; toggled(i, v) => { root.toggled(i, v); } }
+            ToggleRow { id: "keep-copy"; title: "Keep a copy on this computer"; sub: "Chats stay readable offline."; on: root.st.keep-copy; toggled(i, v) => { root.toggled(i, v); } }
         }
         if root.page == "keys": SettingCard {
             title: "Keys and permissions";
             icon: "key";
             body: "API keys are stored in the system keychain. Tool permissions decide what Claude may do without asking.";
-            ToggleRow { title: "Ask before editing files"; sub: "Show a prompt for every Edit."; on: true; }
-            ToggleRow { title: "Ask before running commands"; sub: "Show a prompt for every shell command."; on: true; }
+            ToggleRow { id: "ask-edit"; title: "Ask before editing files"; sub: "Show a prompt for every Edit."; on: root.st.ask-edit; toggled(i, v) => { root.toggled(i, v); } }
+            ToggleRow { id: "ask-cmd"; title: "Ask before running commands"; sub: "Show a prompt for every shell command."; on: root.st.ask-cmd; toggled(i, v) => { root.toggled(i, v); } }
         }
         if root.page == "help": SettingCard {
             title: "Help";
@@ -401,8 +446,8 @@ component PageBody inherits Rectangle {
         if root.page == "notifications": SettingCard {
             title: "Notifications";
             icon: "bell";
-            ToggleRow { title: "Finished runs"; sub: "Tell me when Claude is done."; on: true; }
-            ToggleRow { title: "Usage limits"; sub: "Warn at 80% and 95%."; on: true; }
+            ToggleRow { id: "notify-finished"; title: "Finished runs"; sub: "Tell me when Claude is done."; on: root.st.notify-finished; toggled(i, v) => { root.toggled(i, v); } }
+            ToggleRow { id: "notify-usage"; title: "Usage limits"; sub: "Warn at 80% and 95%."; on: root.st.notify-usage; toggled(i, v) => { root.toggled(i, v); } }
         }
     }
 }
@@ -419,11 +464,24 @@ export component SettingsScreen inherits Rectangle {
     in property <string> page; // "" on phone = the page list
     in property <[NavItem]> items;
     in property <[Device]> devices;
+    in property <SettingsState> st;
+    in property <string> update-version;
+    in property <string> update-notes;
+    in-out property <string> search;
     callback pick(string);
     callback back();
+    callback search-edited(string);
+    callback toggled(string, bool);
+    callback theme(string);
+    callback device-remove(int);
+    callback device-add();
+    callback device-refresh();
+    callback update-install();
+    callback update-later();
+    callback routine-new();
     property <string> shown: root.page == "" && root.wide ? "devices" : root.page;
     if root.wide: HorizontalLayout {
-        SettingsNav { width: 300px; items: root.items; page: root.shown; pick(id) => { root.pick(id); } }
+        SettingsNav { width: 300px; items: root.items; page: root.shown; search <=> root.search; search-edited(t) => { root.search-edited(t); } pick(id) => { root.pick(id); } }
         Flickable {
             content-width: self.width;
             HorizontalLayout {
@@ -437,13 +495,13 @@ export component SettingsScreen inherits Rectangle {
                     spacing: 14px;
                     alignment: start;
                     PageTitle { items: root.items; id: root.shown; }
-                    PageBody { page: root.shown; devices: root.devices; }
+                    PageBody { page: root.shown; devices: root.devices; st: root.st; update-version: root.update-version; update-notes: root.update-notes; toggled(i, v) => { root.toggled(i, v); } theme(t) => { root.theme(t); } device-remove(d) => { root.device-remove(d); } device-add => { root.device-add(); } device-refresh => { root.device-refresh(); } update-install => { root.update-install(); } update-later => { root.update-later(); } routine-new => { root.routine-new(); } }
                 }
                 Rectangle { }
             }
         }
     }
-    if !root.wide && root.page == "": SettingsNav { items: root.items; page: ""; pick(id) => { root.pick(id); } }
+    if !root.wide && root.page == "": SettingsNav { items: root.items; page: ""; search <=> root.search; search-edited(t) => { root.search-edited(t); } pick(id) => { root.pick(id); } }
     if !root.wide && root.page != "": VerticalLayout {
         alignment: start;
         padding: 16px;
@@ -459,7 +517,7 @@ export component SettingsScreen inherits Rectangle {
             VerticalLayout {
                 padding-bottom: 130px;
                 alignment: start;
-                PageBody { page: root.page; devices: root.devices; }
+                PageBody { page: root.page; devices: root.devices; st: root.st; update-version: root.update-version; update-notes: root.update-notes; toggled(i, v) => { root.toggled(i, v); } theme(t) => { root.theme(t); } device-remove(d) => { root.device-remove(d); } device-add => { root.device-add(); } device-refresh => { root.device-refresh(); } update-install => { root.update-install(); } update-later => { root.update-later(); } routine-new => { root.routine-new(); } }
             }
         }
     }

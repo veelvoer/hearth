@@ -92,4 +92,13 @@ fn main() {
     render(360, 800, &out.join("motion-2-end.png"));
     slint::platform::update_timers_and_animations();
     println!("animations active at idle: {}", WIN.with(|c| c.borrow().as_ref().unwrap().has_active_animations()));
+    // regression: theme/accent changed right after creation with motion ON must not leave dark colours in a light frame
+    let app = App::new().unwrap();
+    app.show().unwrap();
+    app.global::<Palette>().set_dark(false);
+    app.global::<Palette>().set_accent_override(slint::Color::from_rgb_u8(0x1a, 0x4a, 0x7a).into());
+    app.set_screen("chats".into());
+    render(1180, 780, &out.join("regress-light-accent-motion-on.png"));
+    app.global::<Palette>().set_bg(slint::Color::from_rgb_u8(0x10, 0x20, 0x30).into());
+    render(1180, 780, &out.join("regress-palette-bg-override.png"));
 }

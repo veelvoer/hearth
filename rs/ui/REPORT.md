@@ -26,10 +26,100 @@ Motion: springs are cubic-bezier overshoot easings (Motion.spring). Measured: af
 - Fonts: Noto Sans / JetBrains Mono from the system by name (Type.family / Type.mono); bundle fonts for Android/Windows.
 - Hangup icon is an X, no phone glyph; cookie is a 90-point polygon.
 
-## Public API (keep stable)
-Rust: `slint::include_modules!()` exports `App`, `WatchApp`, globals `Palette`, `Motion`, `Type`, struct `ChatRow`.
-Globals: `Palette.dark` (in-out bool), `Palette.accent-override` (color, transparent = clay), tokens bg, surface-low, card, card-high, card-highest, text, muted, faint, outline, outline-soft, accent, on-accent, accent-container, on-accent-container, selected, on-selected, error, ok, scrim, dock. `Motion.scale` (float, 0 = reduced motion).
-`App` (Window, width >= 820px = wide layout): props `screen` (chats|chat|home|history|settings|onboarding|pairing|call), `page` (settings page id, "" = list/devices), `status`, `chat-top`, `prompt`, `update`, models `chats: [ChatRow]`, `history`, `messages: [Msg]`, `tiles: [Tile]`, `nav: [NavItem]`, `devices: [Device]`; callback `new-chat()`.
-Structs: ChatRow{header,title,sub,working,pinned,selected,swiped}, Msg{kind(earlier|user|text|heading|bullet|quote|code|tool|time|meta|queued|working),lead,text,time,status}, Tile{label,value,sub}, NavItem{header,id,label,icon}, Device{name,sub,removable}.
-Components (importable from .slint): Icon(name,size,color), Tap, IconButton(icon,kind,size), PillButton(text,icon,kind,h), Switch(checked, toggled), Field(placeholder,icon,text), Card, UsageRing(pct,tone), Cookie(tone), Dock(compact,status,current; go(int), new-chat()), ChatList(chats; open/pin/delete(int)), ChatRowItem(item,swipe; open/pin/delete), MessageView, Composer(working,narrow; send/stop), ChatPane(title,sub,messages,working,show-back,narrow,top; back, send-now(int)), HomeScreen, HistoryScreen, SettingsScreen(page; pick(string), back), OnboardingScreen(step; finish, skip), PairingScreen(link,error; connect(string), scan, back), PermissionPrompt(tool,target,detail; deny, allow-once, allow-always), CallScreen(time,state,muted; hangup), UpdateCard(version,notes; install, later), WatchApp(screen: home|chats).
-Layout tips learned: children of non-layout Rectangles are centered unless x/y set; `y` is ignored inside layouts (wrap in `VC`); layout children must not read their own parent's width in max-width (binding loops).
+## Public API (contract for rs/desktop, rs/phone, rs/watch)
+Rust: `slint::include_modules!()` exports `App`, `WatchApp`, globals `Palette`, `Motion`, `Type`, structs `ChatRow, Msg, Tile, NavItem, Device, Usage, SettingsState, WatchChat`.
+Everything below is on the root `App` (set with `app.set_<name>`, handlers with `app.on_<name>`); nothing needs reaching into children. Inline defaults are demo data.
+
+### Palette (settable from Rust: `app.global::<Palette>().set_<token>()`)
+All tokens are in-out colours with a light/dark default binding: bg, surface-low, card, card-high, card-highest, text, muted, faint, outline, outline-soft, accent, on-accent, accent-container, on-accent-container, selected, on-selected, error, ok, scrim, dock; plus `dark` (bool) and `accent-override` (transparent = built-in clay). An Oxide/system theme sets the tokens it has (bg, surface->card, raised->card-high, line->outline-soft, text, muted, accent, ink->on-accent, bad->error) after `set_dark`. `Motion.scale` (0 = reduced motion).
+Verified: regress-light-accent-motion-on.png (light + accent override with motion on, theme set after creation) and regress-palette-bg-override.png (bg overridden from Rust).
+Bug fixed (rows black in light with accent): colour `animate` on row/pill/switch backgrounds started from the dark default when `dark` was set after creation, so a screenshot taken in the first 120 ms caught the dark colours. Only hover/press state layers animate colour now.
+
+### App properties
+```
+in-out property <string> screen: "chats";   // chats | chat | home | history | settings | onboarding | pairing | call
+in-out property <string> page: "";          // settings page ("" = list on phone, devices on wide)
+in property <bool> chat-top: false;
+in-out property <bool> prompt: false;
+in-out property <bool> update: true;
+in property <string> status: "Server online";
+in property <string> chat-title: "Fix the login bug on the settings page";
+in property <string> chat-sub: "webshop · Sonnet 5.5 · VPS · working now";
+in property <bool> chat-working: true;
+in-out property <string> draft;
+in property <string> filter: "All chats";
+in-out property <string> chat-search;
+in-out property <string> history-search;
+in-out property <string> settings-search;
+in property <Usage> usage: {
+in property <string> update-version: "1.41.0";
+in property <string> update-notes: "Faster chat opening and smoother motion.";
+in property <string> prompt-tool: "Edit";
+in property <string> prompt-target: "Settings.tsx";
+in property <string> prompt-detail: "Claude wants to change 14 lines in src/Settings.tsx.";
+in property <string> call-time: "02:14";
+in property <string> call-state: "Listening";
+in-out property <bool> call-muted: false;
+in-out property <string> pair-link;
+in property <string> pair-error;
+in-out property <int> onboarding-step: 0;
+in-out property <SettingsState> settings: {
+in-out property <[ChatRow]> chats: [
+in-out property <[ChatRow]> history: [
+in-out property <[Msg]> messages: [
+in-out property <[Tile]> tiles: [
+in-out property <[NavItem]> nav: [
+in-out property <[Device]> devices: [
+```
+Screens: `screen` = chats | chat | home | history | settings | onboarding | pairing | call. Wide layout when window width >= 820px. Msg.kind = earlier|user|text|heading|bullet|quote|code|tool|time|meta|queued|working.
+SettingsState fields: theme(system|dark|light), motion, frosted, expressive, notify-finished, notify-usage, auto-update, install-on-quit, run-on-server, keep-copy, ask-edit, ask-cmd.
+The App updates `settings`, `page`, `screen`, `prompt`, `update` itself on user action and then fires the callback, so the app only has to persist/act.
+
+### App callbacks
+```
+callback new-chat();
+callback open-chat(int);          // index in `chats` (or `history` via open-history)
+callback open-history(int);       // index in `history`
+callback send(string);            // composer text, already cleared in the UI
+callback stop();                  // Stop beside Send
+callback composer-option(string); // "edits" | "model" | "effort"
+callback send-now(int);           // queued message at index in `messages`
+callback remove-queued(int);      // same index
+callback show-earlier();
+callback pin-chat(int);
+callback delete-chat(int);
+callback rename-chat(int);        // double click on a row
+callback chat-search-edited(string);
+callback history-search-edited(string);
+callback settings-search-edited(string);
+callback filter-clicked();        // project filter pill
+callback list-menu();             // dots in the chat list header
+callback chat-menu();             // dots / sidebar in the chat header
+callback mic();                   // mic in chat header or home (start a call: set screen "call")
+callback refresh-usage();
+callback usage-range-picked(string); // "7d" | "30d" | "all"
+callback tab-changed(int);        // 0 chats, 1 home, 2 history, 3 settings (screen already switched)
+callback page-picked(string);     // settings page id (page already set)
+callback setting-toggled(string, bool); // id = SettingsState field name; `settings` already updated
+callback theme-picked(string);    // "system" | "dark" | "light"
+callback device-remove(int);
+callback device-add();
+callback device-refresh();
+callback routine-new();
+callback update-install();
+callback update-later();
+callback prompt-answered(string); // "allow-once" | "allow-always" | "deny" (prompt already closed)
+callback pair-connect(string);
+callback pair-scan();
+callback onboarding-finish();
+callback onboarding-skip();
+callback call-hangup();
+callback call-mute(bool);
+```
+
+### WatchApp
+props: screen (home|chats), session-pct, session-reset, week-line, chats: [WatchChat{title,sub,working}]; callbacks: open-chat(int), refresh(), open-chats(), back().
+
+### Components (for .slint reuse)
+Icon, Tap, IconButton, PillButton, Switch(checked; toggled(bool), no local flip), Field(text; edited(string)), Card, UsageRing, Cookie, VC, Dock, ChatList, ChatRowItem, MessageView, Composer, ChatPane, HomeScreen, HistoryScreen, SettingsScreen, OnboardingScreen, PairingScreen, PermissionPrompt, CallScreen, UpdateCard.
+Layout tips: children of non-layout Rectangles are centered unless x/y set; `y` is ignored inside layouts (wrap in `VC`); do not read a layout parent's width in max-width (binding loop).

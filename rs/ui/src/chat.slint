@@ -11,6 +11,7 @@ export component ChatRowItem inherits Rectangle {
     callback open();
     callback pin();
     callback delete();
+    callback rename();
     property <length> reveal: 112px;
     in-out property <length> rest: root.item.swiped ? -root.reveal : 0px;
     property <length> drag: 0px;
@@ -35,7 +36,6 @@ export component ChatRowItem inherits Rectangle {
         border-radius: 32px;
         background: root.item.selected ? Palette.selected : Palette.bg;
         animate x { duration: ta.pressed ? 0ms : Motion.move; easing: Motion.spring; }
-        animate background { duration: Motion.hover; easing: Motion.out; }
         Rectangle {
             border-radius: parent.border-radius;
             background: ta.pressed ? Palette.text.with-alpha(0.12) : ta.has-hover && !root.item.selected ? Palette.text.with-alpha(0.06) : transparent;
@@ -71,6 +71,7 @@ export component ChatRowItem inherits Rectangle {
                 if e.kind == PointerEventKind.up && root.swipe { root.rest = root.drag < -root.reveal / 2 ? -root.reveal : 0px; }
             }
             clicked => { if root.rest == 0px { root.open(); } else { root.rest = 0px; } }
+            double-clicked => { root.rename(); }
         }
     }
 }
@@ -79,9 +80,14 @@ export component ChatRowItem inherits Rectangle {
 export component ChatList inherits Rectangle {
     in property <[ChatRow]> chats;
     in property <string> filter: "All chats";
+    in-out property <string> search;
     callback open(int);
     callback pin(int);
     callback delete(int);
+    callback rename(int);
+    callback search-edited(string);
+    callback filter-clicked();
+    callback menu();
     VerticalLayout {
         padding-left: 16px;
         padding-right: 16px;
@@ -97,6 +103,7 @@ export component ChatList inherits Rectangle {
                 border-radius: 20px;
                 background: Palette.selected;
                 tint: Palette.on-selected;
+                clicked => { root.filter-clicked(); }
                 fl := HorizontalLayout {
                     padding-left: 18px;
                     padding-right: 14px;
@@ -107,9 +114,9 @@ export component ChatList inherits Rectangle {
                 }
             } }
             Rectangle { horizontal-stretch: 1; }
-            VC { IconButton { icon: "dots"; } }
+            VC { IconButton { icon: "dots"; clicked => { root.menu(); } } }
         }
-        Field { placeholder: "Search chats"; icon: "search"; }
+        Field { placeholder: "Search chats"; icon: "search"; text <=> root.search; edited(t) => { root.search-edited(t); } }
         Flickable {
             content-width: self.width;
             VerticalLayout {
@@ -131,6 +138,7 @@ export component ChatList inherits Rectangle {
                         open => { root.open(i); }
                         pin => { root.pin(i); }
                         delete => { root.delete(i); }
+                        rename => { root.rename(i); }
                     }
                 }
             }
@@ -142,6 +150,7 @@ export component ChatList inherits Rectangle {
 export component MessageView inherits VerticalLayout {
     in property <Msg> m;
     callback send-now();
+    callback remove();
     callback show-earlier();
     spacing: 4px;
     if m.kind == "earlier": HorizontalLayout {
@@ -224,7 +233,7 @@ export component MessageView inherits VerticalLayout {
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
-                PillButton { text: "Remove"; kind: "text"; h: 32px; font-size: Type.small; }
+                PillButton { text: "Remove"; kind: "text"; h: 32px; font-size: Type.small; clicked => { root.remove(); } }
                 PillButton { text: "Send now"; kind: "primary"; h: 32px; font-size: Type.small; icon: "send"; clicked => { root.send-now(); } }
             }
         }
@@ -242,8 +251,10 @@ export component MessageView inherits VerticalLayout {
 export component Composer inherits Rectangle {
     in property <bool> working;
     in property <bool> narrow;
-    callback send();
+    in-out property <string> draft;
+    callback send(string);
     callback stop();
+    callback option(string);
     background: Palette.card-high;
     border-radius: 28px;
     VerticalLayout {
@@ -253,7 +264,7 @@ export component Composer inherits Rectangle {
         Rectangle {
             min-height: 28px;
             preferred-height: ph.preferred-height;
-            ti := TextInput { x: 0px; y: 0px; width: parent.width; font-size: Type.read; color: Palette.text; wrap: word-wrap; }
+            ti := TextInput { text <=> root.draft; x: 0px; y: 0px; width: parent.width; font-size: Type.read; color: Palette.text; wrap: word-wrap; }
             ph := Text {
                 visible: ti.text == "";
                 x: 0px;
@@ -268,13 +279,13 @@ export component Composer inherits Rectangle {
         }
         HorizontalLayout {
             spacing: 8px;
-            PillButton { text: "Edits"; kind: "outline"; h: 32px; font-size: Type.small; }
-            PillButton { text: "Default model"; kind: "outline"; h: 32px; font-size: Type.small; }
-            if !root.narrow: PillButton { text: "Default effort"; kind: "outline"; h: 32px; font-size: Type.small; }
+            PillButton { text: "Edits"; kind: "outline"; h: 32px; font-size: Type.small; clicked => { root.option("edits"); } }
+            PillButton { text: "Default model"; kind: "outline"; h: 32px; font-size: Type.small; clicked => { root.option("model"); } }
+            if !root.narrow: PillButton { text: "Default effort"; kind: "outline"; h: 32px; font-size: Type.small; clicked => { root.option("effort"); } }
             Rectangle { }
             // Stop sits beside Send while a run is going
             if root.working: IconButton { icon: "stop"; kind: "outline"; size: 40px; clicked => { root.stop(); } }
-            IconButton { icon: "send"; kind: "primary"; size: 40px; clicked => { root.send(); } }
+            IconButton { icon: "send"; kind: "primary"; size: 40px; clicked => { if root.draft != "" { root.send(root.draft); root.draft = ""; } } }
         }
     }
 }
@@ -288,8 +299,16 @@ export component ChatPane inherits Rectangle {
     in property <bool> show-back;
     in property <bool> narrow;
     in property <bool> top;
+    in-out property <string> draft;
     callback back();
+    callback send(string);
+    callback stop();
+    callback option(string);
     callback send-now(int);
+    callback remove-queued(int);
+    callback show-earlier();
+    callback mic();
+    callback menu();
     background: Palette.surface-low;
     border-radius: Shape.card;
     VerticalLayout {
@@ -306,9 +325,9 @@ export component ChatPane inherits Rectangle {
                 Text { text: root.sub; color: Palette.muted; font-size: Type.caption; overflow: elide; horizontal-alignment: left; }
             }
             if root.working: Rectangle { width: 20px; horizontal-stretch: 0; Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Palette.accent; } }
-            if !root.narrow: VC { IconButton { icon: "mic"; } }
-            if !root.show-back: VC { IconButton { icon: "sidebar"; } }
-            if root.show-back: VC { IconButton { icon: "dots"; } }
+            if !root.narrow: VC { IconButton { icon: "mic"; clicked => { root.mic(); } } }
+            if !root.show-back: VC { IconButton { icon: "sidebar"; clicked => { root.menu(); } } }
+            if root.show-back: VC { IconButton { icon: "dots"; clicked => { root.menu(); } } }
         }
         Rectangle { height: 1px; background: Palette.outline-soft.with-alpha(0.5); }
         Flickable {
@@ -323,7 +342,7 @@ export component ChatPane inherits Rectangle {
                     padding-top: 16px;
                     padding-bottom: 12px;
                     spacing: 10px;
-                    for m[i] in root.messages: MessageView { m: m; send-now => { root.send-now(i); } }
+                    for m[i] in root.messages: MessageView { m: m; send-now => { root.send-now(i); } remove => { root.remove-queued(i); } show-earlier => { root.show-earlier(); } }
                 }
             }
         }
@@ -331,7 +350,7 @@ export component ChatPane inherits Rectangle {
             padding: 12px;
             padding-top: 4px;
             alignment: center;
-            Composer { max-width: 760px; preferred-width: 760px; working: root.working; narrow: root.narrow; }
+            Composer { max-width: 760px; preferred-width: 760px; working: root.working; narrow: root.narrow; draft <=> root.draft; send(t) => { root.send(t); } stop => { root.stop(); } option(o) => { root.option(o); } }
         }
     }
 }
