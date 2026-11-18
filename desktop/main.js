@@ -610,7 +610,7 @@ h('pair:decide', async (e, id, accept) => {
   await relayJson(m, 'POST', '/pair/decision', { id, accept: !!accept }); await checkPairRequests().catch(() => {}); return lastPairReq;
 });
 // ── support: sign in with an emailed code, send requests, read answers (the desk lives on the project's server) ──
-const SUPPORT_URL = process.env.HEARTH_SUPPORT_URL || 'https://cm.vpswb.store/support';
+const SUPPORT_URL = process.env.HEARTH_SUPPORT_URL || 'https://vpswb.store/support';
 async function supportCall(method, p, body, auth = true) {
   const headers = { 'Content-Type': 'application/json' }; if (auth && S.settings.supportToken) headers.Authorization = 'Bearer ' + S.settings.supportToken;
   let r; try { r = await fetch(SUPPORT_URL + p, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) }); } catch { throw new Error('Could not reach support. Check your internet connection and try again.'); }

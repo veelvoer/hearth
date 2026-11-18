@@ -451,7 +451,7 @@ fn ver_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 }
 pub fn version() -> String { handle().package_info().version.to_string() }
 
-const SUPPORT_URL_DEFAULT: &str = "https://cm.vpswb.store/support";
+const SUPPORT_URL_DEFAULT: &str = "https://vpswb.store/support";
 async fn support_call(method: &str, p: &str, body: Option<Value>, auth: bool) -> Result<Value, String> {
     let a = app();
     let url = std::env::var("HEARTH_SUPPORT_URL").unwrap_or_else(|_| SUPPORT_URL_DEFAULT.into()) + p;

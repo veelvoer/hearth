@@ -22,7 +22,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-const val SUPPORT_URL = "https://cm.vpswb.store/support"
+const val SUPPORT_URL = "https://vpswb.store/support"
 
 /** Talks to the support desk. Every call returns the JSON answer or throws a message a person can read. */
 object SupportApi {

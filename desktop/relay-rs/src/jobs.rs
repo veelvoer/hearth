@@ -83,6 +83,7 @@ pub fn detect_call(text: &str) -> Option<&'static str> {
     let att = regex::Regex::new(r"(?i)permission|need me|stuck|question|attention|input|approve|asks?\b").unwrap();
     Some(if att.is_match(text) { "attention" } else { "done" })
 }
+fn thrash_re() -> regex::Regex { regex::Regex::new(r"(?i)autocompact is thrashing|context refilled to the limit").unwrap() }
 fn auth_re() -> regex::Regex { regex::Regex::new(r"(?i)OAuth (session|token)|Failed to authenticate|authentication_error|not logged in|please run /?login|invalid[_ ]api[_ ]key").unwrap() }
 pub fn limit_re() -> regex::Regex { regex::Regex::new(r"(?i)(usage|rate)\s+limit\s+(reached|hit)|hit your (usage |session |weekly )?limit|reached your (usage |session |weekly )?limit|limit reached").unwrap() }
 
@@ -138,6 +139,7 @@ impl Relay {
         let mut sys = format!("{}{}{}{}{}{}{}", ASK_PROMPT, self.plain_prompt(), if kind != "talk" { self.mem_prompt() } else { String::new() },
             if self.o.public_mode && kind != "talk" { format!(" {HUB_PROMPT}") } else { String::new() }, if bugs_on { format!(" {BUGS_PROMPT}") } else { String::new() },
             if kind == "talk" { format!(" {TALK_PROMPT}") } else { String::new() }, if body.t("brief") { format!(" {BRIEF}") } else { String::new() });
+        if kind != "talk" { sys.push(' '); sys.push_str(CONTEXT_PROMPT); }
         args.extend(["--mcp-config".into(), mcp_file.to_string_lossy().to_string(), "--allowedTools".into(), allowed]);
         // a chat with root rights: only when the owner switched it on, and only through passwordless sudo (or when this program already is root)
         let was_root = sid_param != "new" && self.get_prefs(sid_param).get("root") == Some(&Value::Bool(true));
@@ -164,9 +166,11 @@ impl Relay {
             for (k, v) in std::env::vars() { let ku = k.to_uppercase(); if ku.starts_with("ANTHROPIC_") || ku.starts_with("CLAUDE_") || ku.starts_with("HTTP_PROXY") || ku.starts_with("HTTPS_PROXY") || ku.starts_with("NO_PROXY") { c.arg(format!("{k}={v}")); } }
             c.arg(&claude).args(&args); c.current_dir(&cwd); c
         } else { claude_command(&claude, &args, &cwd) };
+        // big tool output is what fills the context and makes auto-compact thrash: cap it (unless the owner set their own limits)
+        for (k, v) in [("BASH_MAX_OUTPUT_LENGTH", "30000"), ("MAX_MCP_OUTPUT_TOKENS", "20000")] { if std::env::var_os(k).is_none() { cmd.env(k, v); } }
         cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let mut child = match cmd.spawn() { Ok(c) => c, Err(e) => return Err((500, format!("Could not start Claude: {e}"))) };
-        let job = Arc::new(Job { key: key.clone(), cwd: cwd.clone(), started: now_ms(), root_launch, bugs: bugs_on, resume_body: json!({"mode": body.g("mode"), "model": body.g("model")}), pid: Mutex::new(child.id()), st: Mutex::new(JobState {
+        let job = Arc::new(Job { key: key.clone(), cwd: cwd.clone(), started: now_ms(), root_launch, bugs: bugs_on, resume_body: json!({"mode": body.g("mode"), "model": body.g("model"), "fresh": body.t("fresh")}), pid: Mutex::new(child.id()), st: Mutex::new(JobState {
             sid: if sid_param == "new" { String::new() } else { sid_param.into() }, want_kind: if kind == "talk" && sid_param == "new" { "talk".into() } else { String::new() },
             want_root: as_root, want_auto: as_root && bmode == "bypassPermissions" && self.bypass_ok(), ..Default::default() }) });
         self.jobs.lock().unwrap().insert(key.clone(), job.clone());
@@ -290,6 +294,7 @@ impl Relay {
         let (sid, limit, err, text, result) = { let g = job.st.lock().unwrap(); (g.sid.clone(), g.limit_hit, g.error, g.text.clone(), g.result_text.clone()) };
         if sid.is_empty() { return; }
         if limit { self.on_limit(job); return; }
+        if thrash_re().is_match(&format!("{text}\n{result}")) && self.fresh_start(job, &sid) { return; }
         let prefs = self.get_prefs(&sid);
         let base = self.base_for(&sid, &job.cwd);
         let seconds = ((now_ms() - job.started) / 1000.0).round();
@@ -299,6 +304,33 @@ impl Relay {
         let call = prefs.s("call");
         self.publish(merge(&base, &json!({"kind": if err { "error" } else { "done" }, "call": if call != "off" && !err { true } else { call == "attention" }, "text": txt.trim(), "seconds": seconds})));
         if call == "done" { self.set_prefs(&sid, json!({"call": "off"})); }
+    }
+
+    /// Auto-compact gave up (the chat fills its context again right after every compact): the chat cannot go on.
+    /// Start a fresh chat in the same folder with a short hand-over (what was asked, where it got to), and say so.
+    /// Not for a chat that is itself such a fresh start, so this can never loop.
+    fn fresh_start(self: &Arc<Self>, job: &Arc<Job>, sid: &str) -> bool {
+        if job.resume_body.t("fresh") || self.get_prefs(sid).t("freshFrom") { return false; }
+        let msgs = arr(&crate::core::messages_sid(sid, 60));
+        let asked: Vec<String> = msgs.iter().filter(|m| m.s("role") == "user" && !m.s("text").trim().is_empty()).map(|m| m.s("text")).collect();
+        let first = asked.first().cloned().unwrap_or_default(); let last = asked.last().cloned().unwrap_or_default();
+        let said = msgs.iter().rev().find(|m| m.s("role") == "assistant" && !m.s("text").trim().is_empty()).map(|m| m.s("text")).unwrap_or_default();
+        let cut = |s: &str, n: usize| -> String { let c: Vec<char> = s.chars().collect(); if c.len() <= n { s.to_string() } else { format!("{}…", c[..n].iter().collect::<String>()) } };
+        let mut text = format!("Continue the work of an earlier chat in this folder. That chat had to stop: its context kept filling up right after every compact, almost always because a file or a command output was far too large.\n\nWhat was asked at the start:\n{}\n", cut(&first, 2500));
+        if last != first && !last.is_empty() { text.push_str(&format!("\nThe last request:\n{}\n", cut(&last, 2500))); }
+        if !said.is_empty() { text.push_str(&format!("\nThe last thing Claude said there:\n{}\n", cut(&said, 2000))); }
+        text.push_str("\nFirst check what is already done (git status / git diff, the files involved), then finish the rest. Never read a large file or log whole: use offset/limit, grep, head or tail, and keep command output short.");
+        let body = merge(&job.resume_body, &json!({"text": text, "cwd": job.cwd, "fresh": true}));
+        match self.start_job(&body, "new") {
+            Ok(_) => {
+                let key = self.jobs.lock().unwrap().iter().filter(|(k, j)| k.starts_with("new-") && j.cwd == job.cwd && !j.is_done()).max_by(|a, b| a.1.started.partial_cmp(&b.1.started).unwrap()).map(|(k, _)| k.clone());
+                if let Some(k) = key { if let Some(j) = self.job(&k) { let me = self.clone(); j.on_done(Box::new(move |v: &JobView| { if !v.sid.is_empty() { me.set_prefs(&v.sid, json!({"freshFrom": true})); } })); } }
+                let base = self.base_for(sid, &job.cwd);
+                self.publish(merge(&base, &json!({"kind": "done", "call": false, "text": "The chat's context was full and could not be compacted any more. Hearth started a fresh chat in the same folder that picks up the work."})));
+                self.log("auto-compact thrashed: started a fresh chat to continue"); true
+            }
+            Err((_, m)) => { self.log(&format!("fresh start after auto-compact failed: {m}")); false }
+        }
     }
 
     fn limit_reset_at(&self, job: &Arc<Job>) -> f64 {
