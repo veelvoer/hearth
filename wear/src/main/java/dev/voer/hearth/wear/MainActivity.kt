@@ -9,7 +9,20 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -32,6 +45,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.scrollBy
@@ -109,6 +123,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** The last turn of each chat that was opened: a chat opens with what it showed last time, the new answer replaces it. */
+private val turns = java.util.concurrent.ConcurrentHashMap<String, Turn>()
+
 private suspend fun pause(ms: Long) { delay(ms); while (!Visible.now) delay(500) }
 
 // ───────────────────────── small building blocks ─────────────────────────
@@ -119,16 +136,24 @@ private fun t(size: Int, color: Color, weight: FontWeight = FontWeight.Normal, a
 private fun Label(text: String, size: Int = 13, color: Color = Ink, weight: FontWeight = FontWeight.Normal, lines: Int = Int.MAX_VALUE, modifier: Modifier = Modifier, align: TextAlign = TextAlign.Center) =
     BasicText(text, modifier, style = t(size, color, weight, align), maxLines = lines, overflow = TextOverflow.Ellipsis)
 
-/** A button: fills with the surface or the accent, shrinks a little while pressed (one GPU property, no relayout). */
+/** A button: pressing squeezes it with a springy overshoot and its corners tighten (all inside the draw layer: no relayout, no recomposition per frame). */
 @Composable
 private fun Pill(modifier: Modifier = Modifier, primary: Boolean = false, enabled: Boolean = true, desc: String? = null, onClick: () -> Unit, content: @Composable () -> Unit) {
     var down by remember { mutableStateOf(false) }
-    val s by animateFloatAsState(if (down) 0.94f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "press")
-    Box(modifier.heightMin().graphicsLayer { scaleX = s; scaleY = s; alpha = if (enabled) 1f else 0.5f }
-        .clip(RoundedCornerShape(24.dp)).background(if (primary) Clay else Card)
+    val p = animateFloatAsState(if (down) 1f else 0f, spring(dampingRatio = 0.5f, stiffness = 520f), label = "press")
+    Box(modifier.heightMin().graphicsLayer { val v = p.value; scaleX = 1f - 0.07f * v; scaleY = 1f - 0.07f * v; alpha = if (enabled) 1f else 0.5f; shape = RoundedCornerShape((24f - 10f * v).dp); clip = true }
+        .background(if (primary) Clay else Card)
         .semantics { role = Role.Button; if (desc != null) contentDescription = desc }
         .pointerInput(enabled) { detectTapGestures(onPress = { down = true; tryAwaitRelease(); down = false }, onTap = { if (enabled) onClick() }) }
         .padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { content() }
+}
+
+/** Things grow in one after the other: a short spring from below, scaled up, faded in (transform and opacity only). */
+@Composable
+private fun Modifier.arrive(index: Int = 0): Modifier {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { delay((index.coerceAtMost(8) * 40).toLong()); a.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = 260f)) }
+    return this.graphicsLayer { val v = a.value; alpha = v.coerceIn(0f, 1f); translationY = (1f - v) * 28.dp.toPx(); scaleX = 0.88f + 0.12f * v; scaleY = 0.88f + 0.12f * v }
 }
 private fun Modifier.heightMin() = this.then(Modifier.heightIn(min = 44.dp))
 
@@ -155,13 +180,23 @@ fun WatchApp() {
         var open by remember { mutableStateOf<Chat?>(null) }
         var screen by remember { mutableStateOf("home") }   // home, chats, settings
         BackHandler(open != null || screen != "home") { if (open != null) open = null else screen = "home" }
-        val o = open
-        when {
-            servers.isEmpty() -> NotPaired()
-            o != null -> ChatScreen(o)
-            screen == "settings" -> SettingsScreen(servers)
-            screen == "chats" -> ChatsScreen(servers) { open = it }
-            else -> Home(servers, { screen = "chats" }, { screen = "settings" })
+        val dest = when { servers.isEmpty() -> "none"; open != null -> "chat"; else -> screen }
+        val depth = mapOf("none" to 0, "home" to 0, "chats" to 1, "settings" to 1, "chat" to 2)
+        AnimatedContent(targetState = dest, modifier = Modifier.fillMaxSize(), label = "screen", transitionSpec = {
+            val fwd = depth.getValue(targetState) >= depth.getValue(initialState)
+            val sp = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 420f, visibilityThreshold = IntOffset(1, 1))
+            val fl = spring<Float>(dampingRatio = 1f, stiffness = 500f)
+            (slideInHorizontally(sp) { w -> if (fwd) w / 3 else -w / 3 } + fadeIn(fl) + scaleIn(fl, 0.9f)) togetherWith
+                (slideOutHorizontally(sp) { w -> if (fwd) -w / 4 else w / 4 } + fadeOut(fl) + scaleOut(fl, 0.9f))
+        }) { d ->
+            val o = open
+            when {
+                d == "none" -> NotPaired()
+                d == "chat" && o != null -> ChatScreen(o)
+                d == "settings" -> SettingsScreen(servers)
+                d == "chats" -> ChatsScreen(servers) { open = it }
+                else -> Home(servers, { screen = "chats" }, { screen = "settings" })
+            }
         }
     }
 }
@@ -191,25 +226,24 @@ private fun ago(ms: Long): String {
 
 @Composable
 private fun Home(servers: List<Server>, onChats: () -> Unit, onSettings: () -> Unit) {
-    var usage by remember { mutableStateOf<Usage?>(null) }
-    var working by remember { mutableStateOf(0) }
+    val first = remember(servers) { servers.mapNotNull { Api.cached(it) } }   // the last numbers show at once, the fresh ones replace them
+    var usage by remember { mutableStateOf(first.firstNotNullOfOrNull { it.usage }) }
+    var working by remember { mutableStateOf(first.sumOf { h -> h.chats.count { it.busy } }) }
     var err by remember { mutableStateOf("") }
     var asks by remember { mutableStateOf<List<Ask>>(emptyList()) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(servers) {
         while (true) {
-            val r = withContext(Dispatchers.IO) {
-                val u = servers.firstNotNullOfOrNull { s -> runCatching { Api.usage(s) }.getOrNull() }
-                val l = servers.map { s -> runCatching { Api.chats(s) } }
-                val a = servers.flatMap { s -> runCatching { Api.pending(s) }.getOrDefault(emptyList()) }
-                Triple(u, l.flatMap { it.getOrDefault(emptyList()) }.count { it.busy } to a, (if (l.all { it.isFailure }) friendly(l.first().exceptionOrNull(), servers.first().name) else null))
-            }
-            usage = r.first ?: usage; working = r.second.first; asks = r.second.second; err = r.third ?: ""
+            val rs = coroutineScope { servers.map { s -> async(Dispatchers.IO) { runCatching { Api.home(s) } } }.awaitAll() }
+            val ok = rs.mapNotNull { it.getOrNull() }
+            if (ok.isNotEmpty()) { usage = ok.firstNotNullOfOrNull { it.usage } ?: usage; working = ok.sumOf { h -> h.chats.count { it.busy } }; asks = ok.flatMap { it.asks }; err = "" }
+            else err = friendly(rs.first().exceptionOrNull(), servers.first().name)
             pause(if (working > 0 || asks.isNotEmpty()) 4_000 else 10_000)
         }
     }
     val p = ((usage?.session ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
-    val shown by animateFloatAsState(p, spring(stiffness = Spring.StiffnessLow), label = "ring")
+    val shown by animateFloatAsState(p, spring(dampingRatio = 0.8f, stiffness = 90f), label = "ring")
+    val num by animateFloatAsState((usage?.session ?: 0.0).toFloat(), spring(dampingRatio = 1f, stiffness = 120f), label = "num")
     val hot = (usage?.session ?: 0.0) >= 90
     Box(Modifier.fillMaxSize()) {
         // the ring follows the edge of the screen: usage of the 5-hour window
@@ -221,15 +255,15 @@ private fun Home(servers: List<Server>, onChats: () -> Unit, onSettings: () -> U
         val ask = asks.firstOrNull()
         if (ask != null) AskCard(ask, scope) { asks = asks.filter { it.req != ask.req } }
         else Column(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Label(pct(usage?.session), 38, Ink, FontWeight.SemiBold)
+            Label(if (usage?.session == null) "–" else "${num.toInt()}%", 38, Ink, FontWeight.SemiBold, modifier = Modifier.arrive(0))
             val reset = usage?.sessionReset?.takeIf { it > System.currentTimeMillis() }?.let { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(it)) }
-            Label(if (reset != null) "resets $reset" else "session", 12, Muted)
-            Label("week ${pct(usage?.week)}", 12, Muted)
+            Label(if (reset != null) "resets $reset" else "session", 12, Muted, modifier = Modifier.arrive(1))
+            Label("week ${pct(usage?.week)}", 12, Muted, modifier = Modifier.arrive(2))
             Spacer(Modifier.height(8.dp))
             if (err.isNotEmpty()) Label(err, 11, Clay, lines = 2)
-            else Label(if (working > 0) "$working working…" else "all quiet", 12, if (working > 0) Clay else Muted)
+            else Label(if (working > 0) "$working working…" else "all quiet", 12, if (working > 0) Clay else Muted, modifier = Modifier.arrive(3))
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.arrive(4), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Pill(Modifier.width(72.dp), primary = true, desc = "Chats", onClick = onChats) { Label("Chats", 13, Pal.cur.onClay, FontWeight.SemiBold) }
                 Pill(Modifier.width(44.dp), desc = "Settings", onClick = onSettings) { Canvas(Modifier.size(18.dp)) { val w = 2.dp.toPx(); for (i in 0..2) { val y = size.height * (0.2f + 0.3f * i); drawLine(Ink, Offset(0f, y), Offset(size.width, y), w, StrokeCap.Round) } } }
             }
@@ -258,25 +292,25 @@ private fun AskCard(q: Ask, scope: kotlinx.coroutines.CoroutineScope, done: () -
 
 @Composable
 private fun ChatsScreen(servers: List<Server>, onOpen: (Chat) -> Unit) {
-    var chats by remember { mutableStateOf<List<Chat>?>(null) }
+    var chats by remember { mutableStateOf<List<Chat>?>(servers.mapNotNull { Api.cached(it) }.takeIf { it.isNotEmpty() }?.flatMap { it.chats }?.sortedByDescending { it.mtime }?.take(12)) }
     LaunchedEffect(servers) {
         while (true) {
-            chats = withContext(Dispatchers.IO) { servers.flatMap { s -> runCatching { Api.chats(s) }.getOrDefault(emptyList()) }.sortedByDescending { it.mtime }.take(12) }
+            val rs = coroutineScope { servers.map { s -> async(Dispatchers.IO) { runCatching { Api.home(s) } } }.awaitAll() }
+            val ok = rs.mapNotNull { it.getOrNull() }
+            if (ok.isNotEmpty() || chats == null) chats = ok.flatMap { it.chats }.sortedByDescending { it.mtime }.take(12)
             pause(15_000)
         }
     }
     val state = rememberLazyListState(); val scope = rememberCoroutineScope()
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().bezel { scope.launch { state.scrollBy(it) } }, state = state, contentPadding = PaddingValues(top = 36.dp, bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val l = chats
-            if (l == null) item { Label("Loading…", 12, Muted) }
-            else if (l.isEmpty()) item { Label("No chats yet", 12, Muted) }
-            else items(l, key = { it.server.base + it.id }) { ch ->
-                Pill(Modifier.fillMaxWidth(0.74f).heightMin().then(Modifier), onClick = { onOpen(ch) }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Label(ch.title, 12, Ink, FontWeight.Medium, lines = 2)
-                        Label(if (ch.busy) "working…" else ago(ch.mtime), 10, if (ch.busy) Clay else Muted, lines = 1)
-                    }
+    LazyColumn(Modifier.fillMaxSize().bezel { scope.launch { state.scrollBy(it) } }, state = state, contentPadding = PaddingValues(top = 36.dp, bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val l = chats
+        if (l == null) item { Label("Loading…", 12, Muted) }
+        else if (l.isEmpty()) item { Label("No chats yet", 12, Muted) }
+        else itemsIndexed(l, key = { _, it -> it.server.base + it.id }) { i, ch ->
+            Pill(Modifier.fillMaxWidth(0.74f).arrive(i), onClick = { onOpen(ch) }) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Label(ch.title, 12, Ink, FontWeight.Medium, lines = 2)
+                    Label(if (ch.busy) "working…" else ago(ch.mtime), 10, if (ch.busy) Clay else Muted, lines = 1)
                 }
             }
         }
@@ -288,14 +322,14 @@ private fun ChatsScreen(servers: List<Server>, onOpen: (Chat) -> Unit) {
 @Composable
 private fun ChatScreen(ch: Chat) {
     val scope = rememberCoroutineScope()
-    var turn by remember { mutableStateOf<Turn?>(null) }
+    var turn by remember { mutableStateOf(turns[ch.server.base + ch.id]) }
     var busy by remember { mutableStateOf(ch.busy) }
     var note by remember { mutableStateOf("") }
     var tick by remember { mutableStateOf(0) }
     LaunchedEffect(ch.id, tick) {
         while (true) {
-            withContext(Dispatchers.IO) { runCatching { Api.lastTurn(ch.server, ch.id) to Api.chats(ch.server).firstOrNull { it.id == ch.id }?.busy } }
-                .onSuccess { (tn, b) -> turn = tn; busy = b ?: false; note = "" }.onFailure { note = friendly(it, ch.server.name) }
+            runCatching { coroutineScope { val t = async(Dispatchers.IO) { Api.lastTurn(ch.server, ch.id) }; val b = async(Dispatchers.IO) { runCatching { Api.chats(ch.server).firstOrNull { it.id == ch.id }?.busy }.getOrNull() }; t.await() to b.await() } }
+                .onSuccess { (tn, b) -> turn = tn; turns[ch.server.base + ch.id] = tn; busy = b ?: false; note = "" }.onFailure { note = friendly(it, ch.server.name) }
             pause(if (busy) 4_000 else 15_000)
         }
     }
@@ -351,7 +385,7 @@ private fun SettingsScreen(servers: List<Server>) {
         item { Label("Theme", 12, Muted, FontWeight.SemiBold) }
         fun row(id: String, label: String, sub: String?, dot: Color?) = item(key = id) {
             val on = Pal.choice == id
-            Pill(Modifier.fillMaxWidth(0.72f), primary = on, onClick = { Pal.pick(c, id) }) {
+            Pill(Modifier.fillMaxWidth(0.72f).arrive(), primary = on, onClick = { Pal.pick(c, id) }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (dot != null) Box(Modifier.size(12.dp).clip(CircleShape).background(dot))
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

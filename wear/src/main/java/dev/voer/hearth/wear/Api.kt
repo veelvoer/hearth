@@ -14,6 +14,7 @@ import org.json.JSONObject
 data class Usage(val session: Double?, val week: Double?, val sessionReset: Long?)
 data class Chat(val id: String, val title: String, val busy: Boolean, val mtime: Long, val server: Server)
 data class Ask(val req: String, val kind: String, val title: String, val text: String, val options: List<String>, val server: Server)
+data class Home(val usage: Usage?, val chats: List<Chat>, val asks: List<Ask>)
 data class Turn(val asked: String, val answer: String)
 
 /**
@@ -83,15 +84,61 @@ object Api {
 
     fun usage(s: Server): Usage {
         val o = Phone.ask(s, "usage")?.getJSONObject("usage") ?: JSONObject(get(s, "/usage")).also { Phone.via = false }
+        return parseUsage(o)
+    }
+
+    private fun parseUsage(o: JSONObject): Usage {
         fun pct(k: String) = o.optJSONObject(k)?.optDouble("pct")?.takeIf { !it.isNaN() }
         return Usage(pct("session"), pct("week"), o.optJSONObject("session")?.let { if (it.isNull("resetsAt")) null else it.optLong("resetsAt") })
+    }
+
+    private fun parseAsks(a: JSONArray, s: Server): List<Ask> =
+        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") == "permission" || it.optString("kind") == "question" }.filter { it.optString("req").isNotEmpty() }
+            .map { o -> Ask(o.optString("req"), o.optString("kind"), o.optString("title"), o.optString("text"), o.optJSONArray("options")?.let { op -> (0 until op.length()).map { i -> op.optJSONObject(i)?.optString("label") ?: op.optString(i) } } ?: emptyList(), s) }
+
+    private fun parseChats(a: JSONArray, s: Server): List<Chat> =
+        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
+            .map { Chat(it.getString("id"), it.optString("title").ifBlank { "Chat" }, it.optBoolean("running") || it.optBoolean("busy"), it.optLong("mtime"), s) }
+
+    /** The raw answer of the last good home call per server, for a screen that appears at once and is then brought up to date. */
+    private val last = java.util.concurrent.ConcurrentHashMap<String, Home>()
+    private fun prefs() = Phone.app.getSharedPreferences("cache", Context.MODE_PRIVATE)
+
+    /** The last numbers and chats (also from the last time the app ran): drawn at once, then the fresh ones replace them. */
+    fun cached(s: Server): Home? = last[s.base] ?: runCatching {
+        val o = JSONObject(prefs().getString(s.base, null) ?: return null)
+        val u = o.optJSONObject("u")?.let { Usage(it.optDouble("s").takeIf { v -> !v.isNaN() }, it.optDouble("w").takeIf { v -> !v.isNaN() }, if (it.has("r")) it.optLong("r") else null) }
+        val a = o.optJSONArray("c") ?: JSONArray()
+        Home(u, (0 until a.length()).map { a.getJSONObject(it) }.map { Chat(it.getString("id"), it.optString("t"), it.optBoolean("b"), it.optLong("m"), s) }, emptyList())
+    }.getOrNull()
+
+    private fun remember(s: Server, h: Home) {
+        last[s.base] = h
+        runCatching {
+            val u = h.usage?.let { JSONObject().apply { it.session?.let { v -> put("s", v) }; it.week?.let { v -> put("w", v) }; it.sessionReset?.let { v -> put("r", v) } } }
+            val c = JSONArray().also { a -> h.chats.take(12).forEach { ch -> a.put(JSONObject().put("id", ch.id).put("t", ch.title).put("b", ch.busy).put("m", ch.mtime)) } }
+            prefs().edit().putString(s.base, JSONObject().apply { if (u != null) put("u", u); put("c", c) }.toString()).apply()
+        }
+    }
+
+    /** Usage, chats and what Claude waits for, in one go: one message to the phone (which fetches them side by side), or three calls side by side. */
+    fun home(s: Server): Home {
+        val raw = try { Phone.ask(s, "home") } catch (e: IOException) { if (e.message == "unknown") null else throw e }
+        if (raw != null) {
+            if (!raw.has("usage") && !raw.has("chats") && !raw.has("items")) throw IOException(raw.optString("error", "no answer"))
+            return Home(raw.optJSONObject("usage")?.let { parseUsage(it) }, parseChats(raw.optJSONArray("chats") ?: JSONArray(), s), parseAsks(raw.optJSONArray("items") ?: JSONArray(), s)).also { remember(s, it) }
+        }
+        val r = arrayOfNulls<Result<Any?>>(3)
+        listOf<() -> Any?>({ usage(s) }, { chats(s) }, { pending(s) }).mapIndexed { i, f -> Thread { r[i] = runCatching { f() } }.also { it.start() } }.forEach { it.join() }
+        if (r.all { it?.isFailure != false }) throw r.firstNotNullOf { it?.exceptionOrNull() }
+        @Suppress("UNCHECKED_CAST")
+        return Home(r[0]?.getOrNull() as? Usage, (r[1]?.getOrNull() as? List<Chat>) ?: emptyList(), (r[2]?.getOrNull() as? List<Ask>) ?: emptyList()).also { remember(s, it) }
     }
 
     /** What Claude is waiting for: permissions and questions. */
     fun pending(s: Server): List<Ask> {
         val a = Phone.ask(s, "pending")?.getJSONArray("items") ?: JSONArray(get(s, "/pending")).also { Phone.via = false }
-        return (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") == "permission" || it.optString("kind") == "question" }.filter { it.optString("req").isNotEmpty() }
-            .map { o -> Ask(o.optString("req"), o.optString("kind"), o.optString("title"), o.optString("text"), o.optJSONArray("options")?.let { op -> (0 until op.length()).map { i -> op.optJSONObject(i)?.optString("label") ?: op.optString(i) } } ?: emptyList(), s) }
+        return parseAsks(a, s)
     }
     /** Allow or deny a permission, or pick an answer to a question. */
     fun decide(s: Server, req: String, kind: String, v: String) {
@@ -107,8 +154,7 @@ object Api {
 
     fun chats(s: Server): List<Chat> {
         val a = Phone.ask(s, "chats")?.getJSONArray("chats") ?: JSONArray(get(s, "/sessions")).also { Phone.via = false }
-        return (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
-            .map { Chat(it.getString("id"), it.optString("title").ifBlank { "Chat" }, it.optBoolean("running") || it.optBoolean("busy"), it.optLong("mtime"), s) }
+        return parseChats(a, s)
     }
 
     /** The last thing you asked and the last answer, without tool calls. */

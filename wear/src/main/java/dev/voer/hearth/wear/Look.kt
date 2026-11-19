@@ -39,9 +39,9 @@ object Pal {
         pcName = runCatching { fromPc(JSONObject(sp(c).getString("pc", "{}") ?: "{}"))?.name ?: "" }.getOrDefault("")
         apply(c)
     }
-    fun pick(c: Context, v: String) { choice = v; sp(c).edit().putString("choice", v).apply(); apply(c) }
+    fun pick(c: Context, v: String) { choice = v; sp(c).edit().putString("choice", v).apply(); apply(c); Complications.refresh(c) }
     /** Remembers what the computer said (null: it has no theme to share). */
-    fun savePc(c: Context, o: JSONObject?) { sp(c).edit().putString("pc", o?.toString() ?: "{}").apply(); pcName = o?.let { fromPc(it)?.name } ?: ""; apply(c) }
+    fun savePc(c: Context, o: JSONObject?) { sp(c).edit().putString("pc", o?.toString() ?: "{}").apply(); pcName = o?.let { fromPc(it)?.name } ?: ""; val before = cur; apply(c); if (choice == "pc" && cur != before) Complications.refresh(c) }
     private fun apply(c: Context) {
         cur = when (choice) {
             "pc" -> runCatching { fromPc(JSONObject(sp(c).getString("pc", "{}") ?: "{}")) }.getOrNull() ?: WATCH

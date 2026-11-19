@@ -1,1 +1,24 @@
-<resources><string name="face_name">Hearth</string></resources>
+<resources>
+    <string name="face_name">Hearth</string>
+    <string name="slot_ring">Ring</string>
+    <string name="slot_left">Left</string>
+    <string name="slot_right">Right</string>
+    <string name="cfg_accent">Accent</string>
+    <string name="cfg_clock_color">Time colour</string>
+    <string name="cfg_clock_style">Time style</string>
+    <string name="cfg_date">Date</string>
+    <string name="style_regular">Regular</string>
+    <string name="style_thin">Thin</string>
+    <string name="style_bold">Bold</string>
+    <string name="accent_clay">Hearth clay</string>
+    <string name="accent_ocean">Ocean blue</string>
+    <string name="accent_forest">Forest green</string>
+    <string name="accent_grape">Grape</string>
+    <string name="accent_mono">Mono</string>
+    <string name="clockColor_warm">Warm white</string>
+    <string name="clockColor_white">White</string>
+    <string name="clockColor_clayc">Hearth clay</string>
+    <string name="clockColor_oceanc">Ocean blue</string>
+    <string name="clockColor_forestc">Forest green</string>
+    <string name="clockColor_grapec">Grape</string>
+</resources>

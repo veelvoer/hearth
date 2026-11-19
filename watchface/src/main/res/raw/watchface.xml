@@ -2,9 +2,32 @@
 <WatchFace width="450" height="450">
   <Metadata key="CLOCK_TYPE" value="DIGITAL"/>
   <Metadata key="PREVIEW_TIME" value="10:08:32"/>
+  <UserConfigurations>
+    <ColorConfiguration id="accent" defaultValue="0" displayName="cfg_accent" screenReaderText="cfg_accent">
+      <ColorOption id="0" displayName="accent_clay" colors="#F0643C"/>
+      <ColorOption id="1" displayName="accent_ocean" colors="#5AA9F5"/>
+      <ColorOption id="2" displayName="accent_forest" colors="#6FCF7F"/>
+      <ColorOption id="3" displayName="accent_grape" colors="#B98CF0"/>
+      <ColorOption id="4" displayName="accent_mono" colors="#E6E6E6"/>
+    </ColorConfiguration>
+    <ColorConfiguration id="clockColor" defaultValue="0" displayName="cfg_clock_color" screenReaderText="cfg_clock_color">
+      <ColorOption id="0" displayName="clockColor_warm" colors="#F5F1EA"/>
+      <ColorOption id="1" displayName="clockColor_white" colors="#FFFFFF"/>
+      <ColorOption id="2" displayName="clockColor_clayc" colors="#F0643C"/>
+      <ColorOption id="3" displayName="clockColor_oceanc" colors="#5AA9F5"/>
+      <ColorOption id="4" displayName="clockColor_forestc" colors="#6FCF7F"/>
+      <ColorOption id="5" displayName="clockColor_grapec" colors="#B98CF0"/>
+    </ColorConfiguration>
+    <ListConfiguration id="clockStyle" defaultValue="0" displayName="cfg_clock_style" screenReaderText="cfg_clock_style">
+      <ListOption id="0" displayName="style_regular"/>
+      <ListOption id="1" displayName="style_thin"/>
+      <ListOption id="2" displayName="style_bold"/>
+    </ListConfiguration>
+    <BooleanConfiguration id="showDate" defaultValue="TRUE" displayName="cfg_date" screenReaderText="cfg_date"/>
+  </UserConfigurations>
   <Scene backgroundColor="#ff000000">
-    <!-- the ring: Claude usage of the 5-hour window, follows the edge of the round screen; tap opens Hearth -->
-    <ComplicationSlot x="0" y="0" width="450" height="450" slotId="0" displayName="Ring" supportedTypes="RANGED_VALUE EMPTY">
+    <!-- the ring: Claude usage of the 5-hour window, in the colour of the Hearth theme chosen on the watch; any other source works too -->
+    <ComplicationSlot x="0" y="0" width="450" height="450" slotId="0" displayName="slot_ring" supportedTypes="RANGED_VALUE EMPTY">
       <DefaultProviderPolicy defaultSystemProvider="WATCH_BATTERY" defaultSystemProviderType="RANGED_VALUE" primaryProvider="dev.voer.hearth/dev.voer.hearth.wear.UsageComplication" primaryProviderType="RANGED_VALUE"/>
       <BoundingOval x="0" y="0" width="450" height="450"/>
       <Complication type="RANGED_VALUE">
@@ -13,31 +36,192 @@
           <Arc centerX="225" centerY="225" width="428" height="428" startAngle="-135" endAngle="135">
             <Stroke thickness="14" color="#ff262320" cap="ROUND"/>
           </Arc>
-          <Arc centerX="225" centerY="225" width="428" height="428" startAngle="-135" endAngle="135">
-            <Stroke thickness="14" color="#fff0693f" cap="ROUND"/>
-            <Transform target="endAngle" value="-135 + 270 * (clamp([COMPLICATION.RANGED_VALUE_VALUE], 0, 100) / 100)"/>
-          </Arc>
         </PartDraw>
+        <Condition>
+          <Expressions><Expression name="ramp"><![CDATA[[COMPLICATION.RANGED_VALUE_COLORS] != null]]></Expression></Expressions>
+          <Compare expression="ramp">
+            <PartDraw x="0" y="0" width="450" height="450">
+              <Variant mode="AMBIENT" target="alpha" value="0"/>
+              <Arc centerX="225" centerY="225" width="428" height="428" startAngle="-135" endAngle="135">
+          <WeightedStroke thickness="14" colors="[COMPLICATION.RANGED_VALUE_COLORS]" cap="ROUND" interpolate="false"/>
+          <Transform target="endAngle" value="-135 + (135 - (-135)) * ((clamp([COMPLICATION.RANGED_VALUE_VALUE], [COMPLICATION.RANGED_VALUE_MIN], [COMPLICATION.RANGED_VALUE_MAX]) - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN]))"/>
+        </Arc>
+            </PartDraw>
+          </Compare>
+          <Default>
+            <PartDraw x="0" y="0" width="450" height="450">
+              <Variant mode="AMBIENT" target="alpha" value="0"/>
+              <Arc centerX="225" centerY="225" width="428" height="428" startAngle="-135" endAngle="135">
+          <Stroke thickness="14" color="[CONFIGURATION.accent.0]" cap="ROUND"/>
+          <Transform target="endAngle" value="-135 + (135 - (-135)) * ((clamp([COMPLICATION.RANGED_VALUE_VALUE], [COMPLICATION.RANGED_VALUE_MIN], [COMPLICATION.RANGED_VALUE_MAX]) - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN]))"/>
+        </Arc>
+            </PartDraw>
+          </Default>
+        </Condition>
       </Complication>
     </ComplicationSlot>
-    <DigitalClock x="0" y="0" width="450" height="450">
-      <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="125" width="400" height="140" alpha="255">
-        <Variant mode="AMBIENT" target="alpha" value="0"/>
-        <Font family="SYNC_TO_DEVICE" size="120" weight="NORMAL" slant="NORMAL" color="#fff5f1ea"/>
-      </TimeText>
-      <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="125" width="400" height="140" alpha="0">
-        <Variant mode="AMBIENT" target="alpha" value="255"/>
-        <Font family="SYNC_TO_DEVICE" size="120" weight="THIN" slant="NORMAL" color="#ffffffff"/>
-      </TimeText>
-    </DigitalClock>
-    <!-- the date -->
-    <PartText x="75" y="285" width="300" height="50">
+    <ListConfiguration id="clockStyle">
+      <ListOption id="0">
+        <DigitalClock x="0" y="0" width="450" height="450">
+          <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="108" width="400" height="140" alpha="255">
+            <Variant mode="AMBIENT" target="alpha" value="0"/>
+            <Font family="SYNC_TO_DEVICE" size="112" weight="NORMAL" slant="NORMAL" color="[CONFIGURATION.clockColor.0]"/>
+          </TimeText>
+          <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="108" width="400" height="140" alpha="0">
+            <Variant mode="AMBIENT" target="alpha" value="255"/>
+            <Font family="SYNC_TO_DEVICE" size="112" weight="THIN" slant="NORMAL" color="#ffffffff"/>
+          </TimeText>
+        </DigitalClock>
+      </ListOption>
+      <ListOption id="1">
+        <DigitalClock x="0" y="0" width="450" height="450">
+          <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="108" width="400" height="140" alpha="255">
+            <Variant mode="AMBIENT" target="alpha" value="0"/>
+            <Font family="SYNC_TO_DEVICE" size="112" weight="THIN" slant="NORMAL" color="[CONFIGURATION.clockColor.0]"/>
+          </TimeText>
+          <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="108" width="400" height="140" alpha="0">
+            <Variant mode="AMBIENT" target="alpha" value="255"/>
+            <Font family="SYNC_TO_DEVICE" size="112" weight="THIN" slant="NORMAL" color="#ffffffff"/>
+          </TimeText>
+        </DigitalClock>
+      </ListOption>
+      <ListOption id="2">
+        <DigitalClock x="0" y="0" width="450" height="450">
+          <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="108" width="400" height="140" alpha="255">
+            <Variant mode="AMBIENT" target="alpha" value="0"/>
+            <Font family="SYNC_TO_DEVICE" size="112" weight="BOLD" slant="NORMAL" color="[CONFIGURATION.clockColor.0]"/>
+          </TimeText>
+          <TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="25" y="108" width="400" height="140" alpha="0">
+            <Variant mode="AMBIENT" target="alpha" value="255"/>
+            <Font family="SYNC_TO_DEVICE" size="112" weight="THIN" slant="NORMAL" color="#ffffffff"/>
+          </TimeText>
+        </DigitalClock>
+      </ListOption>
+    </ListConfiguration>
+    <BooleanConfiguration id="showDate">
+      <BooleanOption id="TRUE">
+        <PartText x="75" y="62" width="300" height="44">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="28" weight="NORMAL" slant="NORMAL" color="[CONFIGURATION.accent.0]">
+              <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]"/><Parameter expression="[DAY]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </BooleanOption>
+    </BooleanConfiguration>
+    <ComplicationSlot x="84" y="262" width="124" height="96" slotId="1" displayName="slot_left" supportedTypes="SHORT_TEXT RANGED_VALUE EMPTY">
+      <DefaultProviderPolicy defaultSystemProvider="STEP_COUNT" defaultSystemProviderType="SHORT_TEXT" primaryProvider="dev.voer.hearth/dev.voer.hearth.wear.WeekComplication" primaryProviderType="RANGED_VALUE"/>
+      <BoundingBox x="84" y="262" width="124" height="96"/>
       <Variant mode="AMBIENT" target="alpha" value="0"/>
-      <Text align="CENTER" ellipsis="TRUE">
-        <Font family="SYNC_TO_DEVICE" size="34" weight="NORMAL" slant="NORMAL" color="#ffa8a29a">
-          <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]"/><Parameter expression="[DAY]"/></Template>
-        </Font>
-      </Text>
-    </PartText>
+      <Complication type="SHORT_TEXT">
+        <PartText x="0" y="6" width="124" height="50">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="40" weight="NORMAL" slant="NORMAL" color="#fff5f1ea">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="0" y="58" width="124" height="32">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="24" weight="NORMAL" slant="NORMAL" color="#ffa8a29a">
+              <Template>%s<Parameter expression="[COMPLICATION.TITLE]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="RANGED_VALUE">
+        <PartDraw x="0" y="0" width="124" height="96">
+          <Variant mode="AMBIENT" target="alpha" value="0"/>
+          <Arc centerX="62" centerY="48" width="88" height="88" startAngle="-180" endAngle="180">
+            <Stroke thickness="8" color="#ff262320" cap="ROUND"/>
+          </Arc>
+        </PartDraw>
+        <Condition>
+          <Expressions><Expression name="ramp"><![CDATA[[COMPLICATION.RANGED_VALUE_COLORS] != null]]></Expression></Expressions>
+          <Compare expression="ramp">
+            <PartDraw x="0" y="0" width="124" height="96">
+              <Variant mode="AMBIENT" target="alpha" value="0"/>
+              <Arc centerX="62" centerY="48" width="88" height="88" startAngle="-180" endAngle="180">
+          <WeightedStroke thickness="8" colors="[COMPLICATION.RANGED_VALUE_COLORS]" cap="ROUND" interpolate="false"/>
+          <Transform target="endAngle" value="-180 + (180 - (-180)) * ((clamp([COMPLICATION.RANGED_VALUE_VALUE], [COMPLICATION.RANGED_VALUE_MIN], [COMPLICATION.RANGED_VALUE_MAX]) - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN]))"/>
+        </Arc>
+            </PartDraw>
+          </Compare>
+          <Default>
+            <PartDraw x="0" y="0" width="124" height="96">
+              <Variant mode="AMBIENT" target="alpha" value="0"/>
+              <Arc centerX="62" centerY="48" width="88" height="88" startAngle="-180" endAngle="180">
+          <Stroke thickness="8" color="[CONFIGURATION.accent.0]" cap="ROUND"/>
+          <Transform target="endAngle" value="-180 + (180 - (-180)) * ((clamp([COMPLICATION.RANGED_VALUE_VALUE], [COMPLICATION.RANGED_VALUE_MIN], [COMPLICATION.RANGED_VALUE_MAX]) - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN]))"/>
+        </Arc>
+            </PartDraw>
+          </Default>
+        </Condition>
+        <PartText x="10" y="24" width="104" height="48">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="30" weight="NORMAL" slant="NORMAL" color="#fff5f1ea">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+    <ComplicationSlot x="242" y="262" width="124" height="96" slotId="2" displayName="slot_right" supportedTypes="SHORT_TEXT RANGED_VALUE EMPTY">
+      <DefaultProviderPolicy defaultSystemProvider="WATCH_BATTERY" defaultSystemProviderType="RANGED_VALUE" primaryProvider="dev.voer.hearth/dev.voer.hearth.wear.BusyComplication" primaryProviderType="SHORT_TEXT"/>
+      <BoundingBox x="242" y="262" width="124" height="96"/>
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Complication type="SHORT_TEXT">
+        <PartText x="0" y="6" width="124" height="50">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="40" weight="NORMAL" slant="NORMAL" color="#fff5f1ea">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="0" y="58" width="124" height="32">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="24" weight="NORMAL" slant="NORMAL" color="#ffa8a29a">
+              <Template>%s<Parameter expression="[COMPLICATION.TITLE]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="RANGED_VALUE">
+        <PartDraw x="0" y="0" width="124" height="96">
+          <Variant mode="AMBIENT" target="alpha" value="0"/>
+          <Arc centerX="62" centerY="48" width="88" height="88" startAngle="-180" endAngle="180">
+            <Stroke thickness="8" color="#ff262320" cap="ROUND"/>
+          </Arc>
+        </PartDraw>
+        <Condition>
+          <Expressions><Expression name="ramp"><![CDATA[[COMPLICATION.RANGED_VALUE_COLORS] != null]]></Expression></Expressions>
+          <Compare expression="ramp">
+            <PartDraw x="0" y="0" width="124" height="96">
+              <Variant mode="AMBIENT" target="alpha" value="0"/>
+              <Arc centerX="62" centerY="48" width="88" height="88" startAngle="-180" endAngle="180">
+          <WeightedStroke thickness="8" colors="[COMPLICATION.RANGED_VALUE_COLORS]" cap="ROUND" interpolate="false"/>
+          <Transform target="endAngle" value="-180 + (180 - (-180)) * ((clamp([COMPLICATION.RANGED_VALUE_VALUE], [COMPLICATION.RANGED_VALUE_MIN], [COMPLICATION.RANGED_VALUE_MAX]) - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN]))"/>
+        </Arc>
+            </PartDraw>
+          </Compare>
+          <Default>
+            <PartDraw x="0" y="0" width="124" height="96">
+              <Variant mode="AMBIENT" target="alpha" value="0"/>
+              <Arc centerX="62" centerY="48" width="88" height="88" startAngle="-180" endAngle="180">
+          <Stroke thickness="8" color="[CONFIGURATION.accent.0]" cap="ROUND"/>
+          <Transform target="endAngle" value="-180 + (180 - (-180)) * ((clamp([COMPLICATION.RANGED_VALUE_VALUE], [COMPLICATION.RANGED_VALUE_MIN], [COMPLICATION.RANGED_VALUE_MAX]) - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN]))"/>
+        </Arc>
+            </PartDraw>
+          </Default>
+        </Condition>
+        <PartText x="10" y="24" width="104" height="48">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="30" weight="NORMAL" slant="NORMAL" color="#fff5f1ea">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
   </Scene>
 </WatchFace>

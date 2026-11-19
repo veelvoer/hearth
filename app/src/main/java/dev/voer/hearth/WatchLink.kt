@@ -17,6 +17,7 @@ import org.json.JSONObject
  */
 class WatchLink : WearableListenerService() {
     private val pool = Executors.newFixedThreadPool(3)
+    private val fan = Executors.newCachedThreadPool()   // the side-by-side calls of one request (never the same pool: they would wait for each other)
 
     override fun onRequest(nodeId: String, path: String, request: ByteArray): Task<ByteArray>? {
         if (path != PATH) return null
@@ -29,8 +30,12 @@ class WatchLink : WearableListenerService() {
         val id = q.optString("id")
         if (id.isNotEmpty() && !Regex("^[A-Za-z0-9_-]{1,80}$").matches(id)) return JSONObject().put("error", "bad chat")
         return when (q.optString("op")) {
-            "usage" -> { val (c, b) = call(m, "GET", "/usage"); if (c != 200) fail(c) else JSONObject().put("usage", JSONObject(b)) }
-            "pending" -> { val (c, b) = call(m, "GET", "/pending"); if (c != 200) fail(c) else { val src = JSONArray(b); val out = JSONArray(); for (i in 0 until minOf(src.length(), 6)) { val o = src.getJSONObject(i); out.put(JSONObject().put("req", o.optString("req")).put("kind", o.optString("kind")).put("title", o.optString("title").take(80)).put("text", o.optString("text").take(240)).put("options", o.optJSONArray("options") ?: JSONArray())) }; JSONObject().put("items", out) } }
+            "usage" -> usage(m)
+            "pending" -> pending(m)
+            "home" -> {   // everything the watch home and the chat list need, in one message and fetched side by side
+                val u = fan.submit<JSONObject> { usage(m) }; val c = fan.submit<JSONObject> { chats(m) }; val p = fan.submit<JSONObject> { pending(m) }
+                JSONObject().apply { for (f in listOf(u, c, p)) { val o = runCatching { f.get() }.getOrElse { JSONObject().put("error", it.message ?: "failed") }; o.keys().forEach { k -> put(k, o.get(k)) } } }
+            }
             "decide" -> {
                 val kind = q.optString("kind"); val req = q.optString("req"); val v = q.optString("v")
                 if (!Regex("^[A-Za-z0-9_-]{1,40}$").matches(req)) return JSONObject().put("error", "bad request")
@@ -38,14 +43,7 @@ class WatchLink : WearableListenerService() {
                 JSONObject().put("code", c)
             }
             "theme" -> { val (c, b) = call(m, "GET", "/theme"); if (c != 200) fail(c) else JSONObject(b) }
-            "chats" -> {
-                val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)
-                val a = JSONArray(b); val out = JSONArray()
-                (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
-                    .sortedByDescending { it.optLong("mtime") }.take(20)
-                    .forEach { out.put(JSONObject().put("id", it.optString("id")).put("title", it.optString("title").take(120)).put("busy", it.optBoolean("running") || it.optBoolean("busy")).put("mtime", it.optLong("mtime"))) }
-                JSONObject().put("chats", out)
-            }
+            "chats" -> chats(m)
             "turn" -> {
                 val (c, b) = call(m, "GET", "/sessions/$id/messages?tail=30"); if (c != 200) return fail(c)
                 val a = JSONArray(b); var asked = ""; var answer = ""
@@ -60,6 +58,24 @@ class WatchLink : WearableListenerService() {
             "stop" -> JSONObject().put("code", call(m, "POST", "/stop", JSONObject().put("session", id)).first)
             else -> JSONObject().put("error", "unknown")
         }
+    }
+
+    private fun usage(m: Machine): JSONObject { val (c, b) = call(m, "GET", "/usage"); return if (c != 200) fail(c) else JSONObject().put("usage", JSONObject(b)) }
+
+    private fun pending(m: Machine): JSONObject {
+        val (c, b) = call(m, "GET", "/pending"); if (c != 200) return fail(c)
+        val src = JSONArray(b); val out = JSONArray()
+        for (i in 0 until minOf(src.length(), 6)) { val o = src.getJSONObject(i); out.put(JSONObject().put("req", o.optString("req")).put("kind", o.optString("kind")).put("title", o.optString("title").take(80)).put("text", o.optString("text").take(240)).put("options", o.optJSONArray("options") ?: JSONArray())) }
+        return JSONObject().put("items", out)
+    }
+
+    private fun chats(m: Machine): JSONObject {
+        val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)
+        val a = JSONArray(b); val out = JSONArray()
+        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
+            .sortedByDescending { it.optLong("mtime") }.take(20)
+            .forEach { out.put(JSONObject().put("id", it.optString("id")).put("title", it.optString("title").take(120)).put("busy", it.optBoolean("running") || it.optBoolean("busy")).put("mtime", it.optLong("mtime"))) }
+        return JSONObject().put("chats", out)
     }
 
     private fun fail(code: Int) = JSONObject().put("code", code).put("error", if (code == 401) "The phone needs to connect again" else "said $code")
@@ -80,7 +96,7 @@ class WatchLink : WearableListenerService() {
         } finally { c.disconnect() }
     }
 
-    override fun onDestroy() { pool.shutdown(); super.onDestroy() }
+    override fun onDestroy() { pool.shutdown(); fan.shutdown(); super.onDestroy() }
 
     companion object { const val PATH = "/hearth/rpc" }
 }
