@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 rootProject.name = "Hearth"
 include(":app")
 include(":wear")
+include(":watchface")

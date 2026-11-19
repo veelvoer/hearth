@@ -30,6 +30,13 @@ class WatchLink : WearableListenerService() {
         if (id.isNotEmpty() && !Regex("^[A-Za-z0-9_-]{1,80}$").matches(id)) return JSONObject().put("error", "bad chat")
         return when (q.optString("op")) {
             "usage" -> { val (c, b) = call(m, "GET", "/usage"); if (c != 200) fail(c) else JSONObject().put("usage", JSONObject(b)) }
+            "pending" -> { val (c, b) = call(m, "GET", "/pending"); if (c != 200) fail(c) else { val src = JSONArray(b); val out = JSONArray(); for (i in 0 until minOf(src.length(), 6)) { val o = src.getJSONObject(i); out.put(JSONObject().put("req", o.optString("req")).put("kind", o.optString("kind")).put("title", o.optString("title").take(80)).put("text", o.optString("text").take(240)).put("options", o.optJSONArray("options") ?: JSONArray())) }; JSONObject().put("items", out) } }
+            "decide" -> {
+                val kind = q.optString("kind"); val req = q.optString("req"); val v = q.optString("v")
+                if (!Regex("^[A-Za-z0-9_-]{1,40}$").matches(req)) return JSONObject().put("error", "bad request")
+                val (c, _) = if (kind == "permission") call(m, "POST", "/decision", JSONObject().put("req", req).put("behavior", if (v == "deny") "deny" else "allow")) else call(m, "POST", "/answer", JSONObject().put("req", req).put("answer", v.take(500)))
+                JSONObject().put("code", c)
+            }
             "theme" -> { val (c, b) = call(m, "GET", "/theme"); if (c != 200) fail(c) else JSONObject(b) }
             "chats" -> {
                 val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)

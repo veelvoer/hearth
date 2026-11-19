@@ -13,6 +13,7 @@ import org.json.JSONObject
 
 data class Usage(val session: Double?, val week: Double?, val sessionReset: Long?)
 data class Chat(val id: String, val title: String, val busy: Boolean, val mtime: Long, val server: Server)
+data class Ask(val req: String, val kind: String, val title: String, val text: String, val options: List<String>, val server: Server)
 data class Turn(val asked: String, val answer: String)
 
 /**
@@ -84,6 +85,18 @@ object Api {
         val o = Phone.ask(s, "usage")?.getJSONObject("usage") ?: JSONObject(get(s, "/usage")).also { Phone.via = false }
         fun pct(k: String) = o.optJSONObject(k)?.optDouble("pct")?.takeIf { !it.isNaN() }
         return Usage(pct("session"), pct("week"), o.optJSONObject("session")?.let { if (it.isNull("resetsAt")) null else it.optLong("resetsAt") })
+    }
+
+    /** What Claude is waiting for: permissions and questions. */
+    fun pending(s: Server): List<Ask> {
+        val a = Phone.ask(s, "pending")?.getJSONArray("items") ?: JSONArray(get(s, "/pending")).also { Phone.via = false }
+        return (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") == "permission" || it.optString("kind") == "question" }.filter { it.optString("req").isNotEmpty() }
+            .map { o -> Ask(o.optString("req"), o.optString("kind"), o.optString("title"), o.optString("text"), o.optJSONArray("options")?.let { op -> (0 until op.length()).map { i -> op.optJSONObject(i)?.optString("label") ?: op.optString(i) } } ?: emptyList(), s) }
+    }
+    /** Allow or deny a permission, or pick an answer to a question. */
+    fun decide(s: Server, req: String, kind: String, v: String) {
+        if (Phone.ask(s, "decide") { put("req", req); put("kind", kind); put("v", v) } != null) return
+        if (kind == "permission") post(s, "/decision", JSONObject().put("req", req).put("behavior", v)) else post(s, "/answer", JSONObject().put("req", req).put("answer", v))
     }
 
     /** The look of the computer (colors), or null when it has none to share. */

@@ -52,7 +52,9 @@ object Update {
 
     fun ready(c: Context) = url != null && newer(latest, current(c))
 
-    suspend fun install(c: Context) {
+    /** The watch app, or (face = true) the Hearth watch face that travels in the same file. */
+    suspend fun install(c: Context, face: Boolean = false) {
+        if (url == null) check(c)
         val u = url ?: return
         if (!c.packageManager.canRequestPackageInstalls()) {
             status = "Allow Hearth to install, then press Update again"
@@ -65,7 +67,7 @@ object Update {
                 val con = URL(u).openConnection() as HttpURLConnection
                 con.connectTimeout = 10_000; con.readTimeout = 30_000; con.setRequestProperty("User-Agent", "Hearth-watch")
                 try {
-                    if (u.endsWith(".zip")) ZipInputStream(con.inputStream).use { z -> var e = z.nextEntry; while (e != null && !e.name.endsWith(".apk")) e = z.nextEntry; if (e == null) error("no app in the file"); f.outputStream().use { z.copyTo(it) } }
+                    if (u.endsWith(".zip")) ZipInputStream(con.inputStream).use { z -> var e = z.nextEntry; while (e != null && !(e.name.endsWith(".apk") && e.name.contains("face") == face)) e = z.nextEntry; if (e == null) error("no app in the file"); f.outputStream().use { z.copyTo(it) } }
                     else con.inputStream.use { i -> f.outputStream().use { i.copyTo(it) } }
                 } finally { con.disconnect() }
                 f

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["xtask", "server", "tests"]
 
 [workspace.package]
-version = "1.41.4"
+version = "1.42.0"
 edition = "2021"
 
 [profile.release]
