@@ -1,5 +1,22 @@
 package dev.voer.hearth.wear
 
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.Job
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
@@ -145,7 +162,7 @@ private fun Pill(modifier: Modifier = Modifier, primary: Boolean = false, enable
         .background(if (primary) Clay else Card)
         .semantics { role = Role.Button; if (desc != null) contentDescription = desc }
         .pointerInput(enabled) { detectTapGestures(onPress = { down = true; tryAwaitRelease(); down = false }, onTap = { if (enabled) onClick() }) }
-        .padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { content() }
+        .padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { content() }
 }
 
 /** Things grow in one after the other: a short spring from below, scaled up, faded in (transform and opacity only). */
@@ -157,16 +174,114 @@ private fun Modifier.arrive(index: Int = 0): Modifier {
 }
 private fun Modifier.heightMin() = this.then(Modifier.heightIn(min = 44.dp))
 
-/** The bezel (and crown) scrolls a list or a column. */
+/** A dot that breathes while Claude works (opacity and size on the GPU only). */
 @Composable
-private fun Modifier.bezel(scroll: (Float) -> Unit): Modifier {
-    val fr = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
-    return this.onRotaryScrollEvent { scroll(it.verticalScrollPixels); true }.focusRequester(fr).focusable()
+private fun Pulse(color: Color, size: Int = 8) {
+    val tr = rememberInfiniteTransition(label = "pulse")
+    val v by tr.animateFloat(0.35f, 1f, infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "v")
+    Box(Modifier.size(size.dp).graphicsLayer { alpha = v; scaleX = 0.75f + 0.25f * v; scaleY = 0.75f + 0.25f * v }.clip(CircleShape).background(color))
 }
 
-/** The width of the round screen at a height: content placed there must stay inside this, so nothing touches the edge. */
-private fun chord(h: Float, r: Float): Float { val dy = kotlin.math.abs(h - r); return if (dy >= r) 0f else 2f * kotlin.math.sqrt(r * r - dy * dy) }
+// ───────────────────────── the round list: full width in the middle, shrinking towards the top and bottom ─────────────────────────
+
+/**
+ * The bezel (and crown) scrolls with an eased glide instead of a jump: every click adds to the distance still to go and each frame
+ * covers a part of it, so quick turns add up smoothly and the list never skips. A light tick runs along, and a stronger one at an end.
+ */
+@Composable
+private fun Modifier.bezel(state: ScrollableState): Modifier {
+    val fr = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val view = LocalView.current
+    val tick = with(LocalDensity.current) { 36.dp.toPx() }
+    val r = remember { object { var left = 0f; var job: Job? = null; var run = 0f; var atEnd = false } }
+    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+    return this.onRotaryScrollEvent { e ->
+        r.left += e.verticalScrollPixels * 1.15f
+        if (r.job?.isActive != true) r.job = scope.launch {
+            try {
+                state.scroll {
+                    while (kotlin.math.abs(r.left) > 0.5f) {
+                        withFrameNanos { }
+                        val step = if (kotlin.math.abs(r.left) < 2f) r.left else r.left * 0.24f
+                        val used = scrollBy(step)
+                        r.left -= step
+                        if (kotlin.math.abs(used) < 0.01f) {   // at the top or bottom: stop and say so once
+                            r.left = 0f
+                            if (!r.atEnd) { r.atEnd = true; view.performHapticFeedback(if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.LONG_PRESS) }
+                        } else {
+                            r.atEnd = false
+                            r.run += kotlin.math.abs(used)
+                            if (r.run >= tick) { r.run = 0f; view.performHapticFeedback(if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_FREQUENT_TICK else HapticFeedbackConstants.CLOCK_TICK) }
+                        }
+                    }
+                }
+            } finally { r.left = 0f }
+        }
+        true
+    }.focusRequester(fr).focusable()
+}
+
+/** Where a row sits: in the middle it is full size; towards the top or bottom edge it shrinks, fades and moves in, like the watch's own lists. */
+private fun Modifier.edge(state: LazyListState, key: Any): Modifier = this.graphicsLayer {
+    val info = state.layoutInfo
+    val it = info.visibleItemsInfo.firstOrNull { v -> v.key == key } ?: return@graphicsLayer
+    val half = (info.viewportEndOffset - info.viewportStartOffset) / 2f
+    if (half <= 0f || it.size > half * 1.2f) return@graphicsLayer   // a tall row (a long paragraph) stays as it is
+    val d = (it.offset + it.size / 2f - (info.viewportStartOffset + info.viewportEndOffset) / 2f) / half
+    val t = ((kotlin.math.abs(d) - 0.45f) / 0.55f).coerceIn(0f, 1f)
+    val e = t * t
+    val s = 1f - 0.3f * e
+    scaleX = s; scaleY = s
+    alpha = 1f - 0.7f * e
+    translationY = -kotlin.math.sign(d) * it.size * (1f - s) * 0.5f
+}
+
+/** The rows of a round list. Every row gets a key, so its place on screen can be found while scrolling. */
+private class RoundScope(private val lazy: LazyListScope, private val state: LazyListState) {
+    private var n = 0
+    fun item(key: Any? = null, content: @Composable () -> Unit) {
+        val k = key ?: "row${n}"; n++
+        lazy.item(key = k) { Box(Modifier.fillMaxWidth().edge(state, k), contentAlignment = Alignment.Center) { content() } }
+    }
+}
+
+/** The list of every screen: uses the whole round screen, glides with the bezel and shows where you are on an arc at the right edge. */
+@Composable
+private fun RoundList(state: LazyListState = rememberLazyListState(), content: RoundScope.() -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().bezel(state), state = state, contentPadding = PaddingValues(top = 30.dp, bottom = 52.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) { RoundScope(this, state).content() }
+        ScrollArc(state)
+    }
+}
+
+/** A thin arc on the right edge: how long the list is and where you are in it. Shows while scrolling, then fades away. */
+@Composable
+private fun ScrollArc(state: LazyListState) {
+    val moving = state.isScrollInProgress
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(moving) { if (moving) shown = true else { delay(900); shown = false } }
+    val a = animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 120 else 450, easing = FastOutSlowInEasing), label = "arc")
+    Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = a.value }) {
+        val info = state.layoutInfo
+        val vis = info.visibleItemsInfo
+        if (vis.isEmpty() || !(state.canScrollForward || state.canScrollBackward)) return@Canvas
+        val avg = vis.sumOf { it.size }.toFloat() / vis.size + 6.dp.toPx()
+        val view = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+        val total = (avg * info.totalItemsCount).coerceAtLeast(view)
+        val first = vis.first()
+        val pos = first.index * avg + (info.viewportStartOffset - first.offset)
+        val frac = (view / total).coerceIn(0.12f, 1f)
+        val p = if (state.canScrollForward) (pos / (total - view).coerceAtLeast(1f)).coerceIn(0f, 1f) else 1f
+        val w = 4.dp.toPx(); val inset = 5.dp.toPx() + w / 2
+        val tl = Offset(inset, inset); val sz = Size(size.width - inset * 2, size.height - inset * 2)
+        val span = 56f
+        drawArc(Card, -span / 2, span, false, tl, sz, style = Stroke(w, cap = StrokeCap.Round))
+        val sweep = span * frac
+        drawArc(Ink.copy(alpha = 0.85f), -span / 2 + (span - sweep) * p, sweep, false, tl, sz, style = Stroke(w, cap = StrokeCap.Round))
+    }
+}
 
 // ───────────────────────── app ─────────────────────────
 
@@ -222,10 +337,14 @@ private fun ago(ms: Long): String {
     return when { m < 1 -> "just now"; m < 60 -> "${m}m ago"; m < 1440 -> "${m / 60}h ago"; else -> "${m / 1440}d ago" }
 }
 
+/** The chats of every server: pinned first (the same pins as on your phone), then the ones that work, then the newest. */
+private fun order(l: List<Chat>) = l.sortedWith(compareByDescending<Chat> { it.pinned }.thenByDescending { it.busy }.thenByDescending { it.mtime })
+
 // ───────────────────────── home: what Claude does, at a glance ─────────────────────────
 
 @Composable
 private fun Home(servers: List<Server>, onChats: () -> Unit, onSettings: () -> Unit) {
+    val c = LocalContext.current
     val first = remember(servers) { servers.mapNotNull { Api.cached(it) } }   // the last numbers show at once, the fresh ones replace them
     var usage by remember { mutableStateOf(first.firstNotNullOfOrNull { it.usage }) }
     var working by remember { mutableStateOf(first.sumOf { h -> h.chats.count { it.busy } }) }
@@ -236,7 +355,12 @@ private fun Home(servers: List<Server>, onChats: () -> Unit, onSettings: () -> U
         while (true) {
             val rs = coroutineScope { servers.map { s -> async(Dispatchers.IO) { runCatching { Api.home(s) } } }.awaitAll() }
             val ok = rs.mapNotNull { it.getOrNull() }
-            if (ok.isNotEmpty()) { usage = ok.firstNotNullOfOrNull { it.usage } ?: usage; working = ok.sumOf { h -> h.chats.count { it.busy } }; asks = ok.flatMap { it.asks }; err = "" }
+            if (ok.isNotEmpty()) {
+                val u = ok.firstNotNullOfOrNull { it.usage } ?: usage; val w = ok.sumOf { h -> h.chats.count { it.busy } }; val a = ok.flatMap { it.asks }
+                val changed = u?.session?.toInt() != usage?.session?.toInt() || w != working || a.size != asks.size
+                usage = u; working = w; asks = a; err = ""
+                if (changed) Complications.refresh(c)   // the face shows the same at once (it reuses this fetch, no extra message)
+            }
             else err = friendly(rs.first().exceptionOrNull(), servers.first().name)
             pause(if (working > 0 || asks.isNotEmpty()) 4_000 else 10_000)
         }
@@ -261,7 +385,10 @@ private fun Home(servers: List<Server>, onChats: () -> Unit, onSettings: () -> U
             Label("week ${pct(usage?.week)}", 12, Muted, modifier = Modifier.arrive(2))
             Spacer(Modifier.height(8.dp))
             if (err.isNotEmpty()) Label(err, 11, Clay, lines = 2)
-            else Label(if (working > 0) "$working working…" else "all quiet", 12, if (working > 0) Clay else Muted, modifier = Modifier.arrive(3))
+            else Row(Modifier.arrive(3), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (working > 0) Pulse(Clay)
+                Label(if (working > 0) "$working working" else "all quiet", 12, if (working > 0) Clay else Muted)
+            }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.arrive(4), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Pill(Modifier.width(72.dp), primary = true, desc = "Chats", onClick = onChats) { Label("Chats", 13, Pal.cur.onClay, FontWeight.SemiBold) }
@@ -292,32 +419,72 @@ private fun AskCard(q: Ask, scope: kotlinx.coroutines.CoroutineScope, done: () -
 
 @Composable
 private fun ChatsScreen(servers: List<Server>, onOpen: (Chat) -> Unit) {
-    var chats by remember { mutableStateOf<List<Chat>?>(servers.mapNotNull { Api.cached(it) }.takeIf { it.isNotEmpty() }?.flatMap { it.chats }?.sortedByDescending { it.mtime }?.take(12)) }
+    var chats by remember { mutableStateOf<List<Chat>?>(servers.mapNotNull { Api.cached(it) }.takeIf { it.isNotEmpty() }?.flatMap { it.chats }?.let { order(it).take(16) }) }
     LaunchedEffect(servers) {
         while (true) {
             val rs = coroutineScope { servers.map { s -> async(Dispatchers.IO) { runCatching { Api.home(s) } } }.awaitAll() }
             val ok = rs.mapNotNull { it.getOrNull() }
-            if (ok.isNotEmpty() || chats == null) chats = ok.flatMap { it.chats }.sortedByDescending { it.mtime }.take(12)
-            pause(15_000)
+            if (ok.isNotEmpty() || chats == null) chats = order(ok.flatMap { it.chats }).take(16)
+            pause(if (chats.orEmpty().any { it.busy }) 6_000 else 15_000)
         }
     }
-    val state = rememberLazyListState(); val scope = rememberCoroutineScope()
-    LazyColumn(Modifier.fillMaxSize().bezel { scope.launch { state.scrollBy(it) } }, state = state, contentPadding = PaddingValues(top = 36.dp, bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    RoundList {
+        item("head") { Label("Chats", 15, Ink, FontWeight.SemiBold) }
         val l = chats
-        if (l == null) item { Label("Loading…", 12, Muted) }
-        else if (l.isEmpty()) item { Label("No chats yet", 12, Muted) }
-        else itemsIndexed(l, key = { _, it -> it.server.base + it.id }) { i, ch ->
-            Pill(Modifier.fillMaxWidth(0.74f).arrive(i), onClick = { onOpen(ch) }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Label(ch.title, 12, Ink, FontWeight.Medium, lines = 2)
-                    Label(if (ch.busy) "working…" else ago(ch.mtime), 10, if (ch.busy) Clay else Muted, lines = 1)
-                }
+        when {
+            l == null -> item("wait") { Label("Loading…", 12, Muted) }
+            l.isEmpty() -> item("none") { Label("No chats yet", 12, Muted) }
+            else -> {
+                val pinned = l.filter { it.pinned }; val rest = l.filter { !it.pinned }
+                if (pinned.isNotEmpty()) { item("hp") { Label("Pinned", 11, Clay, FontWeight.SemiBold) }; pinned.forEach { ch -> item(ch.server.base + ch.id) { ChatRow(ch, onOpen) } } }
+                if (pinned.isNotEmpty() && rest.isNotEmpty()) item("hr") { Label("Recent", 11, Muted, FontWeight.SemiBold) }
+                rest.forEach { ch -> item(ch.server.base + ch.id) { ChatRow(ch, onOpen) } }
             }
         }
     }
 }
 
-// ───────────────────────── one chat ─────────────────────────
+@Composable
+private fun ChatRow(ch: Chat, onOpen: (Chat) -> Unit) {
+    Pill(Modifier.fillMaxWidth(0.9f), onClick = { onOpen(ch) }) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (ch.busy) Pulse(Clay) else if (ch.pinned) Box(Modifier.size(6.dp).clip(CircleShape).background(Clay))
+            Column(Modifier.weight(1f)) {
+                Label(ch.title, 13, Ink, FontWeight.Medium, lines = 2, align = TextAlign.Start)
+                Label(if (ch.busy) "working" else ago(ch.mtime), 11, if (ch.busy) Clay else Muted, lines = 1, align = TextAlign.Start)
+            }
+        }
+    }
+}
+
+// ───────────────────────── one chat: a card with what Claude does now, then what it said ─────────────────────────
+
+/** A step of Claude in a few words: "Read /a/b/Api.kt" becomes "Reading Api.kt". */
+private fun pretty(s: String): String {
+    val sp = s.indexOf(' '); val tool = if (sp < 0) s else s.substring(0, sp); val arg = if (sp < 0) "" else s.substring(sp + 1).trim()
+    val file = arg.trimEnd('/').substringAfterLast('/').ifBlank { arg }
+    return when (tool) {
+        "Read" -> "Reading $file"; "Edit", "MultiEdit", "NotebookEdit" -> "Editing $file"; "Write" -> "Writing $file"
+        "Bash" -> "Running ${arg.take(48)}"; "Grep" -> "Searching for $arg"; "Glob" -> "Looking for files"; "LS" -> "Looking in $file"
+        "WebFetch" -> "Reading ${arg.substringAfter("://").substringBefore('/')}"; "WebSearch" -> "Searching the web"
+        "Task", "Agent" -> "Asking a helper"; "TodoWrite" -> "Planning the next steps"
+        else -> if (tool.startsWith("mcp__")) "Using ${tool.split("__").getOrNull(1) ?: "a tool"}" else s
+    }.trim()
+}
+
+/** Claude's answer in pieces the size of a screen, so it reads like the watch's own texts and every piece moves with the list. */
+private fun pieces(text: String): List<String> {
+    val out = ArrayList<String>()
+    for (para in plain(text).take(3500).split(Regex("\n\\s*\n")).map { it.trim() }.filter { it.isNotEmpty() }) {
+        var rest = para
+        while (rest.length > 260) {
+            val cut = rest.lastIndexOf(". ", 240).takeIf { it > 80 }?.plus(1) ?: rest.lastIndexOf(' ', 240).takeIf { it > 80 } ?: 240
+            out.add(rest.substring(0, cut).trim()); rest = rest.substring(cut).trim()
+        }
+        if (rest.isNotEmpty()) out.add(rest)
+    }
+    return out
+}
 
 @Composable
 private fun ChatScreen(ch: Chat) {
@@ -330,43 +497,57 @@ private fun ChatScreen(ch: Chat) {
         while (true) {
             runCatching { coroutineScope { val t = async(Dispatchers.IO) { Api.lastTurn(ch.server, ch.id) }; val b = async(Dispatchers.IO) { runCatching { Api.chats(ch.server).firstOrNull { it.id == ch.id }?.busy }.getOrNull() }; t.await() to b.await() } }
                 .onSuccess { (tn, b) -> turn = tn; turns[ch.server.base + ch.id] = tn; busy = b ?: false; note = "" }.onFailure { note = friendly(it, ch.server.name) }
-            pause(if (busy) 4_000 else 15_000)
+            pause(if (busy) 2_500 else 15_000)
         }
     }
+    val send: (String) -> Unit = { q -> scope.launch { note = "Sending…"; withContext(Dispatchers.IO) { runCatching { Api.send(ch.server, ch.id, q) } }.onSuccess { busy = true; note = ""; turn = Turn(q, ""); delay(1500); tick++ }.onFailure { note = "Not sent. " + friendly(it, ch.server.name) } } }
     val speak = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val said = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
-        if (said.isNotEmpty()) scope.launch {
-            note = "Sending…"
-            withContext(Dispatchers.IO) { runCatching { Api.send(ch.server, ch.id, said) } }
-                .onSuccess { busy = true; note = ""; turn = Turn(said, ""); delay(1500); tick++ }.onFailure { note = "Not sent. " + friendly(it, ch.server.name) }
+        if (said.isNotEmpty()) send(said)
+    }
+    val tn = turn
+    RoundList {
+        item("title") { Label(ch.title, 12, Muted, FontWeight.SemiBold, lines = 2, modifier = Modifier.fillMaxWidth(0.7f)) }
+        item("card") { NowCard(tn, busy) }
+        if (tn != null && !busy && tn.answer.isNotBlank()) pieces(tn.answer).forEachIndexed { i, p ->
+            item("p$i") { Label(p, 14, Ink, align = TextAlign.Start, modifier = Modifier.fillMaxWidth(0.84f)) }
+        }
+        if (note.isNotEmpty()) item("note") { Label(note, 11, Clay, modifier = Modifier.fillMaxWidth(0.8f)) }
+        item("act") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(Modifier.width(if (busy) 80.dp else 128.dp), primary = true, enabled = !busy, desc = "Reply by voice", onClick = {
+                    runCatching { speak.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_PROMPT, "Say it to Claude")) }.onFailure { note = "No voice input on this watch" }
+                }) { Label("Reply", 13, Pal.cur.onClay, FontWeight.SemiBold) }
+                if (busy) Pill(Modifier.width(80.dp), desc = "Stop", onClick = { scope.launch { withContext(Dispatchers.IO) { runCatching { Api.stop(ch.server, ch.id) } }; delay(800); tick++ } }) { Label("Stop", 13, Ink) }
+            }
+        }
+        if (!busy && tn?.answer?.isNotBlank() == true) listOf("Yes, go ahead", "Continue", "Explain shorter").forEach { q ->
+            item("q$q") { Pill(Modifier.fillMaxWidth(0.8f), onClick = { send(q) }) { Label(q, 12, Ink, lines = 1) } }
         }
     }
-    val sc = rememberScrollState()
-    Column(Modifier.fillMaxSize().bezel { scope.launch { sc.scrollBy(it) } }.verticalScroll(sc).padding(top = 34.dp, bottom = 46.dp, start = 30.dp, end = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Label(ch.title, 12, Muted, FontWeight.SemiBold, lines = 2)
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(Modifier.width(if (busy) 74.dp else 120.dp), primary = true, enabled = !busy, desc = "Reply by voice", onClick = {
-                runCatching { speak.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_PROMPT, "Say it to Claude")) }.onFailure { note = "No voice input on this watch" }
-            }) { Label("Reply", 13, Pal.cur.onClay, FontWeight.SemiBold) }
-            if (busy) Pill(Modifier.width(70.dp), desc = "Stop", onClick = { scope.launch { withContext(Dispatchers.IO) { runCatching { Api.stop(ch.server, ch.id) } }; delay(800); tick++ } }) { Label("Stop", 13, Ink) }
+}
+
+/** The card at the top of a chat: while Claude works, the step it is on now (sliding in as it changes) and the ones before; when it is done, when that was and what you asked. */
+@Composable
+private fun NowCard(tn: Turn?, busy: Boolean) {
+    Column(Modifier.fillMaxWidth(0.88f).clip(RoundedCornerShape(22.dp)).background(Card).animateContentSize(spring(dampingRatio = 0.85f, stiffness = 380f)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (busy) Pulse(Clay) else Box(Modifier.size(8.dp).clip(CircleShape).background(Muted))
+            Label(if (busy) "Working" else if (tn == null) "Loading" else "Done", 12, if (busy) Clay else Muted, FontWeight.SemiBold)
+            if (tn != null && tn.ts > 0) Label("· " + ago(tn.ts), 11, Muted, lines = 1)
         }
-        Spacer(Modifier.height(10.dp))
-        val tn = turn
-        if (tn == null) Label("Loading…", 12, Muted)
-        else {
-            if (tn.asked.isNotBlank()) { Label(plain(tn.asked).take(140), 11, Muted, lines = 3); Spacer(Modifier.height(8.dp)) }
-            if (busy) Label("Claude is working…", 13, Clay)
-            else if (tn.answer.isNotBlank()) Label(plain(tn.answer).take(1500), 14, Ink, align = TextAlign.Start, modifier = Modifier.fillMaxWidth())
-        }
-        if (note.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Label(note, 11, Clay) }
-        if (!busy && turn?.answer?.isNotBlank() == true) {
-            Spacer(Modifier.height(10.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                listOf("Yes, go ahead", "Continue", "Explain shorter").forEach { q ->
-                    Pill(Modifier.width(138.dp), onClick = { scope.launch { note = "Sending…"; withContext(Dispatchers.IO) { runCatching { Api.send(ch.server, ch.id, q) } }.onSuccess { busy = true; note = ""; turn = Turn(q, ""); delay(1500); tick++ }.onFailure { note = "Not sent. " + friendly(it, ch.server.name) } } }) { Label(q, 12, Ink, lines = 1) }
-                }
-            }
+        Spacer(Modifier.height(6.dp))
+        if (tn == null) return@Column
+        if (busy) {
+            val now = when { tn.now == "tool" && tn.steps.isNotEmpty() -> pretty(tn.steps.last()); tn.now == "assistant" && tn.answer.isNotBlank() -> plain(tn.answer).lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().take(110); else -> "Thinking…" }
+            AnimatedContent(now, label = "step", transitionSpec = {
+                (slideInVertically(spring(dampingRatio = 0.8f, stiffness = 380f)) { it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(160)) { -it / 2 } + fadeOut(tween(120)))
+            }) { s -> Label(s, 14, Ink, FontWeight.Medium, lines = 3, align = TextAlign.Start, modifier = Modifier.fillMaxWidth()) }
+            val before = (if (tn.now == "tool") tn.steps.dropLast(1) else tn.steps).takeLast(2)
+            if (before.isNotEmpty()) { Spacer(Modifier.height(6.dp)); before.reversed().forEach { Label("✓ " + pretty(it), 11, Muted, lines = 1, align = TextAlign.Start, modifier = Modifier.fillMaxWidth()) } }
+        } else if (tn.asked.isNotBlank()) {
+            Label("You asked", 10, Muted, align = TextAlign.Start, modifier = Modifier.fillMaxWidth())
+            Label(plain(tn.asked).take(140), 12, Ink, lines = 3, align = TextAlign.Start, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -380,17 +561,18 @@ private fun SettingsScreen(servers: List<Server>) {
         val got = withContext(Dispatchers.IO) { servers.firstNotNullOfOrNull { s -> runCatching { Api.theme(s) }.getOrNull() } }
         if (got != null) Pal.savePc(c, got)
     }
-    val state = rememberLazyListState()
-    LazyColumn(Modifier.fillMaxSize().bezel { scope.launch { state.scrollBy(it) } }, state = state, contentPadding = PaddingValues(top = 38.dp, bottom = 46.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        item { Label("Theme", 12, Muted, FontWeight.SemiBold) }
-        fun row(id: String, label: String, sub: String?, dot: Color?) = item(key = id) {
+    RoundList {
+        item("head") { Label("Settings", 15, Ink, FontWeight.SemiBold) }
+        if (Update.faceBehind(c)) item("fb") { Label("Your watch face is from an older Hearth: update it below to get the theme and the new options.", 11, Clay, modifier = Modifier.fillMaxWidth(0.72f)) }
+        item("th") { Label("Theme · also on the Hearth watch face", 11, Muted, FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(0.7f)) }
+        fun row(id: String, label: String, sub: String?, dot: Color?) = item(id) {
             val on = Pal.choice == id
-            Pill(Modifier.fillMaxWidth(0.72f).arrive(), primary = on, onClick = { Pal.pick(c, id) }) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (dot != null) Box(Modifier.size(12.dp).clip(CircleShape).background(dot))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Label(label, 12, if (on) Pal.cur.onClay else Ink, FontWeight.Medium, lines = 1)
-                        if (sub != null) Label(sub, 9, if (on) Pal.cur.onClay else Muted, lines = 1)
+            Pill(Modifier.fillMaxWidth(0.9f), primary = on, onClick = { Pal.pick(c, id) }) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.size(14.dp).clip(CircleShape).background(dot ?: if (on) Pal.cur.onClay else Clay))
+                    Column(Modifier.weight(1f)) {
+                        Label(label, 13, if (on) Pal.cur.onClay else Ink, FontWeight.Medium, lines = 1, align = TextAlign.Start)
+                        if (sub != null) Label(sub, 10, if (on) Pal.cur.onClay else Muted, lines = 1, align = TextAlign.Start)
                     }
                 }
             }
@@ -398,10 +580,15 @@ private fun SettingsScreen(servers: List<Server>) {
         row("watch", "My watch", "Hearth's own look", null)
         row("pc", "My computer", if (Pal.pcName.isNotBlank()) Pal.pcName else "not shared yet", null)
         Pal.PRESETS.forEach { row(it.name, it.name, null, it.clay) }
-        item { Spacer(Modifier.height(4.dp)); Label("Updates", 12, Muted, FontWeight.SemiBold) }
-        item { Label("Hearth ${Update.current(c)}" + (if (Update.status.isNotBlank()) "\n" + Update.status else ""), 11, Muted, lines = 3, modifier = Modifier.fillMaxWidth(0.7f)) }
-        item { Pill(Modifier.fillMaxWidth(0.72f), enabled = !Update.busy, onClick = { if (!Update.busy) scope.launch { Update.check(c) } }) { Label("Check for updates", 12, Ink, lines = 1) } }
-        item { Pill(Modifier.fillMaxWidth(0.72f), enabled = !Update.busy, onClick = { if (!Update.busy) scope.launch { Update.install(c, face = true) } }) { Label("Install watch face", 12, Ink, lines = 1) } }
-        if (Update.ready(c)) item { Pill(Modifier.fillMaxWidth(0.72f), primary = true, enabled = !Update.busy, onClick = { if (!Update.busy) scope.launch { Update.install(c) } }) { Label("Update to ${Update.latest}", 12, Pal.cur.onClay, FontWeight.SemiBold, lines = 1) } }
+        item("uh") { Label("Updates", 11, Muted, FontWeight.SemiBold) }
+        item("uv") { Label("Hearth ${Update.current(c)}" + (if (Update.status.isNotBlank()) "\n" + Update.status else ""), 11, Muted, lines = 3, modifier = Modifier.fillMaxWidth(0.7f)) }
+        item("uc") { Pill(Modifier.fillMaxWidth(0.9f), enabled = !Update.busy, onClick = { if (!Update.busy) scope.launch { Update.check(c) } }) { Label("Check for updates", 13, Ink, lines = 1) } }
+        item("uf") {
+            val behind = Update.faceBehind(c); val has = Update.faceVersion(c) != null
+            Pill(Modifier.fillMaxWidth(0.9f), primary = behind, enabled = !Update.busy, onClick = { if (!Update.busy) scope.launch { Update.install(c, face = true) } }) {
+                Label(if (behind) "Update the watch face" else if (has) "Reinstall the watch face" else "Install the watch face", 13, if (behind) Pal.cur.onClay else Ink, lines = 1)
+            }
+        }
+        if (Update.ready(c)) item("uu") { Pill(Modifier.fillMaxWidth(0.9f), primary = true, enabled = !Update.busy, onClick = { if (!Update.busy) scope.launch { Update.install(c) } }) { Label("Update to ${Update.latest}", 13, Pal.cur.onClay, FontWeight.SemiBold, lines = 1) } }
     }
 }

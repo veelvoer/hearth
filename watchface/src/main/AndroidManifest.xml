@@ -3,6 +3,6 @@
     <uses-feature android:name="android.hardware.type.watch" />
     <application android:label="@string/face_name" android:hasCode="false">
         <meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
-        <property android:name="com.google.wear.watchface.format.version" android:value="2" />
+        <property android:name="com.google.wear.watchface.format.version" android:value="4" />
     </application>
 </manifest>

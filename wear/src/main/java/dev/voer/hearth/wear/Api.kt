@@ -12,10 +12,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class Usage(val session: Double?, val week: Double?, val sessionReset: Long?)
-data class Chat(val id: String, val title: String, val busy: Boolean, val mtime: Long, val server: Server)
+data class Chat(val id: String, val title: String, val busy: Boolean, val mtime: Long, val server: Server, val pinned: Boolean = false)
 data class Ask(val req: String, val kind: String, val title: String, val text: String, val options: List<String>, val server: Server)
 data class Home(val usage: Usage?, val chats: List<Chat>, val asks: List<Ask>)
-data class Turn(val asked: String, val answer: String)
+/** One chat's last turn: what you asked, Claude's newest words, its last steps ("Read src/Api.kt"), and whether the newest thing is a step (it is doing that now). */
+data class Turn(val asked: String, val answer: String, val steps: List<String> = emptyList(), val ts: Long = 0, val now: String = "")
 
 /**
  * The phone, over Bluetooth: the watch asks the Hearth phone app and the phone makes the call to your server.
@@ -98,7 +99,14 @@ object Api {
 
     private fun parseChats(a: JSONArray, s: Server): List<Chat> =
         (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
-            .map { Chat(it.getString("id"), it.optString("title").ifBlank { "Chat" }, it.optBoolean("running") || it.optBoolean("busy"), it.optLong("mtime"), s) }
+            .map { Chat(it.getString("id"), it.optString("title").ifBlank { "Chat" }, it.optBoolean("running") || it.optBoolean("busy"), it.optLong("mtime"), s, it.optBoolean("pin")) }
+
+    /** Straight to the server (no phone): the pins and names of your chats, the same as on the phone, pinned ones first. */
+    private fun withTags(s: Server, l: List<Chat>): List<Chat> {
+        val t = runCatching { JSONObject(get(s, "/chat-tags")).optJSONObject("tags") }.getOrNull() ?: return l
+        return l.map { c -> t.optJSONObject(c.id)?.let { o -> c.copy(title = o.optString("name").ifBlank { c.title }, pinned = o.optBoolean("pin")) } ?: c }
+            .sortedWith(compareByDescending<Chat> { it.pinned }.thenByDescending { it.busy }.thenByDescending { it.mtime })
+    }
 
     /** The raw answer of the last good home call per server, for a screen that appears at once and is then brought up to date. */
     private val last = java.util.concurrent.ConcurrentHashMap<String, Home>()
@@ -109,14 +117,26 @@ object Api {
         val o = JSONObject(prefs().getString(s.base, null) ?: return null)
         val u = o.optJSONObject("u")?.let { Usage(it.optDouble("s").takeIf { v -> !v.isNaN() }, it.optDouble("w").takeIf { v -> !v.isNaN() }, if (it.has("r")) it.optLong("r") else null) }
         val a = o.optJSONArray("c") ?: JSONArray()
-        Home(u, (0 until a.length()).map { a.getJSONObject(it) }.map { Chat(it.getString("id"), it.optString("t"), it.optBoolean("b"), it.optLong("m"), s) }, emptyList())
+        Home(u, (0 until a.length()).map { a.getJSONObject(it) }.map { Chat(it.getString("id"), it.optString("t"), it.optBoolean("b"), it.optLong("m"), s, it.optBoolean("p")) }, emptyList())
     }.getOrNull()
 
+    private val lastAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** For the watch face: one fetch serves every complication that asks within [maxAge] (they are updated together), so the face costs one Bluetooth message per round. */
+    fun homeRecent(s: Server, maxAge: Long = 60_000): Home {
+        val at = lastAt[s.base] ?: 0L
+        last[s.base]?.let { if (System.currentTimeMillis() - at < maxAge) return it }
+        synchronized(this) {
+            last[s.base]?.let { if (System.currentTimeMillis() - (lastAt[s.base] ?: 0L) < maxAge) return it }
+            return home(s)
+        }
+    }
+
     private fun remember(s: Server, h: Home) {
-        last[s.base] = h
+        last[s.base] = h; lastAt[s.base] = System.currentTimeMillis()
         runCatching {
             val u = h.usage?.let { JSONObject().apply { it.session?.let { v -> put("s", v) }; it.week?.let { v -> put("w", v) }; it.sessionReset?.let { v -> put("r", v) } } }
-            val c = JSONArray().also { a -> h.chats.take(12).forEach { ch -> a.put(JSONObject().put("id", ch.id).put("t", ch.title).put("b", ch.busy).put("m", ch.mtime)) } }
+            val c = JSONArray().also { a -> h.chats.take(12).forEach { ch -> a.put(JSONObject().put("id", ch.id).put("t", ch.title).put("b", ch.busy).put("m", ch.mtime).put("p", ch.pinned)) } }
             prefs().edit().putString(s.base, JSONObject().apply { if (u != null) put("u", u); put("c", c) }.toString()).apply()
         }
     }
@@ -153,25 +173,29 @@ object Api {
     }
 
     fun chats(s: Server): List<Chat> {
-        val a = Phone.ask(s, "chats")?.getJSONArray("chats") ?: JSONArray(get(s, "/sessions")).also { Phone.via = false }
-        return parseChats(a, s)
+        Phone.ask(s, "chats")?.getJSONArray("chats")?.let { return parseChats(it, s) }
+        Phone.via = false
+        return withTags(s, parseChats(JSONArray(get(s, "/sessions")), s))
     }
 
     /** The last thing you asked and the last answer, without tool calls. */
     fun lastTurn(s: Server, id: String): Turn {
-        Phone.ask(s, "turn") { put("id", id) }?.let { return Turn(it.optString("asked"), it.optString("answer")) }
+        Phone.ask(s, "turn") { put("id", id) }?.let { o -> val st = o.optJSONArray("steps") ?: JSONArray(); return Turn(o.optString("asked"), o.optString("answer"), (0 until st.length()).map { st.optString(it) }, o.optLong("ts"), o.optString("now")) }
         Phone.via = false
-        val a = JSONArray(get(s, "/sessions/$id/messages?tail=30"))
-        var asked = ""; var answer = ""
+        val a = JSONArray(get(s, "/sessions/$id/messages?tail=40"))
+        var asked = ""; var answer = ""; val steps = ArrayList<String>(); var ts = 0L; var now = ""
         for (i in a.length() - 1 downTo 0) {
             val o = a.getJSONObject(i)
+            if (ts == 0L) ts = o.optLong("ts")
+            if (now.isEmpty() && o.optString("role") != "meta") now = o.optString("role")
             when (o.optString("role")) {
-                "assistant" -> if (answer.isEmpty() && asked.isEmpty()) answer = o.optString("text")
-                "user" -> if (asked.isEmpty()) asked = o.optString("text")
+                "assistant" -> if (answer.isEmpty()) answer = o.optString("text")
+                "tool" -> if (steps.size < 4) steps.add(0, o.optString("text").take(90))
+                "user" -> asked = o.optString("text")
             }
             if (asked.isNotEmpty()) break
         }
-        return Turn(asked, answer)
+        return Turn(asked, answer, steps, ts, now)
     }
 
     fun send(s: Server, id: String, text: String) {

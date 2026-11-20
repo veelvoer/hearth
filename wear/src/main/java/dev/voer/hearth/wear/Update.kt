@@ -25,6 +25,11 @@ object Update {
     var latest by mutableStateOf("")
     var url: String? = null
 
+    /** The Hearth watch face's version, or null when it is not installed. */
+    fun faceVersion(c: Context): String? = runCatching { c.packageManager.getPackageInfo("dev.voer.hearth.face", 0).versionName }.getOrNull()
+    /** The face came with an older Hearth: it lacks what this version of the app gives it (the theme, the options). */
+    fun faceBehind(c: Context): Boolean = faceVersion(c)?.let { newer(current(c), it) } ?: false
+
     fun current(c: Context): String = c.packageManager.getPackageInfo(c.packageName, 0).versionName ?: ""
     private fun parse(v: String) = v.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
     fun newer(a: String, b: String): Boolean { val x = parse(a); val y = parse(b); for (i in 0 until 3) { val p = x.getOrElse(i) { 0 }; val q = y.getOrElse(i) { 0 }; if (p != q) return p > q }; return false }

@@ -44,15 +44,21 @@ class WatchLink : WearableListenerService() {
             }
             "theme" -> { val (c, b) = call(m, "GET", "/theme"); if (c != 200) fail(c) else JSONObject(b) }
             "chats" -> chats(m)
-            "turn" -> {
-                val (c, b) = call(m, "GET", "/sessions/$id/messages?tail=30"); if (c != 200) return fail(c)
-                val a = JSONArray(b); var asked = ""; var answer = ""
+            "turn" -> {   // what you asked last, what Claude is doing right now (its last steps) and the newest thing it wrote
+                val (c, b) = call(m, "GET", "/sessions/$id/messages?tail=40"); if (c != 200) return fail(c)
+                val a = JSONArray(b); var asked = ""; var answer = ""; val steps = ArrayList<String>(); var ts = 0L; var now = ""
                 for (i in a.length() - 1 downTo 0) {
                     val o = a.getJSONObject(i)
-                    when (o.optString("role")) { "assistant" -> if (answer.isEmpty() && asked.isEmpty()) answer = o.optString("text"); "user" -> if (asked.isEmpty()) asked = o.optString("text") }
+                    if (ts == 0L) ts = o.optLong("ts")
+                    if (now.isEmpty() && o.optString("role") != "meta") now = o.optString("role")
+                    when (o.optString("role")) {
+                        "assistant" -> if (answer.isEmpty()) answer = o.optString("text")
+                        "tool" -> if (steps.size < 4) steps.add(0, o.optString("text").take(90))
+                        "user" -> asked = o.optString("text")
+                    }
                     if (asked.isNotEmpty()) break
                 }
-                JSONObject().put("asked", asked.take(600)).put("answer", answer.take(4000))
+                JSONObject().put("asked", asked.take(600)).put("answer", answer.take(4000)).put("steps", JSONArray(steps)).put("ts", ts).put("now", now)
             }
             "send" -> JSONObject().put("code", call(m, "POST", "/sessions/$id/send", JSONObject().put("text", q.optString("text").take(4000)).put("mode", "acceptEdits"), lines = 2, read = 20_000).first)
             "stop" -> JSONObject().put("code", call(m, "POST", "/stop", JSONObject().put("session", id)).first)
@@ -69,12 +75,14 @@ class WatchLink : WearableListenerService() {
         return JSONObject().put("items", out)
     }
 
+    /** The chat list for the watch: your pinned chats first (pins and names live on the server, the same as on this phone), then the running ones, then the newest. */
     private fun chats(m: Machine): JSONObject {
         val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)
+        val tags = runCatching { val (tc, tb) = call(m, "GET", "/chat-tags"); if (tc == 200) JSONObject(tb).optJSONObject("tags") else null }.getOrNull() ?: JSONObject()
         val a = JSONArray(b); val out = JSONArray()
         (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
-            .sortedByDescending { it.optLong("mtime") }.take(20)
-            .forEach { out.put(JSONObject().put("id", it.optString("id")).put("title", it.optString("title").take(120)).put("busy", it.optBoolean("running") || it.optBoolean("busy")).put("mtime", it.optLong("mtime"))) }
+            .sortedWith(compareByDescending<JSONObject> { tags.optJSONObject(it.optString("id"))?.optBoolean("pin") == true }.thenByDescending { it.optBoolean("running") || it.optBoolean("busy") }.thenByDescending { it.optLong("mtime") }).take(20)
+            .forEach { val t = tags.optJSONObject(it.optString("id")); out.put(JSONObject().put("id", it.optString("id")).put("title", (t?.optString("name")?.takeIf { n -> n.isNotBlank() } ?: it.optString("title")).take(120)).put("busy", it.optBoolean("running") || it.optBoolean("busy")).put("mtime", it.optLong("mtime")).put("pin", t?.optBoolean("pin") == true)) }
         return JSONObject().put("chats", out)
     }
 
