@@ -19,6 +19,8 @@ pub const TALK_DENY: &str = "Bash Edit Write MultiEdit NotebookEdit Agent";
 pub const CONTEXT_PROMPT: &str = "Keep the context small: read big files in parts (offset/limit) or search them with grep instead of reading them whole, and keep command output short (pipe through head, tail or grep, use quiet flags). Never print whole logs, lock files, build output or minified files.";
 pub const BRIEF: &str = "The user is listening to your reply read aloud. Keep it brief and conversational: short spoken sentences, no markdown, no lists, no code blocks. Say what you did and what you found.";
 pub const PLAIN: &str = " The user prefers plain language: explain in everyday words, avoid jargon, code and tool names unless asked, keep answers short, and say what you did and what they can do next.";
+pub const PLAN_PROMPT: &str = "When the user asks you to do work (not when they only ask a question or chat), first make a short plan with your todo list tool (TodoWrite, or TaskCreate and TaskUpdate): 3 to 7 steps in plain words. Keep exactly one step in progress, and mark each step completed as soon as it is done. The user follows this checklist on their phone and watch.";
+pub const PLAN_FORCED: &str = "The user asked for a plan: before you start, make a short plan with your todo list tool (TodoWrite, or TaskCreate and TaskUpdate), even if the task is small, keep exactly one step in progress, and mark each step completed as soon as it is done.";
 pub const MIN_DONE_SECONDS: f64 = 20.0;
 pub const PERMISSION_WAIT_MS: u64 = 25000;
 pub const JOB_PERMISSION_WAIT_MS: u64 = 15 * 60000;
@@ -213,6 +215,17 @@ impl Relay {
         match std::fs::metadata(cwd) { Ok(m) => m.is_dir(), Err(_) => now_ms() - mtime < 15.0 * 60000.0 }
     }
     pub fn snapshots_on(&self) -> bool { self.read_cfg().get("snapshots") != Some(&Value::Bool(false)) }
+    /** A plan (todo checklist) with every prompt that asks for work. On unless switched off; "/plan" in front of a prompt asks for one anyway. */
+    pub fn plans_on(&self) -> bool { self.read_cfg().get("plans") != Some(&Value::Bool(false)) }
+    /** Your own Anthropic API key, when you want Claude to run on it instead of your Claude account. Kept in its own private file, never sent back whole. */
+    pub fn api_key(&self) -> Option<String> {
+        if self.read_cfg().get("useApiKey") != Some(&Value::Bool(true)) { return None; }
+        std::fs::read_to_string(self.dir.join("anthropic-key")).ok().map(|k| k.trim().to_string()).filter(|k| k.starts_with("sk-ant-"))
+    }
+    pub fn api_key_view(&self) -> Value {
+        let k = std::fs::read_to_string(self.dir.join("anthropic-key")).map(|k| k.trim().to_string()).unwrap_or_default();
+        json!({"set": !k.is_empty(), "ends": if k.len() > 4 { k[k.len() - 4..].to_string() } else { String::new() }, "use": self.read_cfg().get("useApiKey") == Some(&Value::Bool(true)) && !k.is_empty()})
+    }
     pub fn backups_on(&self) -> bool { self.read_cfg().get("backups") == Some(&Value::Bool(true)) }
     pub fn away(&self) -> bool { self.read_cfg().t("away") }
 

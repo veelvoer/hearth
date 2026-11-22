@@ -31,6 +31,8 @@ fun SafetyCard() {
     var data by remember { mutableStateOf<JSONObject?>(null) }
     var err by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var keyEdit by remember { mutableStateOf(false) }
+    var keyText by remember { mutableStateOf("") }
     val hub = remember { hubOf(c) }
     fun call(patch: JSONObject?) {
         if (hub == null) { err = "Connect a server first."; return }
@@ -49,6 +51,21 @@ fun SafetyCard() {
         val d = data
         if (d == null) { Spacer(Modifier.height(10.dp)); Skeleton(56.dp, radius = 14.dp); return@Card }
         Row2("Plain language", "Claude explains in everyday words, without jargon or code unless you ask.") { Switch(d.optBoolean("plain", false), { call(JSONObject().put("plain", it)) }) }
+        Row2("A plan with every task", "Claude makes a checklist before it starts on a task (not for a question); you follow it in the chat and on your watch. Off: start a message with /plan to get one anyway.") { Switch(d.optBoolean("plans", true), { call(JSONObject().put("plans", it)) }) }
+        d.optJSONObject("apiKey")?.let { k ->
+            Row2("Run Claude on my API key", if (k.optBoolean("set")) "Key ending in ${k.optString("ends")}" + (if (k.optBoolean("use")) " · in use. You pay Anthropic per use; your plan's limits don't apply." else " · not in use: your Claude account is used.") else "Off: Claude runs on your Claude account. Add a key from console.anthropic.com to run on it instead.") {
+                if (k.optBoolean("set")) Switch(k.optBoolean("use"), { call(JSONObject().put("useApiKey", it)) }) else TextAction("Add a key") { keyEdit = true }
+            }
+            if (k.optBoolean("set") && !keyEdit) Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) { TextAction("Change key") { keyEdit = true }; TextAction("Remove key") { call(JSONObject().put("apiKey", "")) } }
+            if (keyEdit) {
+                androidx.compose.material3.OutlinedTextField(keyText, { keyText = it.trim() }, singleLine = true, placeholder = { Txt("sk-ant-…", T.small, muted = true) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    TextAction("Use this key") { if (keyText.isNotBlank()) { call(JSONObject().put("apiKey", keyText).put("useApiKey", true)); keyText = ""; keyEdit = false } }
+                    TextAction("Cancel") { keyText = ""; keyEdit = false }
+                }
+            }
+        }
         Row2("Snapshot before every run", "A copy of the project folder, kept for the last 8 runs. In a chat: Options, Undo this run.") { Switch(d.optBoolean("snapshots", true), { call(JSONObject().put("snapshots", it)) }) }
         val b = d.optJSONObject("budget") ?: JSONObject()
         Spacer(Modifier.height(6.dp))

@@ -89,13 +89,13 @@ object Notifier {
             Store.setLastNotified(c, k, "$win:$hit")
             val left = l.resetsAt?.let { " Resets in ${dur(it - now.at)}." }.orEmpty()
             val title = if (hit >= 100) "$name limit reached" else "$name at ${l.pct.toInt()}%"
-            post(c, 10 + i, NotificationCompat.Builder(c, if (Store.statusIcon(c)) ALERTS else ALERTS_Q).setSmallIcon(R.drawable.ic_stat)
+            post(c, 10 + i, NotificationCompat.Builder(c, ALERTS).setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title).setContentText(left.trim().ifEmpty { "Crossed $hit%." })
                 .setContentIntent(open(c)).setAutoCancel(true).build())
         }
         val ps = prev?.session; val ns = now.session
         if (Store.notifyReset(c) && ps != null && ns != null && ps.pct >= 75 && ns.pct < ps.pct - 30)
-            post(c, 20, NotificationCompat.Builder(c, if (Store.statusIcon(c)) ALERTS else ALERTS_Q).setSmallIcon(R.drawable.ic_stat)
+            post(c, 20, NotificationCompat.Builder(c, ALERTS).setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle("Session reset").setContentText("A fresh 5-hour window is ready.")
                 .setContentIntent(open(c)).setAutoCancel(true).build())
         live(c, now)

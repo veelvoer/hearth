@@ -16,7 +16,9 @@ data class Chat(val id: String, val title: String, val busy: Boolean, val mtime:
 data class Ask(val req: String, val kind: String, val title: String, val text: String, val options: List<String>, val server: Server)
 data class Home(val usage: Usage?, val chats: List<Chat>, val asks: List<Ask>)
 /** One chat's last turn: what you asked, Claude's newest words, its last steps ("Read src/Api.kt"), and whether the newest thing is a step (it is doing that now). */
-data class Turn(val asked: String, val answer: String, val steps: List<String> = emptyList(), val ts: Long = 0, val now: String = "")
+data class Turn(val asked: String, val answer: String, val steps: List<String> = emptyList(), val ts: Long = 0, val now: String = "", val plan: List<Step> = emptyList())
+/** One step of Claude's plan: pending, in_progress or completed. */
+data class Step(val text: String, val status: String)
 
 /**
  * The phone, over Bluetooth: the watch asks the Hearth phone app and the phone makes the call to your server.
@@ -103,7 +105,8 @@ object Api {
 
     /** Straight to the server (no phone): the pins and names of your chats, the same as on the phone, pinned ones first. */
     private fun withTags(s: Server, l: List<Chat>): List<Chat> {
-        val t = runCatching { JSONObject(get(s, "/chat-tags")).optJSONObject("tags") }.getOrNull() ?: return l
+        val hub = Servers.all(Phone.app).let { a -> a.firstOrNull { it.base.startsWith("https") } ?: a.firstOrNull() } ?: s   // pins live on one server for all, as on the phone
+        val t = runCatching { JSONObject(get(hub, "/chat-tags")).optJSONObject("tags") }.getOrNull() ?: return l
         return l.map { c -> t.optJSONObject(c.id)?.let { o -> c.copy(title = o.optString("name").ifBlank { c.title }, pinned = o.optBoolean("pin")) } ?: c }
             .sortedWith(compareByDescending<Chat> { it.pinned }.thenByDescending { it.busy }.thenByDescending { it.mtime })
     }
@@ -180,7 +183,7 @@ object Api {
 
     /** The last thing you asked and the last answer, without tool calls. */
     fun lastTurn(s: Server, id: String): Turn {
-        Phone.ask(s, "turn") { put("id", id) }?.let { o -> val st = o.optJSONArray("steps") ?: JSONArray(); return Turn(o.optString("asked"), o.optString("answer"), (0 until st.length()).map { st.optString(it) }, o.optLong("ts"), o.optString("now")) }
+        Phone.ask(s, "turn") { put("id", id) }?.let { o -> val st = o.optJSONArray("steps") ?: JSONArray(); return Turn(o.optString("asked"), o.optString("answer"), (0 until st.length()).map { st.optString(it) }, o.optLong("ts"), o.optString("now"), steps(o.optJSONArray("plan"))) }
         Phone.via = false
         val a = JSONArray(get(s, "/sessions/$id/messages?tail=40"))
         var asked = ""; var answer = ""; val steps = ArrayList<String>(); var ts = 0L; var now = ""
@@ -195,8 +198,11 @@ object Api {
             }
             if (asked.isNotEmpty()) break
         }
-        return Turn(asked, answer, steps, ts, now)
+        val plan = runCatching { steps(JSONObject(get(s, "/sessions/$id/plan")).optJSONArray("items")) }.getOrDefault(emptyList())
+        return Turn(asked, answer, steps, ts, now, plan)
     }
+
+    private fun steps(a: JSONArray?): List<Step> = if (a == null) emptyList() else (0 until a.length()).map { a.getJSONObject(it) }.map { Step(it.optString("text"), it.optString("status")) }.filter { it.text.isNotBlank() }
 
     fun send(s: Server, id: String, text: String) {
         val code = Phone.ask(s, "send") { put("id", id); put("text", text) }?.optInt("code")

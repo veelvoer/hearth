@@ -268,7 +268,7 @@ impl Relay {
             ("status", _) => return j(200, json!({"away": self.away(), "build": self.build, "version": crate::VERSION, "canSelfUpdate": self.o.self_update, "listeners": self.clients(), "root": self.root, "allowBypass": self.o.allow_bypass, "moveRoot": self.move_root, "laptop": crate::agent::laptop_online(self), "queued": self.hub.lock().unwrap().work.len()})),
             ("voice", "status") => return self.proxy_voice(q).await,
             ("usage-report", _) => { let d = qn("days"); let days = if d == Some(0.0) { 0 } else { d.unwrap_or(30.0).clamp(1.0, 365.0) as i64 }; let extra = self.usage_report_extra(); let r = tokio::task::spawn_blocking(move || crate::core::report(days, &extra)).await.unwrap_or_default(); return j(200, merge(&r, &json!({"scope": if self.hub_sync.is_some() { "account" } else { "device" }}))); }
-            ("stats", _) => { let d = qn("days").filter(|x| *x != 0.0).unwrap_or(30.0).clamp(1.0, 90.0) as i64; return j(200, tokio::task::spawn_blocking(move || crate::core::stats(d)).await.unwrap_or_default()); }
+            ("stats", _) => { let d = qn("days").filter(|x| *x != 0.0).unwrap_or(30.0).clamp(1.0, 3650.0) as i64; return j(200, tokio::task::spawn_blocking(move || crate::core::stats(d)).await.unwrap_or_default()); }
             ("commands", _) => { let cwd = q.qs("cwd"); let c = if !cwd.is_empty() && (self.root.is_none() || self.ok_dir(&cwd)) { cwd } else { String::new() }; return j(200, crate::tools::commands(&c, find_claude().as_deref()).await); }
             ("projects", "") if n == 1 => return j(200, self.list_projects()),
             ("usage", _) => return j(200, self.usage.lock().unwrap().clone()),
@@ -368,6 +368,7 @@ impl Relay {
                 "changes" => { let cwd = crate::core::find_session(&sid).map(|f| crate::core::summary(&f).cwd).unwrap_or_default(); return j(200, if !cwd.is_empty() && self.ok_dir(&cwd) { crate::safety::git_changes(&cwd) } else { json!({"git": false, "files": [], "diff": ""}) }); }
                 "snapshots" => { let cwd = crate::core::find_session(&sid).map(|f| crate::core::summary(&f).cwd).unwrap_or_default(); return j(200, if !cwd.is_empty() && self.ok_dir(&cwd) { Value::Array(crate::safety::list_snapshots(&self.dir, &cwd).iter().map(|x| json!({"id": x.g("id"), "at": x.g("at"), "label": x.g("label"), "text": x.g("text"), "files": x.g("files"), "bytes": x.g("bytes")})).collect()) } else { json!([]) }); }
                 "workflow" if n == 3 => return j(200, self.wf_view(&sid)),
+                "plan" => { let s2 = sid.clone(); return j(200, tokio::task::spawn_blocking(move || crate::core::find_session(&s2).map(|f| crate::core::plan(&crate::core::messages(&f.file, 400))).unwrap_or_else(|| json!({"items": []}))).await.unwrap_or_default()); }
                 "messages" => {
                     let ew = self.hub_sync.as_ref().and_then(|h| h.find_elsewhere(&sid));
                     let tail = if self.shares.by_session(&sid).is_some() { 400 } else { qn("tail").filter(|x| *x != 0.0).unwrap_or(80.0).clamp(1.0, 1000.0) as usize };
@@ -413,7 +414,7 @@ impl Relay {
     }
     pub fn safety_view(&self, extra: Value) -> Value {
         let (pd, pc) = self.budget_cfg();
-        merge(&extra, &json!({"plain": self.read_cfg().t("plain"), "snapshots": self.snapshots_on(), "backups": {"on": self.backups_on(), "list": crate::safety::list_backups(&self.dir)}, "budget": {"perDay": num(pd), "perChat": num(pc), "usedDay": (self.cost_last_day() * 100.0).round() / 100.0}}))
+        merge(&extra, &json!({"plain": self.read_cfg().t("plain"), "plans": self.plans_on(), "apiKey": self.api_key_view(), "snapshots": self.snapshots_on(), "backups": {"on": self.backups_on(), "list": crate::safety::list_backups(&self.dir)}, "budget": {"perDay": num(pd), "perChat": num(pc), "usedDay": (self.cost_last_day() * 100.0).round() / 100.0}}))
     }
     fn doctor(self: &Arc<Self>) -> Value {
         let mut checks = vec![];

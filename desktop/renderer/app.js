@@ -34,7 +34,7 @@ function info(text) {
 /** window.prompt() does not exist in Electron, so a line of text is asked for in the app's own dialog. Resolves to the text, or null on cancel. */
 function askText(title, message, opts = {}) {
   return new Promise((resolve) => {
-    const input = h('input', { value: opts.value || '', placeholder: opts.placeholder || '', style: 'width:100%;box-sizing:border-box' });
+    const input = h('input', { type: opts.type || 'text', value: opts.value || '', placeholder: opts.placeholder || '', style: 'width:100%;box-sizing:border-box' });
     const done = (v) => { over.remove(); resolve(v); };
     const over = h('div', { class: 'overlay', onclick: (e) => { if (e.target === over) done(null); } },
       h('div', { class: 'card', role: 'dialog', 'aria-label': title, style: 'width:min(440px,92vw);display:flex;flex-direction:column;gap:12px' },
@@ -461,6 +461,16 @@ function notesCard() {
   load();
   return h('div', { class: 'card stack' }, ch('sparkle', 'What Claude remembers', 'Short notes about you or how you like things. Claude gets them in every chat and routine.'), body);
 }
+/** Your own Anthropic API key: Claude then runs on it (paid per use) instead of your Claude account. Only its last 4 characters ever come back. */
+function apiKeyRows(k, load) {
+  if (!k) return [];
+  const set = async () => { const v = await askText('Anthropic API key', 'Claude runs on this key instead of your Claude account. You pay Anthropic per use; your plan\'s limits no longer apply. Make one at console.anthropic.com.', { placeholder: 'sk-ant-…', ok: 'Use this key', type: 'password' }); if (v && v.trim()) load({ apiKey: v.trim(), useApiKey: true }); };
+  return [
+    h('div', { class: 'row', title: 'Your Claude account (Pro or Max) or your own API key from console.anthropic.com.' }, h('div', { class: 'grow' }, 'Run Claude on my API key', h('div', { class: 'small muted' }, k.set ? 'Key ending in ' + k.ends + (k.use ? ' · in use' : ' · not in use: your account is used') : 'Off: Claude runs on your Claude account.')),
+      k.set ? toggle(!!k.use, () => load({ useApiKey: !k.use })) : h('button', { class: 'ghost sm', onclick: set }, 'Add a key')),
+    k.set ? h('div', { class: 'row' }, h('div', { class: 'grow' }), h('button', { class: 'ghost sm', onclick: set }, 'Change key'), h('button', { class: 'ghost sm', onclick: () => load({ apiKey: '' }) }, 'Remove key')) : null,
+  ];
+}
 /** Safety: a snapshot before every run, a spending limit and nightly backups of the chats. */
 function safetyCard() {
   const body = h('div', { class: 'stack', style: 'gap:10px' });
@@ -471,6 +481,8 @@ function safetyCard() {
     const chips = (vals, cur, key) => h('div', { class: 'row wrap' }, ...vals.map((v) => chip(v === 0 ? 'Off' : '$' + v, cur === v, () => load({ budget: { perDay: key === 'perDay' ? v : b.perDay, perChat: key === 'perChat' ? v : b.perChat } }))));
     fill(body, 
       h('div', { class: 'row', title: 'Claude explains in everyday words, without jargon or code unless you ask.' }, h('div', { class: 'grow' }, 'Plain language'), toggle(!!d.plain, () => load({ plain: !d.plain }))),
+      h('div', { class: 'row', title: 'Claude makes a checklist before it starts on a task (not for a question). You follow it in the chat and on your watch. When this is off, start a message with /plan to get one anyway.' }, h('div', { class: 'grow' }, 'A plan with every task', h('div', { class: 'small muted' }, 'Off: start a message with /plan to get one anyway.')), toggle(d.plans !== false, () => load({ plans: d.plans === false }))),
+      ...apiKeyRows(d.apiKey, load),
       h('div', { class: 'row', title: 'A copy of the project folder, kept for the last 8 runs. In a chat: the undo button at the top.' }, h('div', { class: 'grow' }, 'Snapshot before every run'), toggle(d.snapshots !== false, () => load({ snapshots: d.snapshots === false }))),
       h('div', { class: 'small muted' }, 'Spending limit per day · used $' + (b.usedDay || 0).toFixed(2)), chips([0, 5, 10, 25, 50, 100], b.perDay || 0, 'perDay'),
       h('div', { class: 'small muted' }, 'Limit per chat'), chips([0, 2, 5, 10, 25], b.perChat || 0, 'perChat'),

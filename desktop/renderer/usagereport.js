@@ -1,6 +1,6 @@
 'use strict';
 /* "Usage and cost": everything a /usage-style report shows, for 7 days, 30 days or all time. Cost is the API-equivalent value of the tokens. */
-const UR = { range: 30, data: null, key: '', loading: false, loadedAt: 0, err: null };
+const UR = { range: typeof HR !== 'undefined' ? HR : 30, data: null, key: '', loading: false, loadedAt: 0, err: null };
 const money = (n) => (n >= 100 ? '$' + Math.round(n).toLocaleString() : n >= 1 ? '$' + n.toFixed(2) : '$' + n.toFixed(n < 0.01 && n > 0 ? 3 : 2));
 const urDur = (ms) => { const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4); return d ? d + 'd ' + h + 'h' : h ? h + 'h ' + m + 'm' : m + ' min'; };
 
@@ -22,8 +22,8 @@ function usageSection() {
   loadUsageReport();
   const r = UR.data;
   const card = h('div', { class: 'card stack ur' + (UR.grownKey !== UR.key + ':' + (UR.data && UR.data.range) ? ' urgrow' : '') }); UR.grownKey = UR.key + ':' + (UR.data && UR.data.range);
-  card.append(h('div', { class: 'row wrap' }, h('div', { class: 'label grow' }, 'Usage and cost'),
-    [[7, '7 days'], [30, '30 days'], [0, 'All time']].map(([n, l]) => chip(l, UR.range === n, () => { UR.range = n; UR.key = ''; UR.data = UR.data && UR.data.range === n ? UR.data : UR.data; loadUsageReport(); render(); }))));
+  if (typeof HR !== 'undefined' && UR.range !== HR) { UR.range = HR; UR.key = ''; loadUsageReport(); }   // the one period chosen at the top of Home
+  card.append(h('div', { class: 'row wrap' }, h('div', { class: 'label grow' }, 'Usage and cost' + (typeof hrLabel === 'function' ? ' · ' + hrLabel() : ''))));
   if (UR.err) { card.append(h('div', { class: 'small err' }, UR.err)); return card; }
   if (!r || r.range !== UR.range) { card.append(h('div', { class: 'small muted' }, 'Counting your tokens…')); return card; }
   const t = r.totals, fmt = (n) => (typeof fmtN === 'function' ? fmtN(n) : String(n));

@@ -866,6 +866,10 @@ fn main() {
     if argv.get(1).map(|a| a == "mcp-ask").unwrap_or(false) { hearth_relay::mcpask::run(); return; }
     if argv.iter().any(|a| a == "--version") { println!("{}", env!("CARGO_PKG_VERSION")); return; }
     let hidden = argv.iter().any(|a| a == "--hidden");
+    // WebKitGTK's DMA-BUF renderer makes the whole window flash white now and then on many Linux GPUs (NVIDIA, some AMD and
+    // Intel): drawing without it is just as fast for this app and never flashes. Set before any window exists; your own value wins.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
     let dir = data_dir();
     let _ = std::fs::create_dir_all(&dir);
     let icon_file = dir.join("icon.png");

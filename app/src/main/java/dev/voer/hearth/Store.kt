@@ -115,6 +115,9 @@ object Store {
     fun setCrash(c: Context, v: String) = sp(c).edit().putString("crash", v).commit().let { }
     fun betaUnlocked(c: Context) = sp(c).getBoolean("beta", false)
     fun setBetaUnlocked(c: Context, v: Boolean) = sp(c).edit().putBoolean("beta", v).apply()
+    /** The one period for every card on Home: 1, 7, 14, 30, 90 days, or 0 for all time. */
+    fun homeRange(c: Context) = sp(c).getInt("homerange", 30)
+    fun setHomeRange(c: Context, v: Int) = sp(c).edit().putInt("homerange", v).apply()
     fun betaOn(c: Context, id: String) = sp(c).getBoolean("beta_$id", false)
     fun setBetaOn(c: Context, id: String, v: Boolean) = sp(c).edit().putBoolean("beta_$id", v).apply()
     // Pinned chats stay on top of the list; a chosen name replaces the title. Both are kept on this phone.

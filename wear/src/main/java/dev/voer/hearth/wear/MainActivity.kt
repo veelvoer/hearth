@@ -509,6 +509,11 @@ private fun ChatScreen(ch: Chat) {
     RoundList {
         item("title") { Label(ch.title, 12, Muted, FontWeight.SemiBold, lines = 2, modifier = Modifier.fillMaxWidth(0.7f)) }
         item("card") { NowCard(tn, busy) }
+        val plan = tn?.plan.orEmpty()
+        if (plan.isNotEmpty()) {
+            item("plan") { Label("Plan · ${plan.count { it.status == "completed" }} of ${plan.size} done", 11, Muted, FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(0.8f)) }
+            plan.forEachIndexed { i, st -> item("st$i") { StepRow(st, busy) } }
+        }
         if (tn != null && !busy && tn.answer.isNotBlank()) pieces(tn.answer).forEachIndexed { i, p ->
             item("p$i") { Label(p, 14, Ink, align = TextAlign.Start, modifier = Modifier.fillMaxWidth(0.84f)) }
         }
@@ -524,6 +529,38 @@ private fun ChatScreen(ch: Chat) {
         if (!busy && tn?.answer?.isNotBlank() == true) listOf("Yes, go ahead", "Continue", "Explain shorter").forEach { q ->
             item("q$q") { Pill(Modifier.fillMaxWidth(0.8f), onClick = { send(q) }) { Label(q, 12, Ink, lines = 1) } }
         }
+    }
+}
+
+/** One step of the plan: a check when done, a turning ring while Claude works on it, an empty ring when it is still to come. */
+@Composable
+private fun StepRow(st: Step, busy: Boolean) {
+    val done = st.status == "completed"; val now = st.status == "in_progress"
+    Row(Modifier.fillMaxWidth(0.84f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+            when {
+                done -> Canvas(Modifier.size(20.dp)) {
+                    drawCircle(Clay)
+                    val w = 2.2.dp.toPx(); val p = androidx.compose.ui.graphics.Path().apply { moveTo(size.width * 0.28f, size.height * 0.52f); lineTo(size.width * 0.44f, size.height * 0.67f); lineTo(size.width * 0.73f, size.height * 0.36f) }
+                    drawPath(p, Pal.cur.onClay, style = Stroke(w, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                }
+                now && busy -> Spinner(Clay)
+                else -> Canvas(Modifier.size(20.dp)) { val w = 2.dp.toPx(); drawCircle(if (now) Clay else Muted, radius = size.minDimension / 2 - w / 2, style = Stroke(w)) }
+            }
+        }
+        Label(st.text, 13, if (done) Muted else Ink, if (now) FontWeight.Medium else FontWeight.Normal, lines = 3, align = TextAlign.Start, modifier = Modifier.weight(1f))
+    }
+}
+
+/** A turning ring: one arc rotated on the GPU, nothing laid out again. */
+@Composable
+private fun Spinner(color: Color) {
+    val tr = rememberInfiniteTransition(label = "spin")
+    val a by tr.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing)), label = "a")
+    Canvas(Modifier.size(20.dp).graphicsLayer { rotationZ = a }) {
+        val w = 2.4.dp.toPx()
+        drawCircle(color.copy(alpha = 0.25f), radius = size.minDimension / 2 - w / 2, style = Stroke(w))
+        drawArc(color, 0f, 100f, false, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), style = Stroke(w, cap = StrokeCap.Round))
     }
 }
 

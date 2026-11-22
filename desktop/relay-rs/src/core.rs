@@ -204,6 +204,10 @@ pub fn tool_input(name: &str, arg: Option<&Value>) -> Value {
         }
         "Write" => { o.insert("file_path".into(), json!(or_empty(g("file_path")))); o.insert("content".into(), json!(clip(g("content"), 1500))); }
         "Bash" => { o.insert("command".into(), json!(clip(g("command"), 1500))); o.insert("description".into(), json!(clip(g("description"), 200))); }
+        "TodoWrite" => {   // the plan: every step and where it stands (the watch and the apps draw it as a checklist)
+            let todos: Vec<Value> = g("todos").and_then(|t| t.as_array()).map(|a| a.iter().take(30).map(|t| json!({"content": clip(t.get("content"), 160), "status": or_empty(t.get("status")), "activeForm": clip(t.get("activeForm"), 160)})).collect()).unwrap_or_default();
+            o.insert("todos".into(), Value::Array(todos));
+        }
         _ => {
             if let Value::Object(m) = arg {
                 for (k, v) in m.iter().take(6) {
@@ -582,6 +586,45 @@ pub fn sessions(active: &std::collections::HashSet<String>, keep: Option<&dyn Fn
         if out.len() >= limit { break; }
     }
     out
+}
+
+/// The plan of the newest prompt, from Claude's todo list (TodoWrite, or TaskCreate/TaskUpdate): [{text, status}] with status
+/// pending, in_progress or completed. Empty when the newest prompt has no plan (a question, or plans are off).
+pub fn plan(msgs: &Value) -> Value {
+    let list = msgs.as_array().cloned().unwrap_or_default();
+    let start = list.iter().rposition(|m| m.get("role").and_then(|r| r.as_str()) == Some("user")).map(|i| i + 1).unwrap_or(0);
+    let mut items: Vec<(String, String, String)> = Vec::new();   // (id, text, status)
+    let mut n = 0;
+    for m in &list[start..] {
+        if m.get("role").and_then(|r| r.as_str()) != Some("tool") { continue; }
+        let input = m.get("input").cloned().unwrap_or(Value::Null);
+        let s = |k: &str| input.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+        match m.get("name").and_then(|x| x.as_str()).unwrap_or("") {
+            "TodoWrite" => {
+                items = input.get("todos").and_then(|t| t.as_array()).map(|a| a.iter().enumerate().map(|(i, t)| {
+                    let st = t.get("status").and_then(|x| x.as_str()).unwrap_or("pending").to_string();
+                    let txt = if st == "in_progress" { t.get("activeForm").and_then(|x| x.as_str()).filter(|x| !x.is_empty()).or(t.get("content").and_then(|x| x.as_str())) } else { t.get("content").and_then(|x| x.as_str()) };
+                    ((i + 1).to_string(), txt.unwrap_or("").to_string(), st)
+                }).collect()).unwrap_or_default();
+            }
+            "TaskCreate" => {
+                n += 1;
+                let res = m.get("result").and_then(|x| x.as_str()).unwrap_or("");
+                let id = res.split('#').nth(1).map(|t| t.chars().take_while(|c| c.is_ascii_digit()).collect::<String>()).filter(|t| !t.is_empty()).unwrap_or_else(|| n.to_string());
+                items.push((id, s("subject"), "pending".into()));
+            }
+            "TaskUpdate" => {
+                let id = s("taskId").trim_start_matches('#').to_string();
+                if let Some(it) = items.iter_mut().find(|x| x.0 == id) {
+                    let st = s("status"); if !st.is_empty() { it.2 = st; }
+                    let sub = s("subject"); if !sub.is_empty() { it.1 = sub; }
+                }
+                items.retain(|x| x.2 != "deleted");
+            }
+            _ => {}
+        }
+    }
+    json!({"items": items.into_iter().filter(|x| !x.1.trim().is_empty()).map(|(_, t, st)| json!({"text": t, "status": st})).collect::<Vec<_>>()})
 }
 
 pub fn messages_sid(sid: &str, tail: usize) -> Value { match find_session(sid) { Some(f) => messages(&f.file, tail), None => json!([]) } }

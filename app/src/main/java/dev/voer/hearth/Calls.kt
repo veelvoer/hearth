@@ -61,15 +61,14 @@ object CallApi {
 object Calls {
     private const val CALL = "call"
     private const val LISTEN = "listen"
-    private const val MSG = "messages"
-    private const val MSG_Q = "messages_quiet"
+    private const val MSG = "claude_messages"   // a new channel: the old ones were silent (Android keeps a channel's importance once made)
     private const val REQ = "requests"
 
     fun channels(c: Context) {
         val nm = c.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(LISTEN, "Listening for calls", NotificationManager.IMPORTANCE_MIN))
-        nm.createNotificationChannel(NotificationChannel(MSG, "Messages from Claude", NotificationManager.IMPORTANCE_DEFAULT))
-        nm.createNotificationChannel(NotificationChannel(MSG_Q, "Messages from Claude (no status bar icon)", NotificationManager.IMPORTANCE_MIN))
+        listOf("messages", "messages_quiet").forEach { runCatching { nm.deleteNotificationChannel(it) } }
+        nm.createNotificationChannel(NotificationChannel(MSG, "Messages from Claude", NotificationManager.IMPORTANCE_HIGH).apply { enableVibration(true) })   // sound and a pop-up: done, a question, it needs your OK
         nm.createNotificationChannel(NotificationChannel(REQ, "Needs your decision (friends, support mail, usage limit)", NotificationManager.IMPORTANCE_HIGH))   // pops up on screen
         nm.createNotificationChannel(NotificationChannel(CALL, "Claude calls", NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
@@ -109,9 +108,9 @@ object Calls {
             else -> "${project(e.cwd)}: Claude is done"
         }
         val isReq = e.kind == "request" || ((e.kind == "support" || e.kind == "limit") && e.req.isNotEmpty())   // things that wait for your decision pop up, whatever the status bar setting is
-        val b = NotificationCompat.Builder(c, if (isReq) REQ else if (Store.statusIcon(c)) MSG else MSG_Q).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
+        val b = NotificationCompat.Builder(c, if (isReq) REQ else MSG).setSmallIcon(R.drawable.ic_stat).setContentTitle(title)
             .setContentText(e.text.ifEmpty { e.title }).setStyle(NotificationCompat.BigTextStyle().bigText(e.text.ifEmpty { e.title }))
-            .setContentIntent(open).setAutoCancel(true).setPriority(if (isReq) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(open).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).setDefaults(NotificationCompat.DEFAULT_ALL)
         if (e.kind == "permission" && e.req.isNotEmpty()) {
             fun act(behavior: String, label: String, code: Int) = NotificationCompat.Action.Builder(0, label, PendingIntent.getBroadcast(c, nid + code,
                 Intent(c, CallReceiver::class.java).setAction("decide").putExtra("host", m.host).putExtra("req", e.req).putExtra("behavior", behavior).putExtra("nid", nid), fl)).build()

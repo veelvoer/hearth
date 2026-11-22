@@ -1,6 +1,12 @@
 'use strict';
 /* Dashboard: limits, token activity from your local Claude Code logs, projects, tools, and live sessions. */
-const D = { stats: null, err: null, loading: false, machineId: null, live: [], voice: null, range: 14, loadedAt: 0 };
+const D = { stats: null, err: null, loading: false, machineId: null, live: [], voice: null, loadedAt: 0 };
+/** One period for every card on Home (chart, numbers, projects, models, tools, cost, fun facts): 1, 7, 14, 30, 90 days or 0 = all time. */
+const HOME_RANGES = [[1, 'Today'], [7, '7 days'], [14, '14 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']];
+let HR = (() => { const v = Number(localStorage.getItem('cm.homeRange')); return HOME_RANGES.some(([n]) => n === v) && localStorage.getItem('cm.homeRange') != null ? v : 30; })();
+const hrDays = () => HR || 3650;
+const hrLabel = () => (HOME_RANGES.find(([n]) => n === HR) || [0, ''])[1].toLowerCase();
+function setHomeRange(n) { HR = n; localStorage.setItem('cm.homeRange', String(n)); D.statsKey = ''; D.funRep = null; if (typeof UR !== 'undefined') { UR.range = n; UR.key = ''; loadUsageReport(); } loadDashboard(); render(); }
 const FAM = [['opus', 'Opus', '--c-opus'], ['sonnet', 'Sonnet', '--c-sonnet'], ['haiku', 'Haiku', '--c-haiku'], ['other', 'Other', '--c-other']];
 
 const fmtN = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
@@ -14,7 +20,9 @@ async function loadDashboard() {
     const m = ms.find((x) => x.local) || ms[0];
     if (!m) { D.err = 'norelay'; D.stats = null; return; }
     D.machineId = m.id;
-    D.stats = await cm.stats(m.id, 30);
+    // the chosen period, and the same period before it for the comparison under each number
+    const [cur, both] = await Promise.all([cm.stats(m.id, hrDays()), HR ? cm.stats(m.id, HR * 2).catch(() => null) : Promise.resolve(null)]);
+    D.stats = cur; D.both = both ? both.days : null; D.prevDays = both ? both.days.slice(0, Math.max(0, both.days.length - HR)) : null;
     D.live = (await cm.relay(m.id, 'GET', '/sessions').catch(() => [])).filter((s) => s.live).map((s) => ({ ...s, mid: m.id }));
     D.voice = await cm.relay(m.id, 'GET', '/voice/status').catch(() => null);
     D.err = null; D.loadedAt = Date.now();
@@ -249,6 +257,7 @@ function dashboardView() {
     h('div', { class: 'row' }, ibtn('refresh', 'Refresh the numbers now', async () => { S = await cm.refresh(); loadDashboard(); render(); }),
       D.live[0] ? ibtn('mic', 'Talk to Claude', () => openSession(D.live[0], true), 'primary') : null)));
   root.append(pills);
+  root.append(h('div', { class: 'row wrap homerange', role: 'group', 'aria-label': 'Period for every card' }, h('span', { class: 'small muted' }, 'Show'), ...HOME_RANGES.map(([n, l]) => chip(l, HR === n, () => setHomeRange(n)))));
   if (S.error) root.append(h('div', { class: 'card err small' }, S.error));
 
   root.append(h('div', { class: 'g2' }, limitPanel('Session', '', u && u.session, CMW.SESSION_MS), limitPanel('Week', '', u && u.week, CMW.WEEK_MS)));
@@ -264,25 +273,29 @@ function dashboardView() {
   if (D.err) root.append(h('div', { class: 'card err small' }, D.err));
   if (!D.stats) { root.append(h('div', { class: 'card muted' }, 'Reading your Claude Code activity…')); return root; }
 
-  const days = D.stats.days, today = days[days.length - 1], yday = days[days.length - 2] || { in: 0, out: 0, cw: 0, cr: 0, msgs: 0 };
-  const wk = days.slice(-7), cr = wk.reduce((a, d) => a + d.cr, 0), fresh = wk.reduce((a, d) => a + d.in + d.cw, 0);
-  const tT = work(today), yT = work(yday);
+  const days = D.stats.days, inRange = HR ? days.slice(-HR) : days, prev = D.prevDays && D.prevDays.length ? D.prevDays.slice(-HR) : null;
+  const sum = (l, f) => l.reduce((a, d) => a + f(d), 0);
+  const cr = sum(inRange, (d) => d.cr), fresh = sum(inRange, (d) => d.in + d.cw);
+  const tT = sum(inRange, work), pT = prev ? sum(prev, work) : 0;
+  const msgs = sum(inRange, (d) => d.msgs), pMsgs = prev ? sum(prev, (d) => d.msgs) : 0;
+  const sess = sum(inRange, (d) => d.sessions || 0), pSess = prev ? sum(prev, (d) => d.sessions || 0) : 0;
+  const per = HR === 1 ? 'today' : '· ' + hrLabel(), vs = HR === 1 ? 'vs yesterday' : 'vs the ' + hrLabel() + ' before';
   root.append(h('div', { class: 'g4' },
-    kpi('Tokens today', fmtN(tT), `${fmtN(today.out)} written · ${fmtN(today.cr)} cached reads`, yT ? (tT - yT) / yT * 100 : null),
-    kpi('Messages today', String(today.msgs), `${wk.reduce((a, d) => a + d.msgs, 0)} this week`, yday.msgs ? (today.msgs - yday.msgs) / yday.msgs * 100 : null),
-    kpi('Sessions today', String(today.sessions), `${D.live.length} open right now`),
-    kpi('Cache hit rate', cr + fresh ? Math.round(cr / (cr + fresh) * 100) + '%' : '–', 'Last 7 days, higher is cheaper')));
+    kpi('Tokens ' + per, fmtN(tT), `${fmtN(sum(inRange, (d) => d.out))} written · ${fmtN(cr)} cached reads`, pT ? (tT - pT) / pT * 100 : null),
+    kpi('Messages ' + per, String(msgs), prev ? `${pMsgs} ${vs}` : '', pMsgs ? (msgs - pMsgs) / pMsgs * 100 : null),
+    kpi('Sessions ' + per, String(sess), `${D.live.length} open right now`, pSess ? (sess - pSess) / pSess * 100 : null),
+    kpi('Cache hit rate', cr + fresh ? Math.round(cr / (cr + fresh) * 100) + '%' : '–', 'Higher is cheaper')));
   recapCard(root);
   toyHolidayOnce();
   if (toyOn('pep')) root.append(h('div', { class: 'muted' }, toyDaily(TOY_PEP)));
   if (toyOn('ember')) root.append(toyEmber());
   const funBox = h('div', { id: 'funbox' }); root.append(funBox); funFacts(funBox);
 
-  const shown = days.slice(-D.range);
+  const shown = HR === 0 ? days.slice(-90) : HR === 1 ? (D.both || inRange) : inRange;   // all time shows the last 90 days; today shows yesterday next to it
   const tok = h('canvas', { style: 'width:100%;height:240px;display:block' });
   const spark = h('canvas', { style: 'width:100%;height:150px;display:block;margin-top:8px' });
   root.append(h('div', { class: 'g32' },
-    h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Tokens per day'), [14, 30].map((n) => chip(n + 'd', D.range === n, () => { D.range = n; render(); }))),
+    h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Tokens per day · ' + (HR === 0 ? 'last 90 days' : HR === 1 ? 'yesterday and today' : hrLabel()))),
       h('div', { class: 'legend', style: 'margin:10px 0' }, FAM.filter(([k]) => D.stats.models[k]).map(([k, n, v]) => h('span', {}, h('i', { style: `background:var(${v})` }), n))), tok),
     h('div', { class: 'card' }, h('div', { class: 'label' }, 'Limits, last 48 hours'), h('div', { class: 'legend', style: 'margin-top:8px' }, h('span', {}, h('i', { style: 'background:var(--clay)' }), 'Session'), h('span', {}, h('i', { style: 'background:var(--ink)' }), 'Week')), spark)));
 
@@ -290,11 +303,11 @@ function dashboardView() {
   const mods = FAM.filter(([k]) => D.stats.models[k]).map(([k, n, v]) => [n, D.stats.models[k], v]);
   const tools = Object.entries(D.stats.tools).slice(0, 7);
   root.append(h('div', { class: 'g32' },
-    h('div', { class: 'card' }, h('div', { class: 'label', style: 'margin-bottom:10px' }, 'When you work with Claude · last 30 days'), heatmap(D.stats.heat)),
-    h('div', { class: 'card' }, h('div', { class: 'label' }, 'Top projects · 30 days'), proj.length ? hbars(proj) : h('p', { class: 'muted small' }, 'No activity yet'))));
+    h('div', { class: 'card' }, h('div', { class: 'label', style: 'margin-bottom:10px' }, 'When you work with Claude · ' + hrLabel()), heatmap(D.stats.heat)),
+    h('div', { class: 'card' }, h('div', { class: 'label' }, 'Top projects · ' + hrLabel()), proj.length ? hbars(proj) : h('p', { class: 'muted small' }, 'No activity yet'))));
   root.append(h('div', { class: 'g2' },
-    h('div', { class: 'card' }, h('div', { class: 'label' }, 'Models · 30 days'), mods.length ? hbars(mods) : h('p', { class: 'muted small' }, 'No activity yet')),
-    h('div', { class: 'card' }, h('div', { class: 'label' }, 'Most used tools'), tools.length ? hbars(tools, (v) => v + '×') : h('p', { class: 'muted small' }, 'No activity yet'))));
+    h('div', { class: 'card' }, h('div', { class: 'label' }, 'Models · ' + hrLabel()), mods.length ? hbars(mods) : h('p', { class: 'muted small' }, 'No activity yet')),
+    h('div', { class: 'card' }, h('div', { class: 'label' }, 'Most used tools · ' + hrLabel()), tools.length ? hbars(tools, (v) => v + '×') : h('p', { class: 'muted small' }, 'No activity yet'))));
 
   const live = h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Open Claude Code sessions'));
   if (!D.live.length) live.append(h('p', { class: 'muted small', style: 'margin:0' }, 'None right now. Start `claude` in a terminal and it shows up here.'));
@@ -317,10 +330,12 @@ setInterval(() => {
 async function funFacts(box) {
   const st = S.settings || {}; if (!st.betaUnlocked) return;
   const on = FUN_FEATURES.filter(([id]) => (st.betaOn || {})[id]); if (!on.length) return;
-  const m = (SS.machines || []).find((x) => x.secure) || (SS.machines || [])[0]; if (!m) return;
-  if (!D.funRep || Date.now() - D.funAt > 60000) { try { D.funRep = await cm.relay(m.id, 'GET', '/usage-report?days=30'); D.funAt = Date.now(); } catch { return; } }
+  // Home is the first page: the chat list may not have loaded the computers yet, so ask for them here
+  let ms = SS.machines || []; if (!ms.length) { try { ms = await cm.machines(); } catch { ms = []; } }
+  const m = ms.find((x) => x.secure) || ms[0]; if (!m) return;
+  if (!D.funRep || Date.now() - D.funAt > 60000) { try { D.funRep = await cm.relay(m.id, 'GET', '/usage-report?days=' + HR); D.funAt = Date.now(); } catch { return; } }
   const lines = on.map(([id, title]) => [title, funLine(id, D.funRep), id]).filter((x) => x[1]); if (!lines.length || !box.isConnected) return;
-  box.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Fun facts · last 30 days'), h('div', { class: 'g4' }, ...lines.map(([title, v, id]) => h('div', { class: 'funtile' }, h('span', { class: 'ftile' }, icon(FUN_ICONS[id] || 'tour')), h('div', { class: 'funval' }, v[0]), h('div', { style: 'font-weight:600' }, title), h('div', { class: 'small muted' }, v[1]))))));
+  box.append(h('div', { class: 'card stack' }, h('div', { class: 'label' }, 'Fun facts · ' + hrLabel()), h('div', { class: 'g4' }, ...lines.map(([title, v, id]) => h('div', { class: 'funtile' }, h('span', { class: 'ftile' }, icon(FUN_ICONS[id] || 'tour')), h('div', { class: 'funval' }, v[0]), h('div', { style: 'font-weight:600' }, title), h('div', { class: 'small muted' }, v[1]))))));
 }
 
 /** Last week at a glance on Monday and Tuesday. Gone for the week once you close it. */
@@ -328,7 +343,8 @@ async function recapCard(root) {
   const day = new Date().getDay(); if (day !== 1 && day !== 2) return;
   const wk = (() => { const d = new Date(); const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); return t.getUTCFullYear() * 100 + Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); })();
   if (localStorage.getItem('cm.recapClosed') === String(wk)) return;
-  const m = (SS.machines || []).find((x) => x.secure) || (SS.machines || [])[0]; if (!m) return;
+  let ms = SS.machines || []; if (!ms.length) { try { ms = await cm.machines(); } catch { ms = []; } }
+  const m = ms.find((x) => x.secure) || ms[0]; if (!m) return;
   let r; try { r = await cm.relay(m.id, 'GET', '/recap?days=7'); } catch { return; }
   if (!r || r.empty || !root.isConnected) return;
   const el = h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('div', { class: 'label grow' }, 'Your last 7 days'), h('button', { class: 'ghost sm', onclick: () => { localStorage.setItem('cm.recapClosed', String(wk)); el.remove(); } }, 'Close')),

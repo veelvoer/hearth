@@ -149,7 +149,13 @@ impl Relay {
                 self.write_cfg(json!({"templates": list})); return j(200, json!({"templates": list}));
             }
             ("admin", "safety") => {
-                for k in ["plain", "snapshots", "backups"] { if b.get(k).is_some() { self.write_cfg(json!({ k: b.t(k) })); } }
+                for k in ["plain", "snapshots", "backups", "plans", "useApiKey"] { if b.get(k).is_some() { self.write_cfg(json!({ k: b.t(k) })); } }
+                if let Some(Value::String(k)) = b.get("apiKey") {   // "" removes it
+                    let k = k.trim();
+                    if k.is_empty() { let _ = std::fs::remove_file(self.dir.join("anthropic-key")); self.write_cfg(json!({"useApiKey": false})); }
+                    else if !k.starts_with("sk-ant-") || k.len() > 300 || k.chars().any(|c| c.is_whitespace()) { return j(400, json!({"error": "That is not an Anthropic API key (it starts with sk-ant-)."})); }
+                    else { let _ = write_atomic_private(&self.dir.join("anthropic-key"), k.as_bytes()); if b.get("useApiKey").is_none() { self.write_cfg(json!({"useApiKey": true})); } }
+                }
                 if b.g("budget").is_object() { self.write_cfg(json!({"budget": {"perDay": num(b.g("budget").n("perDay").clamp(0.0, 100000.0)), "perChat": num(b.g("budget").n("perChat").clamp(0.0, 100000.0))}})); }
                 let mut result = obj();
                 if b.t("backupNow") { result = self.run_backup(); }

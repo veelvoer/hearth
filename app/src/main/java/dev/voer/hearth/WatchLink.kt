@@ -59,6 +59,7 @@ class WatchLink : WearableListenerService() {
                     if (asked.isNotEmpty()) break
                 }
                 JSONObject().put("asked", asked.take(600)).put("answer", answer.take(4000)).put("steps", JSONArray(steps)).put("ts", ts).put("now", now)
+                    .put("plan", runCatching { val (pc, pb) = call(m, "GET", "/sessions/$id/plan"); if (pc == 200) JSONObject(pb).optJSONArray("items")?.let { trimPlan(it) } else null }.getOrNull() ?: JSONArray())
             }
             "send" -> JSONObject().put("code", call(m, "POST", "/sessions/$id/send", JSONObject().put("text", q.optString("text").take(4000)).put("mode", "acceptEdits"), lines = 2, read = 20_000).first)
             "stop" -> JSONObject().put("code", call(m, "POST", "/stop", JSONObject().put("session", id)).first)
@@ -78,13 +79,18 @@ class WatchLink : WearableListenerService() {
     /** The chat list for the watch: your pinned chats first (pins and names live on the server, the same as on this phone), then the running ones, then the newest. */
     private fun chats(m: Machine): JSONObject {
         val (c, b) = call(m, "GET", "/sessions"); if (c != 200) return fail(c)
-        val tags = runCatching { val (tc, tb) = call(m, "GET", "/chat-tags"); if (tc == 200) JSONObject(tb).optJSONObject("tags") else null }.getOrNull() ?: JSONObject()
+        // pins live on one server for all of them: the same one this phone's chat list uses (the first secure one), so every server's chats get their pins
+        val hub = Store.machines(this).filter { !it.guest }.let { l -> l.firstOrNull { it.secure } ?: l.firstOrNull() } ?: m
+        val tags = runCatching { val (tc, tb) = call(hub, "GET", "/chat-tags"); if (tc == 200) JSONObject(tb).optJSONObject("tags") else null }.getOrNull() ?: JSONObject()
         val a = JSONArray(b); val out = JSONArray()
         (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") != "talk" || it.optString("title").isNotBlank() }
             .sortedWith(compareByDescending<JSONObject> { tags.optJSONObject(it.optString("id"))?.optBoolean("pin") == true }.thenByDescending { it.optBoolean("running") || it.optBoolean("busy") }.thenByDescending { it.optLong("mtime") }).take(20)
             .forEach { val t = tags.optJSONObject(it.optString("id")); out.put(JSONObject().put("id", it.optString("id")).put("title", (t?.optString("name")?.takeIf { n -> n.isNotBlank() } ?: it.optString("title")).take(120)).put("busy", it.optBoolean("running") || it.optBoolean("busy")).put("mtime", it.optLong("mtime")).put("pin", t?.optBoolean("pin") == true)) }
         return JSONObject().put("chats", out)
     }
+
+    /** At most 12 steps, short enough for one data-layer message. */
+    private fun trimPlan(a: JSONArray): JSONArray { val out = JSONArray(); for (i in 0 until minOf(a.length(), 12)) { val o = a.getJSONObject(i); out.put(JSONObject().put("text", o.optString("text").take(100)).put("status", o.optString("status"))) }; return out }
 
     private fun fail(code: Int) = JSONObject().put("code", code).put("error", if (code == 401) "The phone needs to connect again" else "said $code")
 

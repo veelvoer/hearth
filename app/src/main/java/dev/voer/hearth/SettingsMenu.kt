@@ -234,12 +234,12 @@ fun funLine(id: String, o: JSONObject): Pair<String, String>? {
 
 /** The lines of the beta features that are switched on, as one card on Home. */
 @Composable
-fun FunFactsCard(raw: JSONObject?) {
+fun FunFactsCard(raw: JSONObject?, period: String = "last 30 days") {
     val c = LocalContext.current
     if (!Store.betaUnlocked(c) || raw == null) return
     val on = FUN.filter { Store.betaOn(c, it.id) }.mapNotNull { f -> funLine(f.id, raw)?.let { f to it } }
     if (on.isEmpty()) return
-    Label("Fun facts · last 30 days")
+    Label("Fun facts · $period")
     on.chunked(2).forEach { pair ->   // two tiles to a row: a big number, what it is, and a small line
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             pair.forEach { (f, v) ->
@@ -260,10 +260,10 @@ fun FunFactsCard(raw: JSONObject?) {
 
 /** Everything the computer's dashboard shows, in one scrolling block: totals, the models, the projects and the tools of the last 30 days. */
 @Composable
-fun FullDashboard(raw: JSONObject?) {
+fun FullDashboard(raw: JSONObject?, period: String = "last 30 days") {
     if (raw == null) return
     val t = raw.optJSONObject("totals") ?: return
-    Label("Full dashboard · last 30 days")
+    Label("Full dashboard · $period")
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         DashTile("Tokens", fmtN(t.optDouble("tokens", 0.0)), "written, read and cached", Modifier.weight(1f).fillMaxHeight())
         DashTile("Prompts", t.optInt("prompts", 0).toString(), "sent by you", Modifier.weight(1f).fillMaxHeight())

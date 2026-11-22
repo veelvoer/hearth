@@ -376,6 +376,10 @@ private fun WeekPlanCard() {
     }
 }
 
+/** The periods of the one filter on Home (0 = all time). */
+val HOME_RANGES = listOf(1 to "Today", 7 to "7 days", 14 to "14 days", 30 to "30 days", 90 to "90 days", 0 to "All time")
+fun rangeLabel(r: Int) = when (r) { 0 -> "all time"; 1 -> "today"; else -> "last $r days" }
+
 @Composable
 fun NowScreen() {
     val c = LocalContext.current
@@ -383,11 +387,12 @@ fun NowScreen() {
     val now by tick()
     val u = Ui.usage
     var cost by remember { mutableStateOf<ApiCost?>(null) }
-    LaunchedEffect(Ui.machinesRev) {   // what the work is worth: asked once a minute while this screen is open
+    var range by remember { mutableIntStateOf(Store.homeRange(c)) }   // one period for every card on this page
+    LaunchedEffect(Ui.machinesRev, range) {   // what the work is worth: asked once a minute while this screen is open
         while (true) {
             val ms = Store.machines(c)
             val m = ms.firstOrNull { it.secure } ?: ms.firstOrNull()
-            if (m != null) runCatching { withContext(Dispatchers.IO) { Relay.cost(m) } }.onSuccess { cost = it }
+            if (m != null) runCatching { withContext(Dispatchers.IO) { Relay.cost(m, range) } }.onSuccess { cost = it }
             pollDelay(60_000)
         }
     }
@@ -410,6 +415,9 @@ fun NowScreen() {
                 TextAction("Report") { Ui.supportDraft = "Hearth closed by itself.\n\nPhone app: ${Updates.current(c)} · Android ${Build.VERSION.RELEASE} · ${Build.MANUFACTURER} ${Build.MODEL}\n\n$crash"; Ui.openSupport = true; Ui.tab = 3; Store.setCrash(c, ""); crash = "" }
                 TextAction("Close") { Store.setCrash(c, ""); crash = "" }
             }
+        }
+        ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HOME_RANGES.forEach { (v, l) -> Chip(l, range == v) { range = v; Store.setHomeRange(c, v) } }
         }
         LaunchedEffect(Unit) { if (Toys.holiday() != null && Store.holidayShown(c) != java.time.LocalDate.now().toString()) { Store.setHolidayShown(c, java.time.LocalDate.now().toString()); Ui.burst++ } }
         RecapCard()
@@ -436,18 +444,18 @@ fun NowScreen() {
             val weekShown by androidx.compose.animation.core.animateIntAsState(w?.at(now)?.toInt() ?: 0, androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "week")   // the number counts to its new value
             Tile("Week", if (w == null) "–" else "$weekShown%", if (wr != null && wr > now) "resets in ${dur(wr - now)}" else null, Modifier.weight(1f).fillMaxHeight())
             val apiShown by androidx.compose.animation.core.animateIntAsState(cost?.total?.toInt() ?: 0, androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "api")
-            Tile("API value", cost?.let { "$" + "%,d".format(apiShown) } ?: "–", "last 30 days", Modifier.weight(1f).fillMaxHeight())
+            Tile("API value", cost?.let { "$" + "%,d".format(apiShown) } ?: "–", rangeLabel(range), Modifier.weight(1f).fillMaxHeight())
         }
         WeekPlanCard()
-        FunFactsCard(cost?.raw)
+        FunFactsCard(cost?.raw, rangeLabel(range))
         cost?.takeIf { it.days.isNotEmpty() && it.total > 0 }?.let { cc ->
             Card {
-                Txt("Cost per day", T.body.copy(fontWeight = FontWeight.SemiBold))
+                Txt("Cost per day · " + (if (range == 0) "last 90 days" else rangeLabel(range)), T.body.copy(fontWeight = FontWeight.SemiBold))
                 Spacer(Modifier.height(12.dp))
                 CostBars(cc.days)
             }
         }
-        if (Store.fullDashboard(c)) FullDashboard(cost?.raw)
+        if (Store.fullDashboard(c)) FullDashboard(cost?.raw, rangeLabel(range))
         if (u?.opus != null || u?.sonnet != null) Card {
             Label("Weekly by model")
             listOf("Opus" to u.opus, "Sonnet" to u.sonnet).forEach { (n, l) ->
@@ -1008,7 +1016,7 @@ fun SettingsScreen() {
                 })
             }
             var sIcon by remember { mutableStateOf(Store.statusIcon(c)) }
-            Row2("Icon in the status bar", "Off: Hearth's messages and alerts only show when you pull the notification bar down.") { Switch(sIcon, { sIcon = it; Store.setStatusIcon(c, it) }) }
+            Row2("Live usage in the status bar", "Off: the live usage only shows when you pull the notification bar down. Messages from Claude always ring.") { Switch(sIcon, { sIcon = it; Store.setStatusIcon(c, it) }) }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 TextAction("Background access") {

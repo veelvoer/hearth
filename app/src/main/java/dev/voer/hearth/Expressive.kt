@@ -309,7 +309,10 @@ fun GlassBack(shape: Shape, tint: Color, modifier: Modifier = Modifier, motion: 
     val dark = cs.surface.luminance() < .5f
     var me by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
     val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
-    val canBlur = android.os.Build.VERSION.SDK_INT >= 31 && b != null && !settling
+    val canBlur = android.os.Build.VERSION.SDK_INT >= 31 && b != null
+    // while the dock flies in or out the tint fills up, and thins again when it has landed: a smooth fade, never a jump
+    // between glass and a solid panel (that jump was the flicker at every tab change)
+    val solid by androidx.compose.animation.core.animateFloatAsState(if (settling || !canBlur) 1f else 0f, androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "glass")
     val paint = remember { androidx.compose.ui.graphics.Paint().apply { colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(saturate(1.6f)) } }
     Box(modifier.onPlaced { me = it }.clip(shape)) {
         if (canBlur) Box(Modifier.matchParentSize()
@@ -330,8 +333,11 @@ fun GlassBack(shape: Shape, tint: Color, modifier: Modifier = Modifier, motion: 
                 c.restore()
             })
         // the tint: light where there is a blur to show, fuller where there is not (older Android, or while the dock moves)
-        val a = if (canBlur) (if (dark) .34f to .22f else .55f to .40f) else (if (dark) .92f to .86f else .94f to .88f)
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(tint.copy(alpha = a.first), tint.copy(alpha = a.second)))))
+        val g = if (dark) .34f to .22f else .55f to .40f; val p = if (dark) .92f to .86f else .94f to .88f
+        Box(Modifier.matchParentSize().drawBehind {
+            val t = solid
+            drawRect(Brush.verticalGradient(listOf(tint.copy(alpha = g.first + (p.first - g.first) * t), tint.copy(alpha = g.second + (p.second - g.second) * t))))
+        })
         // a hairline edge and the light on its top edge
         Box(Modifier.matchParentSize().drawWithContent {
             val outline = shape.createOutline(size, layoutDirection, this)
