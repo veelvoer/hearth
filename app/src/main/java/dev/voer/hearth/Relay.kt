@@ -122,6 +122,11 @@ object Relay {
         return (0 until a.length()).map { val o = a.getJSONObject(it); listOf(o.optString("name"), o.optBoolean("ok"), o.optString("text"), o.optString("fix")) }
     }
     // ── safety, rules, recap, templates ──
+    /** Claude's checklist for the newest message of a chat: (text, status) with status pending, in_progress or completed. Empty on an older server. */
+    fun plan(m: Machine, id: String): List<Pair<String, String>> = runCatching {
+        val a = JSONObject(getJson(m, "/sessions/$id/plan")).optJSONArray("items") ?: return emptyList()
+        (0 until a.length()).map { a.getJSONObject(it) }.map { it.optString("text") to it.optString("status") }.filter { it.first.isNotBlank() }
+    }.getOrDefault(emptyList())
     fun safety(m: Machine): JSONObject = JSONObject(getJson(m, "/admin/safety"))
     fun setSafety(m: Machine, patch: JSONObject): JSONObject = postJson(m, "/admin/safety", patch)
     fun undo(m: Machine, sessionId: String): JSONObject = postJson(m, "/sessions/$sessionId/undo", JSONObject())

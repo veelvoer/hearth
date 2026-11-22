@@ -49,6 +49,7 @@ class WatchLink : WearableListenerService() {
                 val a = JSONArray(b); var asked = ""; var answer = ""; val steps = ArrayList<String>(); var ts = 0L; var now = ""
                 for (i in a.length() - 1 downTo 0) {
                     val o = a.getJSONObject(i)
+                    if (o.optString("role") == "tool" && o.optString("name") in PLAN_TOOLS) continue   // the plan has its own list
                     if (ts == 0L) ts = o.optLong("ts")
                     if (now.isEmpty() && o.optString("role") != "meta") now = o.optString("role")
                     when (o.optString("role")) {
@@ -114,3 +115,6 @@ class WatchLink : WearableListenerService() {
 
     companion object { const val PATH = "/hearth/rpc" }
 }
+
+/** Claude's task list tools: their steps are the plan, not things it is doing. */
+private val PLAN_TOOLS = setOf("TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TodoWrite", "ToolSearch")

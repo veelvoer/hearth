@@ -5,10 +5,11 @@ use serde_json::json;
 
 const CLAUDE: &str = r#"#!/usr/bin/env python3
 import sys, os, json, re, datetime
+if '--help' in sys.argv: print('  --tools <tools...>  Specify the list of available tools'); sys.exit(0)
 text = sys.stdin.read()
 a = sys.argv
 log = os.path.join(os.environ['HOME'], 'runs.jsonl')
-open(log, 'a').write(json.dumps({'text': text, 'sys': a[a.index('--append-system-prompt') + 1] if '--append-system-prompt' in a else '', 'key': os.environ.get('ANTHROPIC_API_KEY', '')}) + '\n')
+open(log, 'a').write(json.dumps({'text': text, 'sys': a[a.index('--append-system-prompt') + 1] if '--append-system-prompt' in a else '', 'key': os.environ.get('ANTHROPIC_API_KEY', ''), 'tools': os.environ.get('CLAUDE_CODE_ENABLE_TODO_TOOLS', '')}) + '\n')
 n = sum(1 for _ in open(log))
 sid = 'fake-plan-%d' % n
 cwd = os.getcwd()
@@ -21,8 +22,8 @@ with open(os.path.join(pd, sid + '.jsonl'), 'a') as f:
     if 'todo' in text:
         f.write(json.dumps(tool(1, 'TodoWrite', {'todos': [{'content': 'Read the code', 'status': 'completed', 'activeForm': 'Reading the code'}, {'content': 'Write the parser', 'status': 'in_progress', 'activeForm': 'Writing the parser'}, {'content': 'Test it', 'status': 'pending', 'activeForm': 'Testing it'}]})) + '\n')
     if 'tasks' in text:
-        f.write(json.dumps(tool(1, 'TaskCreate', {'subject': 'Plan the work'})) + '\n'); f.write(json.dumps(res(1, 'Task #7 created successfully: Plan the work')) + '\n')
-        f.write(json.dumps(tool(2, 'TaskCreate', {'subject': 'Do the work'})) + '\n'); f.write(json.dumps(res(2, 'Task #8 created successfully: Do the work')) + '\n')
+        f.write(json.dumps(tool(1, 'TaskCreate', {'subject': 'Plan the work', 'activeForm': 'Planning the work'})) + '\n'); f.write(json.dumps(res(1, 'Task #7 created successfully: Plan the work')) + '\n')
+        f.write(json.dumps(tool(2, 'TaskCreate', {'subject': 'Do the work', 'activeForm': 'Doing the work'})) + '\n'); f.write(json.dumps(res(2, 'Task #8 created successfully: Do the work')) + '\n')
         f.write(json.dumps(tool(3, 'TaskUpdate', {'taskId': '7', 'status': 'completed'})) + '\n'); f.write(json.dumps(res(3, 'Updated task #7')) + '\n')
         f.write(json.dumps(tool(4, 'TaskUpdate', {'taskId': '8', 'status': 'in_progress'})) + '\n'); f.write(json.dumps(res(4, 'Updated task #8')) + '\n')
     f.write(json.dumps({'type': 'assistant', 'cwd': cwd, 'timestamp': ts, 'message': {'content': [{'type': 'text', 'text': 'ok'}]}}) + '\n')
@@ -46,7 +47,7 @@ fn plans() {
     send("make the todo parser");
     wait_for(8000, || runs().len() >= 1);
     let r = runs();
-    c.ok_x("1 plans are on by default: the run is asked for a plan", jstr(&r[0]["sys"]).contains("todo list tool"), "");
+    c.ok_x("1 plans are on by default: the run is asked for a plan, with the task tools switched on", jstr(&r[0]["sys"]).contains("TaskCreate") && jstr(&r[0]["tools"]) == "1", r[0]["tools"].to_string());
     sleep(1500);
     let p = a.t("GET", "/sessions/fake-plan-1/plan", &tok, None);
     let items = p.j["items"].as_array().cloned().unwrap_or_default();
@@ -57,13 +58,13 @@ fn plans() {
     sleep(1500);
     let p = a.t("GET", "/sessions/fake-plan-2/plan", &tok, None);
     let items = p.j["items"].as_array().cloned().unwrap_or_default();
-    c.ok_x("3 TaskCreate and TaskUpdate make the same checklist (ids from the tool results)", items.len() == 2 && items[0]["status"] == "completed" && items[1]["status"] == "in_progress", p.text.chars().take(200).collect::<String>());
+    c.ok_x("3 TaskCreate and TaskUpdate make the same checklist (ids from the tool results)", items.len() == 2 && items[0]["status"] == "completed" && items[0]["text"] == "Plan the work" && items[1]["status"] == "in_progress" && items[1]["text"] == "Doing the work", p.text.chars().take(200).collect::<String>());
 
     a.t("POST", "/admin/safety", &tok, Some(json!({"plans": false})));
     c.ok("4 plans can be switched off", a.t("GET", "/admin/safety", &tok, None).j["plans"] == false);
     send("just a question");
     wait_for(8000, || runs().len() >= 3);
-    c.ok("5 switched off: no plan asked", !jstr(&runs()[2]["sys"]).contains("todo list tool"));
+    c.ok("5 switched off: no plan asked", !jstr(&runs()[2]["sys"]).contains("TaskCreate"));
     send("/plan fix the bug");
     wait_for(8000, || runs().len() >= 4);
     let r = runs();

@@ -364,6 +364,7 @@ function drawPane() {
     s.id ? ibtn('panel', SS.rightOff ? 'Show the side panel: phone calls, where it runs, folder' : 'Hide the side panel', () => { SS.rightOff = !SS.rightOff; localStorage.setItem('cm.rightOff', SS.rightOff ? '1' : '0'); drawPane(); }, 'ghost sm') : null));
   main.append(h('div', { class: 'msgs', id: 'msgs' }, h('div', { class: 'col', id: 'col' })));
   if (guest || me.shared >= 0) main.append(h('div', { id: 'shin', class: 'shin' }), h('div', { id: 'shstatus', class: 'shstatus' }));
+  main.append(h('div', { id: 'plan', class: 'planbar' }));
   main.append(h('div', { id: 'perms', class: 'perms' }));
   main.append(composer());
   pane.append(main);
@@ -392,6 +393,7 @@ function drawPane() {
   }
   pane.classList.toggle('isnew', !!(s.isNew && !SS.msgs.length));
   renderPerms();
+  renderPlan();
   renderMsgs();
   if (SS.voice && SS.voice.el) pane.append(SS.voice.el);
   if (guest || me.shared >= 0) { shDrawStatus(); shLoadGuestInfo(); }
@@ -664,6 +666,7 @@ function renderMsgs() {
   const key = SS.sel ? (SS.sel.id || 'new') : '', before = SS.shown && SS.shown.key === key ? SS.shown.n : -1;   // messages that are new since the last drawing glide in
   SS.msgs.forEach((m, i) => {
     const fresh = before >= 0 && i >= before ? ' fresh' : '';
+    if (m.role === 'tool' && isPlanTool(m)) { loadPlan(); return; }   // the plan card above the message box shows these
     if (m.role === 'tool') { if (!tools) { tools = h('div', { class: 'tools' + fresh }); col.append(tools); } tools.append(toolCard(m, 'm' + i)); return; }
     tools = null;
     if (m.role === 'meta') { col.append(h('div', { class: 'meta' }, m.text)); return; }
@@ -686,6 +689,7 @@ function renderLive() {
   live.innerHTML = '';
   let tools = null;
   SS.parts.forEach((p, i) => {
+    if (p.type === 'tool' && isPlanTool(p)) { loadPlan(); return; }   // a step changed: the plan card updates
     if (p.type === 'tool') { if (!tools) { tools = h('div', { class: 'tools' }); live.append(tools); } tools.append(toolCard(p, 'l' + (p.id || i))); }
     else { tools = null; live.append(assistantEl(p.text)); }
   });
@@ -759,6 +763,48 @@ function startVoice() {
 }
 
 // ───────── approvals and heads-ups ─────────
+/* The plan: Claude's checklist for the newest message (made with its task tools), above the composer. A check for every
+   step that is done, a turning ring for the one it works on now, an empty ring for what is still to come. Read again
+   every 2 seconds while Claude works; folded to one line once everything is done (click to open it again). */
+const PLAN = { sid: null, items: [], at: 0, open: null, busy: false };
+const PLAN_TOOLS = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TodoWrite']);
+/** The steps of the plan (and loading its tools) are shown in the plan card, not as tool calls in the chat. */
+const isPlanTool = (t) => PLAN_TOOLS.has(t.name) || (t.name === 'ToolSearch' && /Task(Create|Update)|TodoWrite/.test(JSON.stringify(t.input || {}) + (t.text || '')));
+async function loadPlan(force) {
+  const s = SS.sel; if (!s || !s.id || isGuestMid(s.mid)) { if (PLAN.items.length) { PLAN.items = []; renderPlan(); } return; }
+  if (PLAN.busy || (!force && PLAN.sid === s.id && Date.now() - PLAN.at < 1800)) return;
+  PLAN.busy = true;
+  try {
+    const r = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/plan`);
+    const items = Array.isArray(r && r.items) ? r.items : [];
+    if (SS.sel && SS.sel.id === s.id) { if (PLAN.sid !== s.id) PLAN.open = null; PLAN.sid = s.id; const changed = JSON.stringify(items) !== JSON.stringify(PLAN.items); PLAN.items = items; if (changed) renderPlan(); }
+  } catch { /* an older server has no plans: nothing to show */ }
+  PLAN.busy = false; PLAN.at = Date.now();
+}
+function renderPlan() {
+  const box = $('#plan'); if (!box) return;
+  const s = SS.sel, items = s && PLAN.sid === s.id ? PLAN.items : [];
+  box.innerHTML = '';
+  if (!items.length) return;
+  const done = items.filter((x) => x.status === 'completed').length, all = done === items.length;
+  const open = PLAN.open == null ? !all : PLAN.open;
+  const step = (x) => h('li', { class: 'pstep ' + (x.status === 'completed' ? 'done' : x.status === 'in_progress' ? 'now' : 'todo') },
+    h('span', { class: 'pmark', 'aria-hidden': 'true', html: x.status === 'completed' ? '<svg viewBox="0 0 16 16"><path d="M4 8.5l2.6 2.5L12 5.5"/></svg>' : '' }),
+    h('span', { class: 'ptext' }, x.text), h('span', { class: 'sr' }, x.status === 'completed' ? ' (done)' : x.status === 'in_progress' ? ' (working on it)' : ''));
+  const now = items.find((x) => x.status === 'in_progress');
+  box.append(h('div', { class: 'plancard' + (open ? ' open' : '') },
+    h('button', { class: 'planhead', 'aria-expanded': String(open), onclick: () => { PLAN.open = !open; renderPlan(); } },
+      h('span', { class: 'label' }, 'Plan'), h('span', { class: 'small muted grow ellip' }, all ? 'All ' + items.length + ' steps done' : done + ' of ' + items.length + ' done' + (now && !open ? ' · ' + now.text : '')),
+      h('span', { class: 'planbarfill', style: '--p:' + Math.round(done / items.length * 100) + '%' }), h('span', { class: 'chev' + (open ? ' up' : '') }, '⌄')),
+    open ? h('ol', { class: 'plansteps' }, ...items.map(step)) : null));
+}
+setInterval(() => {
+  if (typeof tab === 'undefined' || tab !== 'sessions' || !SS.sel || !SS.sel.id) return;
+  const me = allSessions().find((x) => x.id === SS.sel.id) || {};
+  const working = SS.sending || remoteWorking() || !!(me.running || me.busy);
+  if (working || PLAN.sid !== SS.sel.id || Date.now() - PLAN.at > 20000) loadPlan();   // quick while Claude works, now and then otherwise
+}, 2000);
+
 function renderPerms() {
   const box = $('#perms');
   if (!box) return;

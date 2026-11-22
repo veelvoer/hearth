@@ -23,6 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -855,7 +858,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                         if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
                         }
                     }
-                    "tool" -> if (!Store.simpleView(c)) ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
+                    "tool" -> if (!Store.simpleView(c) && !planTool(msg.name, msg.detail + msg.text)) ToolCard(msg.name, msg.detail.ifEmpty { msg.text }, msg.result, msg.err, msg.ts)
                     "meta" -> if (!Regex("^[0-9.,]+k? output").containsMatchIn(msg.text)) Txt(msg.text, T.small, muted = true)   // token counts after each reply are for the computer view, not the phone
                     else -> if (msg.own) Column { Txt(msg.name + " · own account", T.small.copy(fontSize = 12.sp), muted = true); MarkdownText(msg.text) } else Column {
                         MarkdownText(msg.text); if (msg.ts > 0) Txt(clock(msg.ts), T.small.copy(fontSize = 12.sp), muted = true)
@@ -868,7 +871,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 }
               }
             }
-            itemsIndexed(parts) { _, p -> if (p.tool) { if (!Store.simpleView(c)) ToolCard(p.name, p.detail, p.result, p.err, p.at) } else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
+            itemsIndexed(parts) { _, p -> if (p.tool) { if (!Store.simpleView(c) && !planTool(p.name, p.detail)) ToolCard(p.name, p.detail, p.result, p.err, p.at) } else Column { MarkdownText(p.text); Txt(clock(p.at), T.small.copy(fontSize = 12.sp), muted = true) } }
             queued.forEachIndexed { qi, q -> item("q$qi") { Column {
                 Txt("Queued · " + q.take(80), T.small, muted = true)
                 if (working && sess.id.isNotEmpty() && !guest) TextAction("Ask on the side") {   // answered now, from what the chat knows, without stopping Claude
@@ -931,6 +934,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             }
             if (uploading) Txt("Uploading…", T.small, muted = true, modifier = Modifier.padding(vertical = 8.dp))
         }
+        if (sess.id.isNotEmpty() && !guest) PlanDock(m, sess.id, working)
         val perm = asks.firstOrNull { it.kind == "permission" }
         val reqAsk = asks.firstOrNull { it.kind == "request" && it.forMember.isEmpty() }
         val incoming = if (guest) gInfo?.incoming?.firstOrNull { it.status == "pending" && it.id !in handledInc } else null
@@ -964,6 +968,81 @@ val canStop = working && sess.id.isNotEmpty()
 
 /** Claude waiting on you: a permission to allow or deny, or a question with options and a free answer. */
 /** The approval prompt, joined to the top of the message box: what Claude wants to do, then Yes / Yes and don't ask again / No. */
+/**
+ * The plan: Claude's checklist for the newest message, just above the message box. A check for each step that is done,
+ * a turning ring for the one it works on now, an empty ring for what is still to come. Read every 2 seconds while
+ * Claude works; folded to one line when everything is done (tap to open it again).
+ */
+/** The steps of the plan (and loading its tools) show in the plan card above the message box, not as tool calls in the chat. */
+private fun planTool(name: String, detail: String) = name in setOf("TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TodoWrite") || (name == "ToolSearch" && Regex("Task(Create|Update)|TodoWrite").containsMatchIn(detail))
+
+@Composable
+private fun PlanDock(m: Machine, id: String, working: Boolean) {
+    var items by remember(id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var open by remember(id) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(id, working) {
+        while (true) {
+            val got = withContext(Dispatchers.IO) { Relay.plan(m, id) }
+            if (got != items) items = got
+            delay(if (working) 2_000 else 20_000)
+        }
+    }
+    val cs = MaterialTheme.colorScheme
+    androidx.compose.animation.AnimatedVisibility(items.isNotEmpty(), enter = androidx.compose.animation.expandVertically(Spr.move()) + androidx.compose.animation.fadeIn(Spr.fade()),
+        exit = androidx.compose.animation.shrinkVertically(Spr.move()) + androidx.compose.animation.fadeOut(Spr.fade())) {
+        val done = items.count { it.second == "completed" }; val all = done == items.size
+        val isOpen = open ?: !all
+        val now = items.firstOrNull { it.second == "in_progress" }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainerHigh)
+            .animateContentSize(Spr.move())) {
+            Row(Modifier.fillMaxWidth().clickable(onClickLabel = if (isOpen) "Fold the plan" else "Show the plan") { open = !isOpen }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Txt("Plan", T.small.copy(fontWeight = FontWeight.Bold), color = cs.primary)
+                Spacer(Modifier.width(10.dp))
+                Txt(if (all) "All ${items.size} steps done" else "$done of ${items.size} done" + (if (!isOpen && now != null) " · ${now.first}" else ""), T.small, muted = true, maxLines = 1, modifier = Modifier.weight(1f))
+                val turn by androidx.compose.animation.core.animateFloatAsState(if (isOpen) 180f else 0f, Spr.move(), label = "chev")
+                Box(Modifier.graphicsLayer { rotationZ = turn }) { Glyph("chevd", 18.dp) }
+            }
+            val frac by androidx.compose.animation.core.animateFloatAsState(done.toFloat() / items.size.coerceAtLeast(1), Spr.move(), label = "frac")
+            Box(Modifier.fillMaxWidth().height(2.dp).background(cs.outlineVariant)) { Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(cs.primary)) }
+            if (isOpen) Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp).heightIn(max = 220.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items.forEach { (text, st) -> PlanStep(text, st) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlanStep(text: String, status: String) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 1.dp).size(20.dp), contentAlignment = Alignment.Center) {
+            when (status) {
+                "completed" -> {
+                    val pop = remember { androidx.compose.animation.core.Animatable(0.6f) }
+                    LaunchedEffect(Unit) { pop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.45f, stiffness = 500f)) }
+                    androidx.compose.foundation.Canvas(Modifier.size(20.dp).graphicsLayer { scaleX = pop.value; scaleY = pop.value }) {
+                        drawCircle(cs.primary)
+                        val p = androidx.compose.ui.graphics.Path().apply { moveTo(size.width * .28f, size.height * .53f); lineTo(size.width * .44f, size.height * .68f); lineTo(size.width * .73f, size.height * .36f) }
+                        drawPath(p, cs.onPrimary, style = androidx.compose.ui.graphics.drawscope.Stroke(2.2.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    }
+                }
+                "in_progress" -> {
+                    val tr = androidx.compose.animation.core.rememberInfiniteTransition(label = "spin")
+                    val a by tr.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable<Float>(androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing)), label = "a")
+                    androidx.compose.foundation.Canvas(Modifier.size(20.dp).graphicsLayer { rotationZ = if (Fx.motion) a else 0f }) {
+                        val w = 2.4.dp.toPx(); val r = size.minDimension / 2 - w / 2
+                        drawCircle(cs.primary.copy(alpha = .22f), r, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+                        drawArc(cs.primary, -90f, 110f, false, androidx.compose.ui.geometry.Offset(w / 2, w / 2), androidx.compose.ui.geometry.Size(size.width - w, size.height - w), style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                    }
+                }
+                else -> androidx.compose.foundation.Canvas(Modifier.size(20.dp)) { val w = 2.dp.toPx(); drawCircle(cs.outline, size.minDimension / 2 - w / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(w)) }
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Txt(text, T.body.copy(fontWeight = if (status == "in_progress") FontWeight.SemiBold else FontWeight.Normal), color = if (status == "completed") cs.onSurfaceVariant else cs.onSurface, modifier = Modifier.weight(1f))
+    }
+}
+
 @Composable
 private fun PermDock(m: Machine, a: CallEvent, done: () -> Unit) {
     val scope = rememberCoroutineScope()

@@ -593,7 +593,8 @@ pub fn sessions(active: &std::collections::HashSet<String>, keep: Option<&dyn Fn
 pub fn plan(msgs: &Value) -> Value {
     let list = msgs.as_array().cloned().unwrap_or_default();
     let start = list.iter().rposition(|m| m.get("role").and_then(|r| r.as_str()) == Some("user")).map(|i| i + 1).unwrap_or(0);
-    let mut items: Vec<(String, String, String)> = Vec::new();   // (id, text, status)
+    // (id, text, status, the "-ing" form shown while it is the step being worked on)
+    let mut items: Vec<(String, String, String, String)> = Vec::new();
     let mut n = 0;
     for m in &list[start..] {
         if m.get("role").and_then(|r| r.as_str()) != Some("tool") { continue; }
@@ -602,29 +603,32 @@ pub fn plan(msgs: &Value) -> Value {
         match m.get("name").and_then(|x| x.as_str()).unwrap_or("") {
             "TodoWrite" => {
                 items = input.get("todos").and_then(|t| t.as_array()).map(|a| a.iter().enumerate().map(|(i, t)| {
-                    let st = t.get("status").and_then(|x| x.as_str()).unwrap_or("pending").to_string();
-                    let txt = if st == "in_progress" { t.get("activeForm").and_then(|x| x.as_str()).filter(|x| !x.is_empty()).or(t.get("content").and_then(|x| x.as_str())) } else { t.get("content").and_then(|x| x.as_str()) };
-                    ((i + 1).to_string(), txt.unwrap_or("").to_string(), st)
+                    let g = |k: &str| t.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    ((i + 1).to_string(), g("content"), if g("status").is_empty() { "pending".into() } else { g("status") }, g("activeForm"))
                 }).collect()).unwrap_or_default();
             }
             "TaskCreate" => {
                 n += 1;
                 let res = m.get("result").and_then(|x| x.as_str()).unwrap_or("");
                 let id = res.split('#').nth(1).map(|t| t.chars().take_while(|c| c.is_ascii_digit()).collect::<String>()).filter(|t| !t.is_empty()).unwrap_or_else(|| n.to_string());
-                items.push((id, s("subject"), "pending".into()));
+                items.push((id, s("subject"), "pending".into(), s("activeForm")));
             }
             "TaskUpdate" => {
                 let id = s("taskId").trim_start_matches('#').to_string();
                 if let Some(it) = items.iter_mut().find(|x| x.0 == id) {
                     let st = s("status"); if !st.is_empty() { it.2 = st; }
                     let sub = s("subject"); if !sub.is_empty() { it.1 = sub; }
+                    let af = s("activeForm"); if !af.is_empty() { it.3 = af; }
                 }
                 items.retain(|x| x.2 != "deleted");
             }
             _ => {}
         }
     }
-    json!({"items": items.into_iter().filter(|x| !x.1.trim().is_empty()).map(|(_, t, st)| json!({"text": t, "status": st})).collect::<Vec<_>>()})
+    json!({"items": items.into_iter().filter(|x| !x.1.trim().is_empty()).map(|(_, t, st, af)| {
+        let shown = if st == "in_progress" && !af.trim().is_empty() { af } else { t };
+        json!({"text": shown, "status": st})
+    }).collect::<Vec<_>>()})
 }
 
 pub fn messages_sid(sid: &str, tail: usize) -> Value { match find_session(sid) { Some(f) => messages(&f.file, tail), None => json!([]) } }

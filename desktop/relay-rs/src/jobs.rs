@@ -143,7 +143,9 @@ impl Relay {
         // a plan with every prompt that asks for work (switchable); "/plan" in front of a prompt asks for one anyway
         let raw_text = body.s("text");
         let plan_cmd = { let t = raw_text.trim_start(); t == "/plan" || t.starts_with("/plan ") || t.starts_with("/plan\n") };
-        if kind != "talk" { if plan_cmd { sys.push(' '); sys.push_str(PLAN_FORCED); } else if self.plans_on() { sys.push(' '); sys.push_str(PLAN_PROMPT); } }
+        let want_plan = kind != "talk" && (plan_cmd || self.plans_on());
+        if want_plan { sys.push(' '); sys.push_str(if plan_cmd { PLAN_FORCED } else { PLAN_PROMPT }); }
+
         args.extend(["--mcp-config".into(), mcp_file.to_string_lossy().to_string(), "--allowedTools".into(), allowed]);
         // a chat with root rights: only when the owner switched it on, and only through passwordless sudo (or when this program already is root)
         let was_root = sid_param != "new" && self.get_prefs(sid_param).get("root") == Some(&Value::Bool(true));
@@ -166,7 +168,7 @@ impl Relay {
         }
         let mut cmd = if root_launch {
             let mut c = crate::util::tcmd("sudo");
-            if self.api_key().is_some() { c.arg("--preserve-env=ANTHROPIC_API_KEY"); }
+            c.arg(format!("--preserve-env=CLAUDE_CODE_ENABLE_TODO_TOOLS{}", if self.api_key().is_some() { ",ANTHROPIC_API_KEY" } else { "" }));
             c.args(["-n", "env", &format!("HOME={}", home().display()), &format!("PATH={}", std::env::var("PATH").unwrap_or_default())]);
             for (k, v) in std::env::vars() { let ku = k.to_uppercase(); if ku.starts_with("ANTHROPIC_") || ku.starts_with("CLAUDE_") || ku.starts_with("HTTP_PROXY") || ku.starts_with("HTTPS_PROXY") || ku.starts_with("NO_PROXY") { c.arg(format!("{k}={v}")); } }
             c.arg(&claude).args(&args); c.current_dir(&cwd); c
@@ -174,6 +176,8 @@ impl Relay {
         // big tool output is what fills the context and makes auto-compact thrash: cap it (unless the owner set their own limits)
         for (k, v) in [("BASH_MAX_OUTPUT_LENGTH", "30000"), ("MAX_MCP_OUTPUT_TOKENS", "20000")] { if std::env::var_os(k).is_none() { cmd.env(k, v); } }
         // your own Anthropic API key instead of your Claude account, when you set one and switched it on
+        // Claude Code leaves its task list tools (TaskCreate, TaskUpdate) out when it runs without a terminal: the plan needs them
+        if want_plan { cmd.env("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1"); }
         if let Some(k) = self.api_key() { cmd.env("ANTHROPIC_API_KEY", k); }   // through sudo too: --preserve-env below, never on the command line
         cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let mut child = match cmd.spawn() { Ok(c) => c, Err(e) => return Err((500, format!("Could not start Claude: {e}"))) };

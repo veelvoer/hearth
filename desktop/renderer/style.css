@@ -864,3 +864,26 @@ details.rcard.fold > summary::after { transition: transform .25s cubic-bezier(.2
 /* the pin before a pinned chat's name keeps a little room from the name */
 .item .ititle > .ic { display: inline-flex; align-items: center; margin-right: 6px; opacity: .7; vertical-align: -1px; }
 .earlier { align-self: center; margin: 4px auto 10px; }
+
+/* The plan above the composer: a checklist that fills in while Claude works */
+.planbar { max-width: 852px; width: 100%; margin: 0 auto; padding: 0 26px; box-sizing: border-box; }
+.plancard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin: 6px 0 4px; overflow: hidden; animation: rise .24s cubic-bezier(.33, 1, .68, 1); }
+.planhead { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; position: relative; }
+.planhead:hover { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+.planhead:focus-visible { outline: 2px solid var(--clay); outline-offset: -2px; border-radius: 14px; }
+.planhead .label { margin: 0; }
+.planhead .chev { color: var(--muted); transition: transform .18s cubic-bezier(.33, 1, .68, 1); }
+.planhead .chev.up { transform: rotate(180deg); }
+.planbarfill { position: absolute; left: 0; bottom: 0; height: 2px; width: var(--p); background: var(--clay); transition: width .24s cubic-bezier(.33, 1, .68, 1); }
+.plansteps { list-style: none; margin: 0; padding: 2px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.pstep { display: flex; align-items: flex-start; gap: 10px; line-height: 1.35; }
+.pstep .ptext { min-width: 0; overflow-wrap: anywhere; }
+.pstep.done .ptext { color: var(--muted); }
+.pstep.now .ptext { font-weight: 600; }
+.pmark { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--line-ctl); display: grid; place-items: center; transition: background .12s, border-color .12s; }
+.pstep.done .pmark { background: var(--clay); border-color: var(--clay); animation: pop .24s cubic-bezier(.34, 1.56, .64, 1); }
+.pstep.done .pmark svg { width: 12px; height: 12px; fill: none; stroke: var(--onclay); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.pstep.now .pmark { border-color: color-mix(in oklab, var(--clay) 25%, transparent); border-top-color: var(--clay); animation: spin .9s linear infinite; }
+@keyframes pop { from { transform: scale(.6); } to { transform: scale(1); } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (prefers-reduced-motion: reduce) { .pstep.now .pmark { animation-duration: 2.4s; } .plancard, .pstep.done .pmark { animation: none; } }
