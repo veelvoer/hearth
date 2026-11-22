@@ -168,8 +168,9 @@ impl Relay {
         }
         let mut cmd = if root_launch {
             let mut c = crate::util::tcmd("sudo");
-            c.arg(format!("--preserve-env=CLAUDE_CODE_ENABLE_TODO_TOOLS{}", if self.api_key().is_some() { ",ANTHROPIC_API_KEY" } else { "" }));
+            if self.api_key().is_some() { c.arg("--preserve-env=ANTHROPIC_API_KEY"); }   // the key never goes on the command line
             c.args(["-n", "env", &format!("HOME={}", home().display()), &format!("PATH={}", std::env::var("PATH").unwrap_or_default())]);
+            if want_plan { c.arg("CLAUDE_CODE_ENABLE_TODO_TOOLS=1"); }
             for (k, v) in std::env::vars() { let ku = k.to_uppercase(); if ku.starts_with("ANTHROPIC_") || ku.starts_with("CLAUDE_") || ku.starts_with("HTTP_PROXY") || ku.starts_with("HTTPS_PROXY") || ku.starts_with("NO_PROXY") { c.arg(format!("{k}={v}")); } }
             c.arg(&claude).args(&args); c.current_dir(&cwd); c
         } else { claude_command(&claude, &args, &cwd) };
