@@ -96,7 +96,7 @@ fn watchdog(host: &str, port: u16) {
     let exe = std::env::current_exe().unwrap_or_default();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let child: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>> = Default::default();
-    let launch = { let child = child.clone(); let exe = exe.clone(); let args = args.clone(); move || { let c = std::process::Command::new(&exe).args(&args).env("HEARTH_MEM_CHILD", "1").spawn(); match c { Ok(c) => { *child.lock().unwrap() = Some(c); } Err(_) => std::process::exit(1) } } };
+    let launch = { let child = child.clone(); let exe = exe.clone(); let args = args.clone(); move || { let mut cc = std::process::Command::new(&exe); cc.args(&args).env("HEARTH_MEM_CHILD", "1"); #[cfg(windows)] { use std::os::windows::process::CommandExt; cc.creation_flags(0x0800_0000); } let c = cc.spawn(); match c { Ok(c) => { *child.lock().unwrap() = Some(c); } Err(_) => std::process::exit(1) } } };
     #[cfg(unix)]
     {   // pass a stop on to the server, then end when it has ended (the main loop sees it)
         let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };

@@ -225,6 +225,7 @@ fn clean_env() -> &'static Vec<(String, Option<String>)> {
 }
 pub fn cmd(p: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     let mut c = std::process::Command::new(p);
+    #[cfg(windows)] { use std::os::windows::process::CommandExt; c.creation_flags(0x0800_0000); }   // CREATE_NO_WINDOW: no console flashing up for every helper program
     for (k, v) in clean_env() { match v { Some(v) => { c.env(k, v); } None => { c.env_remove(k); } } }
     c
 }

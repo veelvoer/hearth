@@ -169,7 +169,7 @@ mod tests {
         assert!(b["ok"] == true && list_backups(&dir).len() == 1 && name.starts_with("chats-") && name.ends_with(".tgz") && name.len() == "chats-20260101000000.tgz".len(), "8 a backup of the chats is made: {b}");
         fs::remove_file(chats.join("-p-a/one.jsonl")).unwrap();
         let rb = restore_backup(&dir, &chats, &name);
-        let listing = String::from_utf8_lossy(&std::process::Command::new("tar").arg("-tzf").arg(dir.join("backups").join(&name)).output().unwrap().stdout).to_string();
+        let listing = String::from_utf8_lossy(&crate::util::cmd("tar").arg("-tzf").arg(dir.join("backups").join(&name)).output().unwrap().stdout).to_string();
         assert!(rb["ok"] == true && chats.join("-p-a/one.jsonl").exists() && !listing.contains("gone.jsonl"), "9 restoring brings a deleted chat back, and the trash was not part of the backup");
         fs::write(chats.join("-p-a/one.jsonl"), "NEWER CONTENT").unwrap();
         restore_backup(&dir, &chats, &name);

@@ -34,7 +34,7 @@ pub async fn apply(tag: &str) -> Result<String, String> {
     let next = me.with_extension("new");
     std::fs::write(&next, &bin).map_err(|e| format!("This installation cannot update itself ({e}). On the server run: hearth-server update"))?;
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; let _ = std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755)); }
-    let v = std::process::Command::new(&next).arg("--version").output().map_err(|e| e.to_string())?;
+    let v = crate::util::cmd(&next).arg("--version").output().map_err(|e| e.to_string())?;
     if String::from_utf8_lossy(&v.stdout).trim() != want { let _ = std::fs::remove_file(&next); return Err("the update says it is another version".into()); }
     std::fs::rename(&next, &me).map_err(|e| e.to_string())?;
     Ok(want)
