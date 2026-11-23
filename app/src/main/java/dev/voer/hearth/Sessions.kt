@@ -618,7 +618,14 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         if (sess.id.isEmpty()) return@LaunchedEffect
         if (Store.hasChatPrefs(appCtx, sess.id)) { mode = Store.chatMode(appCtx, sess.id); model = Store.chatModel(appCtx, sess.id); effort = Store.chatEffort(appCtx, sess.id) }
         else Store.saveChatPrefs(appCtx, sess.id, mode, model, effort)
+        // the server keeps the chat's settings for all your devices: what was picked on the computer or the watch wins over this phone's memory
+        if (!m.guest) {
+            val got = runCatching { withContext(Dispatchers.IO) { Relay.runSettings(m, sess.id) } }.getOrNull()
+            if (got != null) { if (got.first.isNotEmpty()) mode = got.first; model = got.second; effort = got.third; Store.saveChatPrefs(appCtx, sess.id, mode, model, effort) }
+            else if (Store.hasChatPrefs(appCtx, sess.id)) withContext(Dispatchers.IO) { runCatching { Relay.setRunSettings(m, sess.id, mode, model, effort) } }   // a chat from before: this phone's choice becomes the chat's
+        }
     }
+    fun pushRun() { if (sess.id.isNotEmpty() && !m.guest) scope.launch(Dispatchers.IO) { runCatching { Relay.setRunSettings(m, sess.id, mode, model, effort) } } }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
     if (changesOpen) ChangesDialog(m, sess.id, onUndo = { changesOpen = false; undoAsk = true }, onClose = { changesOpen = false })
     if (undoAsk) androidx.compose.material3.AlertDialog(onDismissRequest = { undoAsk = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -722,7 +729,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 withContext(Dispatchers.IO) {
                     var attempt = 0; var gotEvent = false   // a proxy that says 502/503/504 while the server restarts: try again a few times before giving up
                     while (true) { try {
-                    Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model.ifBlank { null }, effort = effort.ifBlank { null }, run = if (isNew && m.secure && Ui.newRun != "vps") Ui.newRun else null, root = isNew && sess.root) { t, tx, e ->
+                    Relay.send(m, sess.id, text, mode, cwd = if (isNew) sess.cwd else null, kind = if (isNew && sess.kind == "talk") "talk" else null, model = model, effort = effort, run = if (isNew && m.secure && Ui.newRun != "vps") Ui.newRun else null, root = isNew && sess.root) { t, tx, e ->
                         gotEvent = true
                         when (t) {
                             "session" -> if (isNew && tx.isNotEmpty()) sess = sess.copy(id = tx, title = text.take(60))
@@ -821,7 +828,7 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
         }
         androidx.compose.animation.AnimatedVisibility(options, enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) { Column(Modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.65f).dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {   // never taller than two thirds of the screen, so the typing bar always stays
             ProjectLine(m, sess.cwd)
-            Pick("Permissions", listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions"), mode) { v -> mode = v; Store.setChatMode(appCtx, sess.id, v); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } }
+            Pick("Permissions", listOf("Auto" to "auto", "Edits" to "acceptEdits", "Plan only" to "plan", "Ask me" to "manual", "Full auto" to "bypassPermissions"), mode) { v -> mode = v; Store.setChatMode(appCtx, sess.id, v); pushRun(); if (sess.id.isNotEmpty()) scope.launch(Dispatchers.IO) { runCatching { Relay.setAuto(m, sess.id, v == "bypassPermissions") }.onFailure { err = it.message ?: "Couldn't change Full auto" } } }
             if (mode == "bypassPermissions") Txt("Full auto: no questions asked.", T.small, color = cs.primary)
             if (m.secure) {
                 var pcs by remember { mutableStateOf<List<Computer>>(emptyList()) }
@@ -829,8 +836,8 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
                 Pick("Runs on", listOf("Auto" to "auto", "Server" to "vps") + pcs.map { (if (it.online) "● " else "○ ") + it.name to it.id }, run) { v -> run = v; scope.launch(Dispatchers.IO) { runCatching { Relay.setRun(m, sess.id, v) } } }
             }
             if (sess.kind != "talk") {
-                Pick("Model", listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku", "Fable" to "fable"), model) { v -> model = v; Store.setChatModel(appCtx, sess.id, v) }
-                Pick("Effort", listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max"), effort) { v -> effort = v; Store.setChatEffort(appCtx, sess.id, v) }
+                Pick("Model", listOf("Default" to "", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku", "Fable" to "fable"), model) { v -> model = v; Store.setChatModel(appCtx, sess.id, v); pushRun() }
+                Pick("Effort", listOf("Default" to "", "Low" to "low", "Medium" to "medium", "High" to "high", "Extra high" to "xhigh", "Max" to "max"), effort) { v -> effort = v; Store.setChatEffort(appCtx, sess.id, v); pushRun() }
             }
             if (sess.kind != "talk" && !guest) WorkflowPanel(m, sess.id)
             Pick("Call me", listOf("Never" to "off", "When it's done" to "done", "Also if it needs me" to "attention"), call) { v -> if (v == "off") { if (call != "off") setCall(call) } else if (call != v) setCall(v) }

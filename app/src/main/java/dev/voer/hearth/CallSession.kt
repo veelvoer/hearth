@@ -202,7 +202,7 @@ object CallSession {
         val buf = StringBuilder(); val reply = StringBuilder()
         val ok = runCatching {
             withContext(Dispatchers.IO) {
-                Relay.send(m, sid, text, mode, brief = app?.let { Store.voiceBrief(it) } ?: false, model = "haiku") { t, tx, _ ->
+                Relay.send(m, sid, text, mode, brief = app?.let { Store.voiceBrief(it) } ?: false, oneOff = true, model = "haiku") { t, tx, _ ->
                     when (t) {
                         "delta" -> { reply.append(tx); buf.append(tx)
                             takeSentences(buf).forEach { if (!drop.get()) { phase = Phase.Speaking; sp.enqueue(spoken(it)) } } }

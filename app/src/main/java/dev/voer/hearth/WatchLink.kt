@@ -62,7 +62,7 @@ class WatchLink : WearableListenerService() {
                 JSONObject().put("asked", asked.take(600)).put("answer", answer.take(4000)).put("steps", JSONArray(steps)).put("ts", ts).put("now", now)
                     .put("plan", runCatching { val (pc, pb) = call(m, "GET", "/sessions/$id/plan"); if (pc == 200) JSONObject(pb).optJSONArray("items")?.let { trimPlan(it) } else null }.getOrNull() ?: JSONArray())
             }
-            "send" -> JSONObject().put("code", call(m, "POST", "/sessions/$id/send", JSONObject().put("text", q.optString("text").take(4000)).put("mode", "acceptEdits"), lines = 2, read = 20_000).first)
+            "send" -> JSONObject().put("code", call(m, "POST", "/sessions/$id/send", JSONObject().put("text", q.optString("text").take(4000)), lines = 2, read = 20_000).first)
             "stop" -> JSONObject().put("code", call(m, "POST", "/stop", JSONObject().put("session", id)).first)
             else -> JSONObject().put("error", "unknown")
         }

@@ -173,6 +173,21 @@ impl Relay {
         let base = json!({"call": "off", "run": "auto", "kind": "code"});
         merge(&base, self.read_cfg().g("prefs").g(sid))
     }
+    /// What a device sends (mode, model, effort: present, even empty = the default) is kept for the chat; what it leaves out comes from the chat.
+    pub fn sync_run_prefs(&self, sid: &str, b: &mut Value) {
+        let p = self.get_prefs(sid);
+        let mut keep = serde_json::Map::new();
+        for k in ["mode", "model", "effort"] {
+            match b.get(k) {
+                Some(Value::String(v)) => {
+                    let ok = match k { "mode" => MODES.contains(&v.as_str()), "model" => v.is_empty() || ["opus", "sonnet", "haiku", "fable"].contains(&v.as_str()), _ => v.is_empty() || ["low", "medium", "high", "xhigh", "max"].contains(&v.as_str()) };
+                    if ok && p.s(k) != *v { keep.insert(k.into(), json!(v)); }
+                }
+                _ => { let v = p.s(k); if !v.is_empty() { set(b, k, json!(v)); } }
+            }
+        }
+        if !keep.is_empty() && !b.t("oneOff") { self.set_prefs(sid, Value::Object(keep)); }   // a voice call's quick model is not the chat's choice
+    }
     pub fn set_prefs(&self, sid: &str, p: Value) -> Value {
         let _g = self.cfg_lock.lock().unwrap();
         let mut c = self.read_cfg();

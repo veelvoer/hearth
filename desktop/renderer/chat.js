@@ -3,6 +3,8 @@
 /** Mode, model and effort belong to a chat and are remembered (also after a restart). The last choice is the start of the next new chat. */
 const chatPrefs = () => { try { return JSON.parse(localStorage.getItem('cm.chatprefs') || '{}'); } catch { return {}; } };
 function loadChatPrefs(id) { const all = chatPrefs(), p = (id && all[id]) || all._ || {}; SS.mode = p.mode || 'acceptEdits'; SS.model = p.model || ''; SS.effort = p.effort || ''; }
+/** Tells the server what you picked for this chat, so your phone and watch run it the same way. */
+function pushRunPrefs(s) { if (s && s.id && !isGuestMid(s.mid)) cm.relay(s.mid, 'POST', `/sessions/${s.id}/prefs`, { mode: SS.mode, model: SS.model, effort: SS.effort }).catch(() => {}); }
 function saveChatPrefs(id) { const all = chatPrefs(), p = { mode: SS.mode, model: SS.model, effort: SS.effort }; all._ = p; if (id) all[id] = p; const keys = Object.keys(all).filter((k) => k !== '_'); if (keys.length > 300) for (const k of keys.slice(0, keys.length - 300)) delete all[k]; try { localStorage.setItem('cm.chatprefs', JSON.stringify(all)); } catch { /* full */ } }
 const SS = { machines: [], mid: null, live: {}, list: [], err: null, sel: null, msgs: [], parts: [], sending: false, mode: 'acceptEdits', model: '',
   search: '', closed: {}, found: [], pairing: false, voice: null, timers: [], chatErr: null, open: new Set(), lastCwd: '', projects: {}, effort: '', call: 'off', perms: [], queue: [], lastRun: null, opts: false, files: [], status: {} };
@@ -277,7 +279,12 @@ function openSessionNow(s, voice) {
 async function loadCall() {
   const s = SS.sel;
   if (!s || !s.id) return;
-  try { const pr = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/prefs`); SS.call = pr.call || 'off'; SS.run = pr.run || 'auto'; } catch { SS.call = null; }  // null: this relay has no call preferences
+  try {
+    const pr = await cm.relay(s.mid, 'GET', `/sessions/${s.id}/prefs`); SS.call = pr.call || 'off'; SS.run = pr.run || 'auto';
+    // the chat's mode, model and effort are kept on the server for all your devices: what was picked on the phone or watch wins
+    if (SS.sel === s && !isGuestMid(s.mid) && ('mode' in pr || 'model' in pr || 'effort' in pr)) { if (pr.mode) SS.mode = pr.mode; if ('model' in pr) SS.model = pr.model || ''; if ('effort' in pr) SS.effort = pr.effort || ''; saveChatPrefs(s.id); }
+    else if (SS.sel === s && !isGuestMid(s.mid) && chatPrefs()[s.id]) pushRunPrefs(s);   // a chat from before: what this computer remembers becomes the chat's
+  } catch { SS.call = null; }  // null: this relay has no call preferences
   if (SS.sel === s) drawPane();
 }
 async function setRun(v) {
@@ -489,9 +496,9 @@ function composer() {
   const sel = (opts, cur, fn) => h('select', { class: 'sel', onchange: (e) => fn(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));
   const box = h('div', { class: 'composer' }, h('div', { class: 'cbox' }, menu, h('div', { id: 'files', class: 'files' }), ta,
     h('div', { class: 'row cfoot' },
-      ...(isGuestMid(s.mid) ? [] : [sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; saveChatPrefs(s.id); drawPane(); setChatAuto(v === 'bypassPermissions'); }),
-      sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']], SS.model, (v) => { SS.model = v; saveChatPrefs(s.id); }),
-      sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; saveChatPrefs(s.id); })]),
+      ...(isGuestMid(s.mid) ? [] : [sel([['auto', 'Auto'], ['acceptEdits', 'Edits'], ['plan', 'Plan only'], ['manual', 'Ask me'], ['bypassPermissions', 'Full auto']], SS.mode, (v) => { SS.mode = v; saveChatPrefs(s.id); pushRunPrefs(s); drawPane(); setChatAuto(v === 'bypassPermissions'); }),
+      sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']], SS.model, (v) => { SS.model = v; saveChatPrefs(s.id); pushRunPrefs(s); }),
+      sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; saveChatPrefs(s.id); pushRunPrefs(s); })]),
       h('div', { class: 'grow' }),
       SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,
       (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
@@ -752,7 +759,7 @@ function sendMsg(text) {
     else if (ev.t === 'end') { finish(false, gotAny ? undefined : 'The server did not answer. Your message is back in the box, send it again.'); return; }
     if (live) scheduleLive();
   };
-  cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, root: s.isNew && s.root ? true : undefined, model: SS.model || undefined, effort: SS.effort || undefined })
+  cm.send(s.mid, s.id || null, text, SS.mode, false, sid, { run: s.isNew && SS.runOn && SS.runOn !== 'vps' && (SS.machines.find((x) => x.id === s.mid) || {}).secure ? SS.runOn : undefined, cwd: s.isNew && s.kind !== 'talk' ? s.cwd : undefined, kind: s.isNew && s.kind === 'talk' ? 'talk' : undefined, root: s.isNew && s.root ? true : undefined, model: SS.model || '', effort: SS.effort || '' })
     .catch((e) => { finish(false, clean(e) + ' Your message is back in the box.'); });
 }
 

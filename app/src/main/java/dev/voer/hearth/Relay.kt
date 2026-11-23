@@ -334,6 +334,18 @@ object Relay {
         try { c.outputStream.use { it.write(JSONObject().put("run", run).toString().toByteArray()) }; c.responseCode } finally { c.disconnect() }
     }
 
+    /** The chat's mode, model and effort as kept on the server (the same on every device); null when the server keeps none yet. */
+    fun runSettings(m: Machine, id: String): Triple<String, String, String>? {
+        val o = JSONObject(getJson(m, "/sessions/$id/prefs"))
+        if (!o.has("mode") && !o.has("model") && !o.has("effort")) return null
+        return Triple(o.optString("mode"), o.optString("model"), o.optString("effort"))
+    }
+    /** Tells the server what you picked, so your other devices (and the watch) use the same. */
+    fun setRunSettings(m: Machine, id: String, mode: String, model: String, effort: String) {
+        val c = open(m, "/sessions/$id/prefs", post = true)
+        try { c.outputStream.use { it.write(JSONObject().put("mode", mode).put("model", model).put("effort", effort).toString().toByteArray()) }; c.responseCode } finally { c.disconnect() }
+    }
+
     fun setPrefs(m: Machine, id: String, call: String) {
         val c = open(m, "/sessions/$id/prefs", post = true)
         try { c.outputStream.use { it.write(JSONObject().put("call", call).toString().toByteArray()) }; c.responseCode } finally { c.disconnect() }
@@ -360,7 +372,7 @@ object Relay {
     }
 
     /** Streams one turn. [onEvent] gets ("delta"|"tool"|"done", text, isError). Blocks until the turn ends. */
-    fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, run: String? = null, root: Boolean = false, onEvent: (String, String, Boolean) -> Unit) {
+    fun send(m: Machine, id: String, text: String, mode: String, brief: Boolean = false, oneOff: Boolean = false, cwd: String? = null, kind: String? = null, model: String? = null, effort: String? = null, run: String? = null, root: Boolean = false, onEvent: (String, String, Boolean) -> Unit) {
         var lastN = -1; var finished = false; var chat = id
         /** One line of the run. Events carry a running number, so one that was already seen (after joining the run again) is skipped. */
         fun take(line: String) {
@@ -377,6 +389,7 @@ object Relay {
         val c = open(m, "/sessions/${id.ifEmpty { "new" }}/send", post = true, read = 5 * 60_000)
         try {
             val body = JSONObject().put("text", text).put("mode", mode).put("brief", brief)
+            if (oneOff) body.put("oneOff", true)   // this run's settings are not the chat's (a voice call)
             if (id.isEmpty() && cwd != null) body.put("cwd", cwd)
             if (id.isEmpty() && kind != null) body.put("kind", kind)
             if (model != null) body.put("model", model)

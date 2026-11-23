@@ -207,7 +207,7 @@ object Api {
 
     fun send(s: Server, id: String, text: String) {
         val code = Phone.ask(s, "send") { put("id", id); put("text", text) }?.optInt("code")
-            ?: post(s, "/sessions/$id/send", JSONObject().put("text", text).put("mode", "acceptEdits"), read = 20_000)
+            ?: post(s, "/sessions/$id/send", JSONObject().put("text", text), read = 20_000)
         if (code == 409) throw IOException("Claude is still busy with this chat")
         if (code != 200) throw IOException("${s.name} said $code")
     }

@@ -437,7 +437,9 @@ impl Relay {
                     let mut patch = obj();
                     if ["off", "done", "attention"].contains(&b.s("call").as_str()) { set(&mut patch, "call", json!(b.s("call"))); }
                     if crate::agent::valid_run(b.g("run")) { set(&mut patch, "run", b.g("run").clone()); }
-                    return j(200, self.set_prefs(&sid, patch));
+                    if !patch.as_object().map(|o| o.is_empty()).unwrap_or(true) { self.set_prefs(&sid, patch); }
+                    let mut b2 = b.clone(); self.sync_run_prefs(&sid, &mut b2);   // mode, model and effort, picked on any device
+                    return j(200, self.get_prefs(&sid));
                 }
                 "send" => return self.send(&sid, b, gz).await,
                 _ => {}
@@ -529,6 +531,9 @@ impl Relay {
     /// A message for a chat (or the first one of a new chat).
     async fn send(self: &Arc<Self>, sidr: &str, mut b: Value, gz: bool) -> Resp {
         let j = |code: u16, v: Value| json_resp(code, &v, gz);
+        // the run settings of a chat (mode, model, effort) live here, so every device uses the same: what a device sends is kept
+        // for the chat, and a device that sends none of them (the watch, "continue" from a notification) gets the chat's own
+        if sidr != "new" { self.sync_run_prefs(sidr, &mut b); }
         let mode_of = |b: &Value| if MODES.contains(&b.s("mode").as_str()) { b.s("mode") } else { "auto".into() };
         if sidr != "new" { if let Some(away) = self.hub_sync.as_ref().and_then(|h| h.find_elsewhere_v(sidr)) {   // this chat's files only exist on one of your computers: hand the message to it
             let p = self.get_prefs(sidr);

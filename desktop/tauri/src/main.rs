@@ -498,6 +498,7 @@ fn send(m: Value, session: String, text: Value, mode: Value, voice: bool, sid: S
             let mut o = o; o["sid"] = json!(sid.clone()); emit("stream", o);
         } };
         let mut body = json!({"text": text, "mode": mode, "brief": voice});
+        if voice { body["oneOff"] = json!(true); }   // a voice call's settings are not the chat's
         if let Some(x) = extra.as_object() { for (k, v) in x { if !v.is_null() { body[k] = v.clone(); } } }
         let path = format!("/sessions/{}/send", if session.is_empty() { "new" } else { &session });
         let first = match net::request(&a.long, &m, "POST", &path, Some((body.to_string().into_bytes(), "application/json")), None).await {

@@ -28,6 +28,7 @@ pub struct JobState {
     pub want_call: String,
     pub want_kind: String,
     pub want_root: bool,
+    pub want_run: Value,   // a new chat's mode, model and effort, kept for it once it has its id
     pub want_auto: bool,
     pub routine: String,
     pub by: String,
@@ -184,7 +185,8 @@ impl Relay {
         let mut child = match cmd.spawn() { Ok(c) => c, Err(e) => return Err((500, format!("Could not start Claude: {e}"))) };
         let job = Arc::new(Job { key: key.clone(), cwd: cwd.clone(), started: now_ms(), root_launch, bugs: bugs_on, resume_body: json!({"mode": body.g("mode"), "model": body.g("model"), "fresh": body.t("fresh")}), pid: Mutex::new(child.id()), st: Mutex::new(JobState {
             sid: if sid_param == "new" { String::new() } else { sid_param.into() }, want_kind: if kind == "talk" && sid_param == "new" { "talk".into() } else { String::new() },
-            want_root: as_root, want_auto: as_root && bmode == "bypassPermissions" && self.bypass_ok(), ..Default::default() }) });
+            want_root: as_root, want_auto: as_root && bmode == "bypassPermissions" && self.bypass_ok(),
+            want_run: if sid_param == "new" { let mut w = serde_json::Map::new(); for k in ["mode", "model", "effort"] { if let Some(Value::String(v)) = body.get(k) { if !v.is_empty() { w.insert(k.into(), json!(v)); } } } Value::Object(w) } else { Value::Null }, ..Default::default() }) });
         self.jobs.lock().unwrap().insert(key.clone(), job.clone());
         crate::agent::kick(self, "job-start");
         // "call me when it's done" typed into the chat sets the call preference for this chat
@@ -228,7 +230,8 @@ impl Relay {
             let sid = o.s("session_id");
             let need = !sid.is_empty() && job.sid().is_empty();
             if need {
-                let (wc, wk, wr, wa) = { let mut g = job.st.lock().unwrap(); g.sid = sid.clone(); (g.want_call.clone(), g.want_kind.clone(), g.want_root, g.want_auto) };
+                let (wc, wk, wr, wa, wrun) = { let mut g = job.st.lock().unwrap(); g.sid = sid.clone(); (g.want_call.clone(), g.want_kind.clone(), g.want_root, g.want_auto, g.want_run.clone()) };
+                if wrun.as_object().map(|o| !o.is_empty()).unwrap_or(false) { self.set_prefs(&sid, wrun); }
                 self.jobs.lock().unwrap().insert(sid.clone(), job.clone());
                 self.note_run(&sid, &job.cwd, text);
                 if !wc.is_empty() { self.set_prefs(&sid, json!({"call": wc})); }
