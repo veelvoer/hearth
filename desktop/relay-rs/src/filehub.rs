@@ -17,6 +17,11 @@ fn skip_file(n: &str) -> bool {
     n == ".DS_Store" || n == "Thumbs.db" || n.ends_with(".pyc") || n.ends_with(".swp") || n.ends_with('~') || n.starts_with(".hearth-tmp-") || n.starts_with(".syncthing.") || n.contains(".sync-conflict-") || n == "index.lock" || n.ends_with(".lock")
 }
 
+/// Inside a git folder (of any project)?
+fn in_git(rel: &str) -> bool { rel.starts_with(".git/") || rel.contains("/.git/") }
+/// A git object or pack: named after its own content, so two copies of one name are the same file, whatever their times say.
+fn git_immutable(rel: &str) -> bool { in_git(rel) && (rel.contains("/objects/") || rel.contains(".git/objects/")) }
+
 /// Every syncable file below root as { 'rel/path': [size, mtimeMs, mode] }.
 pub fn scan(root: &str) -> BTreeMap<String, [f64; 3]> {
     let mut out = BTreeMap::new();
@@ -28,7 +33,7 @@ pub fn scan(root: &str) -> BTreeMap<String, [f64; 3]> {
             let r = if rel.is_empty() { n.clone() } else { format!("{rel}/{n}") };
             let Ok(ft) = e.file_type() else { continue };
             if ft.is_dir() { if !SKIP_DIRS.contains(&n.as_str()) { walk(&e.path(), &r, false, out); } }
-            else if ft.is_file() && !skip_file(&n) {
+            else if ft.is_file() && !skip_file(&n) && !(n.contains(".conflict-") && in_git(&r)) {   // copies a past conflict left inside a git folder are junk
                 if let Ok(m) = e.metadata() { if m.len() <= MAX_FILE { out.insert(r, [m.len() as f64, mtime_ms(&m).floor(), mode_of(&m) as f64]); } }
             }
         }
@@ -160,9 +165,12 @@ impl FileAgent {
                 let l = local.get(&rel).copied(); let h = hub.get(&rel).and_then(arr3); let b = base.get(&rel).cloned();
                 let bl = b.as_ref().and_then(|b| arr3(b.g("l"))); let bh = b.as_ref().and_then(|b| arr3(b.g("h")));
                 if l.is_some() && h.is_some() && !differs(l, h) { files_next.insert(rel.clone(), json!({"l": l.unwrap().map(num), "h": h.unwrap().map(num)})); continue; }
+                // git objects keep their name for their content: both sides having one is agreement (no conflict copies of 400,000 objects)
+                if l.is_some() && h.is_some() && git_immutable(&rel) { files_next.insert(rel.clone(), json!({"l": l.unwrap().map(num), "h": h.unwrap().map(num)})); continue; }
                 let lc = l.is_some() && (b.is_none() || differs(l, bl)); let hc = h.is_some() && (b.is_none() || differs(h, bh));
                 if l.is_some() && h.is_some() {
                     if lc && !hc { push.push(rel); } else if hc && !lc { pull.push(rel); }
+                    else if in_git(&rel) { if l.unwrap()[1] >= h.unwrap()[1] { push.push(rel); } else { pull.push(rel); } }   // git's own state files (index, HEAD, refs): the newest wins, no copies
                     else if l.unwrap()[1] >= h.unwrap()[1] { push.push(rel.clone()); conflict.push((rel, "hub")); }
                     else { pull.push(rel.clone()); conflict.push((rel, "local")); }
                 } else if l.is_some() { if b.is_some() && !lc { del_local.push(rel); } else { push.push(rel); } }
@@ -243,4 +251,15 @@ impl FileAgent {
         self.save();
     }
     pub async fn allow(self: &Arc<Self>, r: &Arc<crate::relay::Relay>, names: &[String]) -> Value { { let mut s = self.st.lock().unwrap(); s.rejected.retain(|n| !names.contains(n)); } self.save(); self.sync_once(r, "allowed").await }
+}
+
+#[cfg(test)]
+mod git_tests {
+    use super::*;
+    #[test]
+    fn git_rules() {
+        assert!(git_immutable(".git/objects/0a/9d538f") && git_immutable("oxide/.git/objects/pack/pack-1.pack"));
+        assert!(!git_immutable("oxide/.git/index") && !git_immutable("src/objects/a.rs"));
+        assert!(in_git("oxide/.git/HEAD") && !in_git("src/gitx/a"));
+    }
 }

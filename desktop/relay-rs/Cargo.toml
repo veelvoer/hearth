@@ -1,6 +1,6 @@
 [package]
 name = "hearth-relay"
-version = "1.45.2"
+version = "1.45.3"
 edition = "2021"
 description = "The Hearth relay: lists Claude Code chats, runs them, and tells your phone and computer when Claude needs you"
 
