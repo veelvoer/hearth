@@ -250,12 +250,24 @@ async fn run_work(r: &Arc<Relay>, w: &Value) -> Result<(), String> {
     }
     let direct = !w.s("cwd").is_empty();
     let local = if direct { w.s("cwd") } else { std::path::Path::new(&mr).join(w.s("rel")).to_string_lossy().to_string() };
-    let deadline = now_ms() + 4.0 * 60000.0;
+    let deadline = now_ms() + 45.0 * 1000.0;
+    let mut synced = direct;
     while !direct {
-        if std::path::Path::new(&local).exists() { if let Some(f) = crate::core::find_session(&w.s("session")) { if f.mtime >= w.n("chatMtime") - 3000.0 { break; } } }
-        if now_ms() > deadline { return Err("The project or chat has not synced to this computer yet.".into()); }
+        if std::path::Path::new(&local).exists() { if let Some(f) = crate::core::find_session(&w.s("session")) { if f.mtime >= w.n("chatMtime") - 3000.0 { synced = true; break; } } }
+        if now_ms() > deadline { break; }
         kick(r, "wait");
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+    }
+    if !synced {
+        // The project or the chat did not reach this computer (not shared with it, or still syncing). Never leave the task waiting
+        // for nothing: run it now as a new chat in a work folder here, with what is needed to understand it.
+        let dest = std::path::Path::new(&mr).join("Laptop tasks").to_string_lossy().to_string();
+        std::fs::create_dir_all(&dest).map_err(|_| format!("Could not make the folder {dest}"))?;
+        let b = r.base_for("", &dest);
+        r.publish(merge(&b, &json!({"kind": "started", "call": false, "text": format!("Your computer started (the project is not on it, so in a work folder): {}", clip(&w.s("text"), 120))})));
+        let note = "This task was handed to this computer from a chat on the server; the project folder is not on this computer, so you are in a work folder. Do exactly what the task says on this computer (adb, installs, hardware). If it needs project files, say so.\n\nTask:\n";
+        let s = r.start_job(&json!({"text": format!("{note}{}", swap(&w.s("text"))), "mode": w.g("mode"), "model": w.g("model"), "effort": w.g("effort"), "cwd": dest}), "new").map_err(|e| e.1)?;
+        wait_job(&s.job).await; return Ok(());
     }
     if direct && !std::path::Path::new(&local).exists() { return Err("That folder is not on this computer any more.".into()); }
     let sid = w.s("session");
