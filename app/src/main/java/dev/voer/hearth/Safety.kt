@@ -52,6 +52,15 @@ fun SafetyCard() {
         if (d == null) { Spacer(Modifier.height(10.dp)); Skeleton(56.dp, radius = 14.dp); return@Card }
         Row2("Plain language", "Claude explains in everyday words, without jargon or code unless you ask.") { Switch(d.optBoolean("plain", false), { call(JSONObject().put("plain", it)) }) }
         Row2("A plan with every task", "Claude makes a checklist before it starts on a task (not for a question); you follow it in the chat and on your watch. Off: start a message with /plan to get one anyway.") { Switch(d.optBoolean("plans", true), { call(JSONObject().put("plans", it)) }) }
+        if (d.has("improve")) {
+            val cur = d.optString("improve", "button")
+            Label("Improve my prompts")
+            Txt("Haiku rewrites a prompt with more structure so Claude understands it better.", T.small, muted = true)
+            ChipRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("off" to "Off", "button" to "Button", "auto" to "Always").forEach { (v, l) -> Chip(l, cur == v) { call(JSONObject().put("improve", v)) } }
+            }
+            Txt(when (cur) { "off" -> "No button, nothing is rewritten."; "auto" -> "Every prompt is improved as you send it (not slash commands)."; else -> "A button in the message box; you send the improved prompt yourself." }, T.small, muted = true)
+        }
         d.optJSONObject("apiKey")?.let { k ->
             Row2("Run Claude on my API key", if (k.optBoolean("set")) "Key ending in ${k.optString("ends")}" + (if (k.optBoolean("use")) " · in use. You pay Anthropic per use; your plan's limits don't apply." else " · not in use: your Claude account is used.") else "Off: Claude runs on your Claude account. Add a key from console.anthropic.com to run on it instead.") {
                 if (k.optBoolean("set")) Switch(k.optBoolean("use"), { call(JSONObject().put("useApiKey", it)) }) else TextAction("Add a key") { keyEdit = true }

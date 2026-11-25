@@ -500,6 +500,7 @@ function composer() {
       sel([['', 'Default model'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']], SS.model, (v) => { SS.model = v; saveChatPrefs(s.id); pushRunPrefs(s); }),
       sel([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high'], ['max', 'Max effort']], SS.effort, (v) => { SS.effort = v; saveChatPrefs(s.id); pushRunPrefs(s); })]),
       h('div', { class: 'grow' }),
+      improveBtn(s, ta, grow),
       SS.sending || remoteRunning() ? ibtn('stop', 'Stop Claude', stopClaude, 'ghost sm') : null,
       (() => { const b = ibtn('send', SS.sending || remoteWorking() ? 'Queue this message' : 'Send (Enter)', submit, 'primary sm'); b.id = 'send'; return b; })())));
   if (SS.mode === 'bypassPermissions') box.append(h('div', { class: 'small err', style: 'margin-top:6px' }, 'Full auto lets Claude run any command on this computer without asking.'));
@@ -508,6 +509,32 @@ function composer() {
   ta.onpaste = (e) => { const imgs = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => f.type.startsWith('image/')); if (imgs.length) { e.preventDefault(); imgs.forEach(addFile); } };
   setTimeout(renderFiles, 0);
   return box;
+}
+
+/* The prompt improver: a button next to Send that rewrites what you typed with more structure (Haiku). You read it, and send it yourself.
+   Settings → Safety: Off (no button), Button (this), or Always (the server improves every prompt as it is sent). */
+const IMP = { mode: {}, at: {} };
+async function improveMode(mid) {
+  if (IMP.mode[mid] && Date.now() - IMP.at[mid] < 60000) return IMP.mode[mid];
+  try { const d = await cm.relay(mid, 'GET', '/admin/safety'); IMP.mode[mid] = d.improve || 'button'; } catch { IMP.mode[mid] = IMP.mode[mid] || 'off'; }   // an older server has no improver
+  IMP.at[mid] = Date.now(); return IMP.mode[mid];
+}
+function improveBtn(s, ta, grow) {
+  if (isGuestMid(s.mid)) return null;
+  let before = null;
+  const b = h('button', { class: 'ghost sm improve', hidden: true, title: 'Rewrite your prompt with more structure so Claude understands it better. You still send it yourself.' }, icon('sparkle'), h('span', {}, 'Improve'));
+  const label = (t) => { b.lastChild.textContent = t; };
+  improveMode(s.mid).then((m) => { b.hidden = m !== 'button'; });
+  ta.addEventListener('input', () => { if (before !== null && ta.value !== before.improved) { before = null; label('Improve'); } });   // you edited it: the undo is gone
+  b.onclick = async () => {
+    if (before) { ta.value = before.text; before = null; label('Improve'); grow(); ta.focus(); return; }
+    const text = ta.value.trim(); if (!text) { toast('Write a prompt first, then improve it.'); return; }
+    b.disabled = true; label('Improving…');
+    try { const r = await cm.relay(s.mid, 'POST', '/improve', { text }); before = { text: ta.value, improved: r.text }; ta.value = r.text; grow(); saveDraft(s, ta.value); label('Undo'); ta.focus(); }
+    catch (e) { label('Improve'); toast(clean(e)); }
+    b.disabled = false;
+  };
+  return b;
 }
 
 async function loadProjects(mid) {

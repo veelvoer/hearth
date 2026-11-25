@@ -625,6 +625,11 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             else if (Store.hasChatPrefs(appCtx, sess.id)) withContext(Dispatchers.IO) { runCatching { Relay.setRunSettings(m, sess.id, mode, model, effort) } }   // a chat from before: this phone's choice becomes the chat's
         }
     }
+    // the prompt improver: Settings → Safety (Off / Button / Always); the button rewrites the text, you read it and send it yourself
+    var improveOn by remember(m.host) { mutableStateOf(false) }
+    var improving by remember { mutableStateOf(false) }
+    var undoText by remember(sess.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(m.host) { if (!m.guest) improveOn = withContext(Dispatchers.IO) { Relay.improveMode(m) } == "button" }
     fun pushRun() { if (sess.id.isNotEmpty() && !m.guest) scope.launch(Dispatchers.IO) { runCatching { Relay.setRunSettings(m, sess.id, mode, model, effort) } } }
     var asks by remember { mutableStateOf<List<CallEvent>>(emptyList()) }
     if (changesOpen) ChangesDialog(m, sess.id, onUndo = { changesOpen = false; undoAsk = true }, onClose = { changesOpen = false })
@@ -963,6 +968,12 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
 val canStop = working && sess.id.isNotEmpty()
                 // while Claude works: what you type is queued with the send button (or sent at once with "Send now" on it), and Stop sits beside it
                 val stop = canStop && input.isBlank()
+                if (!guest && improveOn && input.isNotBlank() && !working) IconAction("sparkle", if (undoText != null) "Undo the improvement" else "Improve my prompt", Alignment.Center) {
+                    val back = undoText
+                    if (back != null) { input = back; undoText = null }
+                    else if (!improving) { improving = true; val orig = input
+                        scope.launch { runCatching { withContext(Dispatchers.IO) { Relay.improve(m, orig) } }.onSuccess { input = it; undoText = orig }.onFailure { err = it.message ?: "Couldn't improve it" }; improving = false } }
+                }
                 if (!guest && !working && input.isBlank()) IconAction("mic", "Speak your message", Alignment.Center) { runCatching { dictate.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)) }.onFailure { err = "This phone has no speech input." } }
                 if (canStop && !stop) Box(Modifier.size(40.dp).semantics { contentDescription = "Stop"; role = androidx.compose.ui.semantics.Role.Button }.pressable { scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } }.clip(RoundedCornerShape(50)).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) { MorphGlyph("stop", 20.dp, cs.onSurface) }
                 Box(Modifier.size(40.dp).semantics { contentDescription = if (stop) "Stop" else if (canStop) "Queue this message" else if (sending) "Sending" else "Send"; role = androidx.compose.ui.semantics.Role.Button }.pressable { if (stop) scope.launch(Dispatchers.IO) { runCatching { Relay.stop(m, sess.id) }.onFailure { err = "Couldn't stop: " + (it.message ?: "no connection") } } else send() }.clip(RoundedCornerShape(50)).background(cs.primary), contentAlignment = Alignment.Center) {

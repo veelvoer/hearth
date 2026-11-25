@@ -137,6 +137,10 @@ impl Relay {
                 if b.t("remove") { let id = vstr(b.g("remove")); list.retain(|x| x.s("id") != id); }
                 self.write_cfg(json!({"memory": list})); return j(200, json!({"notes": list}));
             }
+            ("improve", "") if n == 1 => {
+                if self.improve_mode() == "off" { return j(403, json!({"error": "The prompt improver is switched off in Settings."})); }
+                return match self.improve_prompt(&b.s("text")).await { Ok(t) => j(200, json!({"text": t})), Err((c, e)) => j(c, json!({"error": e})) };
+            }
             ("templates", "") if n == 1 => {
                 let mut list = arr(&self.cfg("templates"));
                 if b.g("add").is_object() {
@@ -149,6 +153,7 @@ impl Relay {
                 self.write_cfg(json!({"templates": list})); return j(200, json!({"templates": list}));
             }
             ("admin", "safety") => {
+                if ["off", "button", "auto"].contains(&b.s("improve").as_str()) { self.write_cfg(json!({"improve": b.s("improve")})); }
                 for k in ["plain", "snapshots", "backups", "plans", "useApiKey"] { if b.get(k).is_some() { self.write_cfg(json!({ k: b.t(k) })); } }
                 if let Some(Value::String(k)) = b.get("apiKey") {   // "" removes it
                     let k = k.trim();
@@ -534,6 +539,11 @@ impl Relay {
         // the run settings of a chat (mode, model, effort) live here, so every device uses the same: what a device sends is kept
         // for the chat, and a device that sends none of them (the watch, "continue" from a notification) gets the chat's own
         if sidr != "new" { self.sync_run_prefs(sidr, &mut b); }
+        // "always improve": every prompt gets more structure before it runs (not slash commands, voice turns or very short ones)
+        if self.improve_mode() == "auto" && !b.t("brief") && !b.t("oneOff") {
+            let t = b.s("text"); let tt = t.trim();
+            if tt.chars().count() >= 25 && !tt.starts_with('/') { if let Ok(better) = self.improve_prompt(tt).await { set(&mut b, "text", json!(better)); } }
+        }
         let mode_of = |b: &Value| if MODES.contains(&b.s("mode").as_str()) { b.s("mode") } else { "auto".into() };
         if sidr != "new" { if let Some(away) = self.hub_sync.as_ref().and_then(|h| h.find_elsewhere_v(sidr)) {   // this chat's files only exist on one of your computers: hand the message to it
             let p = self.get_prefs(sidr);

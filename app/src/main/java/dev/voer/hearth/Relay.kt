@@ -334,6 +334,21 @@ object Relay {
         try { c.outputStream.use { it.write(JSONObject().put("run", run).toString().toByteArray()) }; c.responseCode } finally { c.disconnect() }
     }
 
+    /** The prompt improver's mode on that server: "off", "button" or "auto". An older server has none: "off". */
+    fun improveMode(m: Machine): String = runCatching { JSONObject(getJson(m, "/admin/safety")).optString("improve", "off") }.getOrDefault("off")
+
+    /** The same prompt with more structure (Haiku on the server). */
+    fun improve(m: Machine, text: String): String {
+        val c = open(m, "/improve", post = true, read = 70_000)
+        try {
+            c.outputStream.use { it.write(JSONObject().put("text", text).toString().toByteArray()) }
+            val code = c.responseCode
+            val body = (if (code == 200) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+            if (code != 200) throw ApiException(code, runCatching { JSONObject(body).optString("error") }.getOrDefault("").ifBlank { "Couldn't improve it ($code)" })
+            return JSONObject(body).optString("text").ifBlank { throw ApiException(502, "No improved prompt came back.") }
+        } finally { c.disconnect() }
+    }
+
     /** The chat's mode, model and effort as kept on the server (the same on every device); null when the server keeps none yet. */
     fun runSettings(m: Machine, id: String): Triple<String, String, String>? {
         val o = JSONObject(getJson(m, "/sessions/$id/prefs"))

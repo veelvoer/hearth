@@ -21,6 +21,7 @@ pub const BRIEF: &str = "The user is listening to your reply read aloud. Keep it
 pub const PLAIN: &str = " The user prefers plain language: explain in everyday words, avoid jargon, code and tool names unless asked, keep answers short, and say what you did and what they can do next.";
 pub const PLAN_PROMPT: &str = "Plans: the user follows a checklist of your work on their phone and watch. So whenever a message asks you to do something (change, make, fix, run, check or look into anything, even something small), your very first action is to make that checklist: call TaskCreate once per step (2 to 7 steps, short plain words, each with an activeForm like \"Writing the parser\"; load TaskCreate and TaskUpdate with ToolSearch first if they are not loaded). Then, as you work, use TaskUpdate to set exactly one step to in_progress and each step to completed as soon as it is done, and finish with every step completed. Only when the message is just a question or chat that you answer without doing anything, make no checklist.";
 pub const PLAN_FORCED: &str = "The user asked for a plan: before you start, make a short plan with your task list tools (TaskCreate for each step, then TaskUpdate; load them with ToolSearch if they are not loaded yet), even if the task is small, keep exactly one step in progress, and mark each step completed as soon as it is done.";
+pub const IMPROVE_PROMPT: &str = "You improve prompts that a person is about to send to an AI coding assistant. Rewrite the prompt inside <prompt> tags so the assistant understands it better: state the goal first, then list the concrete requirements as short bullets, name constraints and the expected result, and keep every detail the person gave. Do not invent requirements, files, names or facts; do not answer the prompt or do the task. Keep the person's language and tone. Keep it short: a simple request stays a sentence or two, a long one gets clear structure. If the prompt is already clear, return it nearly unchanged. Reply with the improved prompt only: no tags, no quotes, no explanation.";
 pub const MIN_DONE_SECONDS: f64 = 20.0;
 pub const PERMISSION_WAIT_MS: u64 = 25000;
 pub const JOB_PERMISSION_WAIT_MS: u64 = 15 * 60000;
@@ -240,6 +241,20 @@ impl Relay {
     pub fn api_key_view(&self) -> Value {
         let k = std::fs::read_to_string(self.dir.join("anthropic-key")).map(|k| k.trim().to_string()).unwrap_or_default();
         json!({"set": !k.is_empty(), "ends": if k.len() > 4 { k[k.len() - 4..].to_string() } else { String::new() }, "use": self.read_cfg().get("useApiKey") == Some(&Value::Bool(true)) && !k.is_empty()})
+    }
+    /// The prompt improver: "off" (no button), "button" (a button next to the message box; the default) or "auto" (every prompt is improved before it is sent).
+    pub fn improve_mode(&self) -> String { let m = self.read_cfg().s("improve"); if ["off", "button", "auto"].contains(&m.as_str()) { m } else { "button".into() } }
+    /// Rewrites a prompt with more structure, with Haiku, keeping its meaning and language. Err = (code, why).
+    pub async fn improve_prompt(&self, text: &str) -> Result<String, (u16, String)> {
+        let t = text.trim(); if t.is_empty() { return Err((400, "Write something first.".into())); }
+        let Some(cl) = find_claude() else { return Err((500, "Claude Code was not found on this computer.".into())) };
+        let home = std::env::temp_dir().join("hearth-improve"); let _ = std::fs::create_dir_all(&home);
+        let args: Vec<String> = ["-p", "--output-format", "json", "--model", "haiku", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--system-prompt", IMPROVE_PROMPT].iter().map(|s| s.to_string()).collect();
+        let jv = crate::jobs::run_once(&cl, args, &home.to_string_lossy(), format!("<prompt>\n{}\n</prompt>", clip(t, 12000)), 60000, "Improving took too long.").await?;
+        let out = jv.s("result").trim().to_string();
+        let out = out.trim_start_matches("<prompt>").trim_end_matches("</prompt>").trim().to_string();
+        if jv.t("is_error") || out.is_empty() { return Err((502, "No improved prompt came back.".into())); }
+        Ok(out)
     }
     pub fn backups_on(&self) -> bool { self.read_cfg().get("backups") == Some(&Value::Bool(true)) }
     pub fn away(&self) -> bool { self.read_cfg().t("away") }

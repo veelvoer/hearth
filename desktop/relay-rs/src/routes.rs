@@ -414,7 +414,7 @@ impl Relay {
     }
     pub fn safety_view(&self, extra: Value) -> Value {
         let (pd, pc) = self.budget_cfg();
-        merge(&extra, &json!({"plain": self.read_cfg().t("plain"), "plans": self.plans_on(), "apiKey": self.api_key_view(), "snapshots": self.snapshots_on(), "backups": {"on": self.backups_on(), "list": crate::safety::list_backups(&self.dir)}, "budget": {"perDay": num(pd), "perChat": num(pc), "usedDay": (self.cost_last_day() * 100.0).round() / 100.0}}))
+        merge(&extra, &json!({"plain": self.read_cfg().t("plain"), "plans": self.plans_on(), "improve": self.improve_mode(), "apiKey": self.api_key_view(), "snapshots": self.snapshots_on(), "backups": {"on": self.backups_on(), "list": crate::safety::list_backups(&self.dir)}, "budget": {"perDay": num(pd), "perChat": num(pc), "usedDay": (self.cost_last_day() * 100.0).round() / 100.0}}))
     }
     fn doctor(self: &Arc<Self>) -> Value {
         let mut checks = vec![];
