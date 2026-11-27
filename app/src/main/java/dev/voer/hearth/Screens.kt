@@ -91,6 +91,8 @@ object Ui {
     var history by mutableStateOf<List<Sample>>(emptyList())
     var rev by mutableIntStateOf(0)
     var chatOpen by mutableStateOf(false)
+    var resumes by mutableIntStateOf(0)   // counts every return to the app: screens that were running in the background catch up
+
     var tab by mutableIntStateOf(0)
     var machinesRev by mutableIntStateOf(0)
     var chatPrefsRev by mutableIntStateOf(0)

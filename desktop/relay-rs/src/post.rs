@@ -70,8 +70,12 @@ impl Relay {
         }
         if p0 == "upload" {
             let mut cwd = q.qs("cwd"); let sid = q.qs("session");
-            if !sid.is_empty() { cwd = crate::core::find_session(&sid).map(|f| crate::core::summary(&f).cwd).unwrap_or_default(); }
-            if !is_dir(Path::new(&cwd)) { return j(400, json!({"error": "unknown project folder"})); }
+            if !sid.is_empty() { let from_chat = crate::core::find_session(&sid).map(|f| crate::core::summary(&f).cwd).unwrap_or_default(); if !from_chat.is_empty() { cwd = from_chat; } }
+            // a chat that runs on one of your computers has its folder there, not here: keep the file in a synced "Uploads" folder
+            // inside the projects folder instead of failing; the computer gets it (and the path inside the message) through sync
+            if !is_dir(Path::new(&cwd)) {
+                match &self.root { Some(r) if is_dir(Path::new(r)) => { cwd = Path::new(r).join("Uploads").to_string_lossy().to_string(); let _ = std::fs::create_dir_all(&cwd); } _ => return j(400, json!({"error": "unknown project folder"})) }
+            }
             if !self.ok_dir(&cwd) { return j(403, json!({"error": "outside the projects folder"})); }
             let raw = basename(&{ let n = q.qs("name"); if n.is_empty() { "file".into() } else { n } });
             let safe = regex::Regex::new(r"[^A-Za-z0-9._-]+").unwrap().replace_all(&raw, "_").to_string();

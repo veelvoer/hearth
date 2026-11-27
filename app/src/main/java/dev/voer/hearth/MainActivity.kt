@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() {
-        super.onResume(); Visible.now = true; WearSync.push(this)
+        super.onResume(); Visible.now = true; Ui.resumes++; WearSync.push(this)
         Ui.load(this)
         keepUsageLive()
         if (Build.VERSION.SDK_INT >= 33 && !askedNotif && Store.signedIn(this) &&
@@ -173,14 +173,15 @@ private fun Main() {
                     (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { d * it / 6 } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260))) togetherWith
                         (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { -d * it / 6 } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180))) }
             }) { t -> when (t) { 0 -> SessionsScreen(); 1 -> UsageScreen(); 2 -> HistoryScreen(); else -> SettingsScreen() } }
-            if (Fx.m3) androidx.compose.animation.AnimatedVisibility(!Ui.chatOpen, Modifier.align(Alignment.BottomCenter),
+            // a new copy of the dock after every return to the app: an animation that was frozen halfway in the background must not leave it over the message box
+            if (Fx.m3) androidx.compose.runtime.key(Ui.resumes) { androidx.compose.animation.AnimatedVisibility(!Ui.chatOpen, Modifier.align(Alignment.BottomCenter),
                 enter = androidx.compose.animation.slideInVertically(Spr.move()) { it } + androidx.compose.animation.fadeIn(Spr.fade()),
                 exit = androidx.compose.animation.slideOutVertically(Spr.move()) { it } + androidx.compose.animation.fadeOut(Spr.fade())) {
                 // the floating dock: the four places, and on Chats the add button that grows out of it
                 FloatingDock(tabs.mapIndexed { i, s -> s to listOf("chat", "home", "history", "gear")[i] }, listOf(Tap.Wiggle, Tap.Bounce, Tap.Rewind, Tap.Turn), tab, { Ui.tab = it },
                     showAdd = tab == 0 && Ui.hasMachines, addLabel = "New chat", onAdd = { Ui.startNew = true },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).tourTarget("tabs"), addModifier = Modifier.tourTarget("new"), glass = Fx.glass, settling = transition.isRunning)
-            }
+            } }
         } }
         if (!Ui.chatOpen) {
             val cs = MaterialTheme.colorScheme

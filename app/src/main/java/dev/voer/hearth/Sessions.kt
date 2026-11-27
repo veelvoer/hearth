@@ -720,6 +720,14 @@ private fun Chat(m: Machine, s0: Sess, startVoice: Boolean = false, onClear: () 
             pollDelay(3_000)
         }
     }
+    // back from the background: the answer that came in meanwhile shows at once (a send that was cut off by the phone sleeping must not hold the chat on "sending")
+    LaunchedEffect(Ui.resumes) {
+        if (Ui.resumes == 0 || sess.id.isEmpty()) return@LaunchedEffect
+        val w = withContext(Dispatchers.IO) { Relay.working(m, sess.id) }
+        if (w == false && sending) { sending = false; parts.clear() }
+        if (w != null) serverBusy = w
+        reload()
+    }
     val total = msgs.size + parts.size
     LaunchedEffect(total, parts.lastOrNull()?.text?.length) { if (total > 0) list.scrollToItem(total) }
 
