@@ -107,7 +107,7 @@ impl HubFiles {
 
 // ───────── computer side ─────────
 #[derive(Default)]
-struct FState { running: bool, dirty: bool, stopped: bool, last: Value, pending: Vec<Value>, paused: Value, timer: Option<tokio::task::JoinHandle<()>>, files: serde_json::Map<String, Value>, accepted: Vec<String>, rejected: Vec<String> }
+struct FState { arrived: Vec<Value>, running: bool, dirty: bool, stopped: bool, last: Value, pending: Vec<Value>, paused: Value, timer: Option<tokio::task::JoinHandle<()>>, files: serde_json::Map<String, Value>, accepted: Vec<String>, rejected: Vec<String> }
 pub struct FileAgent { root: String, state_file: PathBuf, name: String, tr: Transport, st: Mutex<FState> }
 fn arr3(v: &Value) -> Option<[f64; 3]> { let a = v.as_array()?; Some([vnum(a.first()?), vnum(a.get(1)?), a.get(2).map(vnum).unwrap_or(0.0)]) }
 fn differs(a: Option<[f64; 3]>, b: Option<[f64; 3]>) -> bool { match (a, b) { (Some(a), Some(b)) => a[0] != b[0] || (a[1] - b[1]).abs() > SLACK, _ => true } }
@@ -132,12 +132,12 @@ impl FileAgent {
         let me = self.clone();
         let h = tokio::spawn(async move {
             me.sync_once(&r, "start").await;
-            loop { tokio::time::sleep(std::time::Duration::from_secs(12)).await; if me.st.lock().unwrap().stopped { return; } me.sync_once(&r, "timer").await; }
+            loop { tokio::time::sleep(std::time::Duration::from_secs(6)).await; if me.st.lock().unwrap().stopped { return; } me.sync_once(&r, "timer").await; }
         });
         self.st.lock().unwrap().timer = Some(h);
     }
     pub fn stop(&self) { let mut s = self.st.lock().unwrap(); s.stopped = true; if let Some(t) = s.timer.take() { t.abort(); } }
-    pub fn status(&self) -> Value { let s = self.st.lock().unwrap(); json!({"last": s.last, "pending": s.pending, "paused": s.paused, "rejected": s.rejected, "tracked": s.files.len()}) }
+    pub fn status(&self) -> Value { let s = self.st.lock().unwrap(); json!({"arrived": s.arrived, "last": s.last, "pending": s.pending, "paused": s.paused, "rejected": s.rejected, "tracked": s.files.len()}) }
     pub fn pending(&self) -> Vec<Value> { self.st.lock().unwrap().pending.clone() }
 
     pub fn sync_once<'a>(self: &'a Arc<Self>, r: &'a Arc<crate::relay::Relay>, reason: &'a str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Value> + Send + 'a>> {
@@ -158,6 +158,7 @@ impl FileAgent {
             let (accepted, rejected) = { let s = self.st.lock().unwrap(); (s.accepted.clone(), s.rejected.clone()) };
             let (mut push, mut pull, mut del_local, mut del_hub, mut conflict) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::<(String, &str)>::new());
             let mut pend: BTreeMap<String, (f64, f64, f64)> = BTreeMap::new();
+            let mut auto_new: HashSet<String> = HashSet::new();
             let mut rels: Vec<String> = local.keys().cloned().chain(hub.keys().cloned()).chain(base.keys().cloned()).collect::<HashSet<_>>().into_iter().collect();
             rels.sort();
             let mut files_next = base.clone();
@@ -179,11 +180,21 @@ impl FileAgent {
                     else {
                         let top = if rel.contains('/') { rel.split('/').next().unwrap_or("").to_string() } else { String::new() };
                         if !top.is_empty() && rejected.contains(&top) && !Path::new(&self.root).join(&top).exists() { continue; }
-                        if !top.is_empty() && b.is_none() && !accepted.contains(&top) && !Path::new(&self.root).join(&top).exists() { let p = pend.entry(top).or_insert((0.0, 0.0, 0.0)); p.0 += 1.0; p.1 += hv[0]; p.2 = p.2.max(hv[1]); }
-                        else { pull.push(rel); }
+                        if !top.is_empty() && b.is_none() && !accepted.contains(&top) && !Path::new(&self.root).join(&top).exists() {
+                            // a project made on another device: it comes here by itself (a project you rejected stays away); the app says so
+                            let p = pend.entry(top.clone()).or_insert((0.0, 0.0, 0.0)); p.0 += 1.0; p.1 += hv[0]; p.2 = p.2.max(hv[1]);
+                            auto_new.insert(top);
+                        }
+                        pull.push(rel);
                     }
                 } else { files_next.remove(&rel); }
             }
+            {   // accepted for good, and remembered as "arrived" so the app can tell you
+                let mut st = self.st.lock().unwrap();
+                for (n, p) in &pend { if auto_new.contains(n) { if !st.accepted.contains(n) { st.accepted.push(n.clone()); } st.arrived.push(json!({"name": n, "files": num(p.0), "bytes": num(p.1), "at": now_ms() as i64})); } }
+                let cut = now_ms() as i64 - 6 * 3600_000; st.arrived.retain(|a| a.n("at") as i64 > cut);
+            }
+            pend.clear();
             let mut pending: Vec<Value> = pend.into_iter().map(|(n, p)| json!({"name": n, "files": num(p.0), "bytes": num(p.1), "newest": num(p.2)})).collect();
             pending.sort_by(|a, b| b.n("newest").partial_cmp(&a.n("newest")).unwrap_or(std::cmp::Ordering::Equal));
             r.link.lock().unwrap().pending_projects = pending.clone();

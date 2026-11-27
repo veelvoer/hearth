@@ -589,6 +589,8 @@ async function checkPending() {
   const st = await relayJson(m, 'GET', '/sync/status').catch(() => null); if (!st) return;
   lastPend = (st.pending || []).map((p) => ({ ...p, path: path.join(os.homedir(), 'projects', p.name) }));
   if (main && !main.isDestroyed()) main.webContents.send('pending-projects', lastPend);
+  const arrived = ((st.files || {}).arrived || []).filter((p) => { const k = 'arrived:' + p.name + ':' + p.at; if (pendSeen.has(k)) return false; pendSeen.add(k); return true; });
+  if (arrived.length) { const n = arrived.map((p) => p.name); notify(n.length === 1 ? 'New project: ' + n[0] : n.length + ' new projects', n.join(', ') + ' added to your projects folder, from your phone or server.'); if (main && !main.isDestroyed()) main.webContents.send('projects-arrived', n); }
   const fresh = lastPend.filter((p) => !pendSeen.has(p.name)); fresh.forEach((p) => pendSeen.add(p.name));
   if (fresh.length) notify(fresh.length === 1 ? 'New project: ' + fresh[0].name : fresh.length + ' new projects', 'Made on your server while this computer was off. Open Hearth to install ' + (fresh.length === 1 ? 'it' : 'them') + '.', () => showMain());
 }

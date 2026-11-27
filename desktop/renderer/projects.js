@@ -35,6 +35,7 @@
     newChat(); SS.sel.cwd = dir; SS.sel.title = 'Set up ' + dir.split(/[\\/]/).pop();
     sendMsg('Set this project up on this computer so it runs: install the tools and dependencies it needs, and tell me in simple words how to start it. Do not change the project\'s code.');
   }
+  cm.on('projects-arrived', (n) => { try { toast((n || []).join(', ') + ' added to your projects folder'); } catch { /* no toast yet */ } });
   cm.on('pending-projects', (l) => { list = l || []; if (!list.length) { later = false; } draw(); });
   window.addEventListener('load', () => { later = false; cm.pendingProjects().then((l) => { list = l || []; draw(); }).catch(() => {}); });
 })();

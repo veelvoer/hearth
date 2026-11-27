@@ -10,7 +10,7 @@
     for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
     return btoa(s);
   };
-  const CHANNELS = ['usage', 'goto', 'stream', 'open-session', 'event', 'move-progress', 'update-available', 'update-progress', 'pending-projects', 'pair-requests', 'voice-install'];
+  const CHANNELS = ['usage', 'goto', 'stream', 'open-session', 'event', 'move-progress', 'update-available', 'update-progress', 'pending-projects', 'projects-arrived', 'pair-requests', 'voice-install'];
   const names = {
     state: 'state', refresh: 'refresh', setSettings: 'settings:set', testNotify: 'notify:test', stats: 'stats', pairInfo: 'pair:info', newPairCode: 'pair:newcode',
     installHooks: 'hooks:install', removeHooks: 'hooks:remove', accent: 'system:accent', systemPalette: 'system:palette', systemDark: 'system:dark', setIcon: 'app:icon', setupPaths: 'setup:paths',

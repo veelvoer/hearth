@@ -38,6 +38,7 @@ impl Relay {
             let body = if !q.h("x-gzip").is_empty() { match gunzip(&data) { Some(b) => b, None => return j(400, json!({"error": "bad body"})) } } else { data.to_vec() };
             let base = if q.q.iter().any(|(k, _)| k == "baseSize") { Some(Some((q.qs("baseSize").parse().unwrap_or(0.0), q.qs("baseMtime").parse().unwrap_or(0.0)))) } else if q.q.iter().any(|(k, _)| k == "baseNone") { Some(None) } else { None };
             let out = h.put(&q.qs("rel"), &body, q.qs("mtime").parse().unwrap_or_else(|_| now_ms()), q.qs("mode").parse().unwrap_or(0o644), q.qs("keepOld") == "1", &q.qs("who"), base);
+            if !out.t("error") { self.bump_chats(); }   // the other devices' sync loops wake up at once and fetch it
             return j(if out.t("error") { 400 } else { 200 }, out);
         }
         if p0 == "agent" && p1 == "chats" && p2 == "put" {
@@ -345,7 +346,7 @@ impl Relay {
                     return j(200, h.plan(&mid, &manifest, &move |id| me.is_busy(id)));
                 }
                 "chats" if p2 == "report" => { if let Some(h) = &self.hub_sync { h.note(&clip(&{ let n = b.s("name"); if n.is_empty() { "computer".into() } else { n } }, 60), json!({"last": merge(b.g("stat"), &json!({"received": now_i()}))})); } return j(200, json!({"ok": true})); }
-                "files" if p2 == "delete" => { let Some(h) = &self.hub_files else { return j(404, json!({"error": "this is not the server"})) }; return j(200, h.remove(&b.s("rel"))); }
+                "files" if p2 == "delete" => { let Some(h) = &self.hub_files else { return j(404, json!({"error": "this is not the server"})) }; let r = h.remove(&b.s("rel")); self.bump_chats(); return j(200, r); }
                 "poll" => return j(200, crate::agent::poll(self, &b).await),
                 "event" => {
                     let name = clip(&{ let n = b.s("name"); if n.is_empty() { "laptop".into() } else { n } }, 60);

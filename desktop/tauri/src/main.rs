@@ -412,6 +412,13 @@ async fn check_pending() {
     let list: Vec<Value> = arr(st.g("pending")).into_iter().map(|mut p| { p["path"] = json!(home().join("projects").join(p.s("name")).to_string_lossy()); p }).collect();
     *a.last_pend.lock().unwrap() = Value::Array(list.clone());
     emit("pending-projects", Value::Array(list.clone()));
+    // projects that came here by themselves (made on the phone or the server): say where they are
+    let arrived: Vec<Value> = { let mut seen = a.pend_seen.lock().unwrap(); arr(st.g("files").g("arrived")).into_iter().filter(|p| seen.insert(format!("arrived:{}:{}", p.s("name"), p.n("at") as i64))).collect() };
+    if !arrived.is_empty() {
+        let names: Vec<String> = arrived.iter().map(|p| p.s("name")).collect();
+        notify(&if names.len() == 1 { format!("New project: {}", names[0]) } else { format!("{} new projects", names.len()) }, &format!("{} added to your projects folder, from your phone or server.", names.join(", ")));
+        emit("projects-arrived", json!(names));
+    }
     let fresh: Vec<Value> = { let mut seen = a.pend_seen.lock().unwrap(); list.into_iter().filter(|p| seen.insert(p.s("name"))).collect() };
     if !fresh.is_empty() {
         let t = if fresh.len() == 1 { format!("New project: {}", fresh[0].s("name")) } else { format!("{} new projects", fresh.len()) };

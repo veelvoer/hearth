@@ -18,6 +18,9 @@ const SKIP_FILES = /(^\.DS_Store$|^Thumbs\.db$|\.pyc$|\.swp$|~$|^\.hearth-tmp-|^
 const TOP_SKIP = new Set(['.hearth-trash', '.stfolder', '.stversions', '.claude-chats', '.claude-sync']);
 
 /** Every syncable file below root as { 'rel/path': [size, mtimeMs, mode] }. Symlinks and odd files are left alone. */
+const inGit = (rel) => rel.startsWith('.git/') || rel.includes('/.git/');
+const gitImmutable = (rel) => inGit(rel) && rel.includes('objects/');   // git objects are named after their content: two copies are the same file
+
 function scan(root) {
   const out = {};
   const walk = (dir, rel, top) => {
@@ -26,7 +29,7 @@ function scan(root) {
       if (top && TOP_SKIP.has(e.name)) continue;
       const r = rel ? rel + '/' + e.name : e.name, p = path.join(dir, e.name);
       if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(p, r, false); }
-      else if (e.isFile() && !SKIP_FILES.test(e.name)) {
+      else if (e.isFile() && !SKIP_FILES.test(e.name) && !(e.name.includes('.conflict-') && inGit(r))) {
         try { const s = fs.statSync(p); if (s.size <= MAX_FILE) out[r] = [s.size, Math.floor(s.mtimeMs), s.mode & 0o777]; } catch { /* vanished */ }
       }
     }
@@ -83,8 +86,8 @@ function createHub({ root, onLog = () => {} }) {
 }
 
 // ───────────────────────── computer side ─────────────────────────
-function createAgent({ root, stateFile, name, transport, onLog = () => {}, intervalMs = 12000, onPending = () => {} }) {
-  let timer = null, inflight = null, dirty = false, last = null, pending = [], paused = null;
+function createAgent({ root, stateFile, name, transport, onLog = () => {}, intervalMs = 6000, onPending = () => {} }) {
+  let timer = null, inflight = null, dirty = false, last = null, pending = [], paused = null, arrived = [];
   let state = { files: {}, accepted: [], rejected: [] };
   try { state = { files: {}, accepted: [], rejected: [], ...JSON.parse(fs.readFileSync(stateFile, 'utf8')) }; } catch { /* first run */ }
   const save = () => { try { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile + '.tmp', JSON.stringify(state)); fs.renameSync(stateFile + '.tmp', stateFile); } catch { /* next time */ } };
@@ -102,15 +105,17 @@ function createAgent({ root, stateFile, name, transport, onLog = () => {}, inter
         const hub = JSON.parse(mr.body.toString()).files || {};
         const local = scan(root), base = state.files;
         const plan = { push: [], pull: [], delLocal: [], delHub: [], conflict: [] };
-        const pend = new Map();
+        const pend = new Map(), autoNew = new Set();
         const rels = new Set([...Object.keys(local), ...Object.keys(hub), ...Object.keys(base)]);
         for (const rel of rels) {
           const L = local[rel], H = hub[rel], B = base[rel];
           if (L && H && !differs(L, H)) { state.files[rel] = { l: L, h: H }; continue; }
+          if (L && H && gitImmutable(rel)) { state.files[rel] = { l: L, h: H }; continue; }
           const lc = L && (!B || differs(L, B.l)), hc = H && (!B || differs(H, B.h));
           if (L && H) {
             if (lc && !hc) plan.push.push(rel);
             else if (hc && !lc) plan.pull.push(rel);
+            else if (inGit(rel)) { (L[1] >= H[1] ? plan.push : plan.pull).push(rel); }   // git's own state files: the newest wins, no copies
             else if (L[1] >= H[1]) { plan.push.push(rel); plan.conflict.push([rel, 'hub']); }
             else { plan.pull.push(rel); plan.conflict.push([rel, 'local']); }
           } else if (L) {
@@ -120,11 +125,13 @@ function createAgent({ root, stateFile, name, transport, onLog = () => {}, inter
             else {
               const top = topOf(rel);
               if (top && state.rejected.includes(top) && !fs.existsSync(path.join(root, top))) continue;   // "No thanks": never offered again, never copied
-              if (top && !B && !state.accepted.includes(top) && !fs.existsSync(path.join(root, top))) { const p = pend.get(top) || { name: top, files: 0, bytes: 0, newest: 0 }; p.files++; p.bytes += H[0]; p.newest = Math.max(p.newest, H[1]); pend.set(top, p); }
-              else plan.pull.push(rel);
+              if (top && !B && !state.accepted.includes(top) && !fs.existsSync(path.join(root, top))) { const p = pend.get(top) || { name: top, files: 0, bytes: 0, newest: 0 }; p.files++; p.bytes += H[0]; p.newest = Math.max(p.newest, H[1]); pend.set(top, p); autoNew.add(top); }
+              plan.pull.push(rel);   // a project made on another device comes here by itself (a rejected one stays away)
             }
           } else delete state.files[rel];
         }
+        for (const [n, p] of pend) if (autoNew.has(n)) { if (!state.accepted.includes(n)) state.accepted.push(n); arrived.push({ name: n, files: p.files, bytes: p.bytes, at: Date.now() }); }
+        arrived = arrived.filter((a) => a.at > Date.now() - 6 * 3600e3); pend.clear();
         pending = [...pend.values()].sort((a, b) => b.newest - a.newest);
         onPending(pending);
         // safety brake: a sync that would delete a lot is never right (an unplugged drive, a wrong folder, a moved project)
@@ -183,7 +190,7 @@ function createAgent({ root, stateFile, name, transport, onLog = () => {}, inter
   function allow(names) { state.rejected = state.rejected.filter((n) => !(names || []).includes(n)); save(); return syncOnce('allowed'); }
   const start = () => { stop(); timer = setInterval(() => syncOnce('timer').catch(() => {}), intervalMs); syncOnce('start').catch(() => {}); };
   const stop = () => { if (timer) clearInterval(timer); timer = null; };
-  return { start, stop, syncOnce, accept, reject, allow, kick: (why) => syncOnce(why || 'kick').catch(() => {}), status: () => ({ last, pending, paused, rejected: state.rejected, tracked: Object.keys(state.files).length }) };
+  return { start, stop, syncOnce, accept, reject, allow, kick: (why) => syncOnce(why || 'kick').catch(() => {}), status: () => ({ arrived, last, pending, paused, rejected: state.rejected, tracked: Object.keys(state.files).length }) };
 }
 
 module.exports = { scan, createHub, createAgent, safeRel, SLACK };

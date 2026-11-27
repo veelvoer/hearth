@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const inv = (ch) => (...a) => ipcRenderer.invoke(ch, ...a);
-const CHANNELS = ['usage', 'goto', 'stream', 'open-session', 'event', 'move-progress', 'update-available', 'update-progress', 'pending-projects', 'pair-requests', 'voice-install'];
+const CHANNELS = ['usage', 'goto', 'stream', 'open-session', 'event', 'move-progress', 'update-available', 'update-progress', 'pending-projects', 'projects-arrived', 'pair-requests', 'voice-install'];
 
 contextBridge.exposeInMainWorld('cm', {
   state: inv('state'), refresh: inv('refresh'),

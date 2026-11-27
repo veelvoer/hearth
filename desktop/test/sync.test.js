@@ -97,8 +97,7 @@ let pass = 0, fail = 0; const ok = (name, cond, extra = '') => { (cond ? pass++ 
   ok('11 laptop file reached the server', fs.existsSync(srvRoot + '/app/src/a.txt') && fs.readFileSync(srvRoot + '/app/src/a.txt', 'utf8') === 'hello from laptop');
   ok('11b node_modules not synced', !fs.existsSync(srvRoot + '/app/node_modules'));
   let ov = await call(47792, ltok, 'GET', '/sync/status');
-  ok('12 new server project waits for approval', Array.isArray(ov.pending) && ov.pending.some((p) => p.name === 'newproj') && !fs.existsSync(lapRoot + '/newproj'), JSON.stringify(ov.pending));
-  await call(47792, ltok, 'POST', '/sync/projects/accept', { names: ['newproj'] });
+  ok('12 a project made on the server comes to the laptop by itself, and is reported as arrived', await until(() => fs.existsSync(lapRoot + '/newproj/readme.md')) && (ov.files.arrived || []).some((p) => p.name === 'newproj') && !(ov.pending || []).length, JSON.stringify(ov.files.arrived));
   ok('12b after Install it arrives', fs.existsSync(lapRoot + '/newproj/readme.md') && fs.readFileSync(lapRoot + '/newproj/readme.md', 'utf8') === 'made on the phone');
   W(srvRoot + '/app/src/a.txt', 'edited on server', 1);
   ok('13 server edit reached laptop', await until(() => fs.readFileSync(lapRoot + '/app/src/a.txt', 'utf8') === 'edited on server'));
@@ -113,12 +112,7 @@ let pass = 0, fail = 0; const ok = (name, cond, extra = '') => { (cond ? pass++ 
   for (let i = 0; i < 30; i++) fs.unlinkSync(lapRoot + '/bulk/f' + i + '.txt'); await syncNow();
   ok('16 safety brake: mass delete is held back', fs.existsSync(srvRoot + '/bulk/f5.txt'), JSON.stringify((await call(47792, ltok, 'GET', '/sync/status')).files && (await call(47792, ltok, 'GET', '/sync/status')).files.paused));
   W(srvRoot + '/nope/a.txt', 'not wanted here'); await until(() => fs.existsSync(srvRoot + '/nope/a.txt'), 2); await new Promise((r) => setTimeout(r, 1500)); await syncNow(); await syncNow();
-  const s17 = await call(47792, ltok, 'GET', '/sync/status'); ok('17 another server project shows up as waiting', (s17.pending || []).some((p) => p.name === 'nope'), JSON.stringify(s17.files && s17.files.last && s17.files.last.errors) + JSON.stringify(s17.pending));
-  await call(47792, ltok, 'POST', '/sync/projects/reject', { names: ['nope'] }); await syncNow(); await syncNow();
-  const st17 = await call(47792, ltok, 'GET', '/sync/status');
-  ok('18 Reject: never offered again and never copied', !(st17.pending || []).some((p) => p.name === 'nope') && !fs.existsSync(lapRoot + '/nope') && (st17.files.rejected || []).includes('nope'));
-  await call(47792, ltok, 'POST', '/sync/projects/allow', { names: ['nope'] }); await syncNow();
-  ok('19 "Offer again" brings it back', ((await call(47792, ltok, 'GET', '/sync/status')).pending || []).some((p) => p.name === 'nope'));
+  const s17 = await call(47792, ltok, 'GET', '/sync/status'); ok('17 another server project arrives by itself too', await until(() => fs.existsSync(lapRoot + '/nope/a.txt')) && (s17.files.arrived || []).concat((await call(47792, ltok, 'GET', '/sync/status')).files.arrived || []).some((p) => p.name === 'nope'));
   for (const p of procs) p.kill();
   console.log(`\n${pass} passed, ${fail} failed`);
   fs.rmSync(T, { recursive: true, force: true }); process.exit(fail ? 1 : 0);

@@ -96,8 +96,8 @@ fn sync() {
     c.ok("11 laptop file reached the server", fs::read_to_string(srv.join("projects/app/src/a.txt")).map(|s| s == "hello from laptop").unwrap_or(false));
     c.ok("11b node_modules not synced", !srv.join("projects/app/node_modules").exists());
     let ov = la.t("GET", "/sync/status", &ltok, None).j;
-    c.ok_x("12 new server project waits for approval", arr(&ov["pending"]).iter().any(|p| p["name"] == "newproj") && !lap.join("projects/newproj").exists(), ov["pending"].to_string());
-    la.t("POST", "/sync/projects/accept", &ltok, Some(json!({"names": ["newproj"]})));
+    c.ok_x("12 a project made on the server comes to the laptop by itself, and is reported as arrived", until(&|| lap.join("projects/newproj/readme.md").exists(), 6) && arr(&ov["files"]["arrived"]).iter().any(|p| p["name"] == "newproj") && arr(&ov["pending"]).is_empty(), ov["files"]["arrived"].to_string());
+
     c.ok("12b after Install it arrives", fs::read_to_string(lap.join("projects/newproj/readme.md")).map(|s| s == "made on the phone").unwrap_or(false));
     w(&srv.join("projects/app/src/a.txt"), "edited on server", 1.0);
     c.ok("13 server edit reached laptop", until(&|| fs::read_to_string(lap.join("projects/app/src/a.txt")).map(|s| s == "edited on server").unwrap_or(false), 8));
@@ -114,11 +114,6 @@ fn sync() {
     c.ok_x("16 safety brake: mass delete is held back", srv.join("projects/bulk/f5.txt").exists(), la.t("GET", "/sync/status", &ltok, None).j["files"]["paused"].to_string());
     w(&srv.join("projects/nope/a.txt"), "not wanted here", 10.0); until(&|| lap.join("projects/nope/a.txt").exists(), 2); sleep(1500); sync_now();
     let s17 = la.t("GET", "/sync/status", &ltok, None).j;
-    c.ok_x("17 another server project shows up as waiting", arr(&s17["pending"]).iter().any(|p| p["name"] == "nope"), format!("{}{}", s17["files"]["last"]["errors"], s17["pending"]));
-    la.t("POST", "/sync/projects/reject", &ltok, Some(json!({"names": ["nope"]}))); sync_now();
-    let st17 = la.t("GET", "/sync/status", &ltok, None).j;
-    c.ok("18 Reject: never offered again and never copied", !arr(&st17["pending"]).iter().any(|p| p["name"] == "nope") && !lap.join("projects/nope").exists() && arr(&st17["files"]["rejected"]).iter().any(|x| x == "nope"));
-    la.t("POST", "/sync/projects/allow", &ltok, Some(json!({"names": ["nope"]}))); sync_now();
-    c.ok("19 \"Offer again\" brings it back", arr(&la.t("GET", "/sync/status", &ltok, None).j["pending"]).iter().any(|p| p["name"] == "nope"));
+    c.ok("17 another server project arrives by itself too", until(&|| lap.join("projects/nope/a.txt").exists(), 6));
     c.finish();
 }

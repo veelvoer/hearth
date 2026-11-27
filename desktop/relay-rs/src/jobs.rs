@@ -244,6 +244,12 @@ impl Relay {
             let dl = o.g("event").g("delta");
             if dl.s("type") == "text_delta" { let tx = dl.s("text"); job.st.lock().unwrap().text.push_str(&tx); job.emit(json!({"t": "delta", "text": tx})); }
         } else if t == "assistant" {
+            // a tool that changes files: a moment later the other devices are told, so the files follow while Claude is still working
+            if arr(o.g("message").g("content")).iter().any(|b| b.s("type") == "tool_use" && ["Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"].contains(&b.s("name").as_str())) {
+                static LAST: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+                let now = now_ms() as i64;
+                if now - LAST.load(std::sync::atomic::Ordering::Relaxed) > 3000 { LAST.store(now, std::sync::atomic::Ordering::Relaxed); let me2 = self.clone(); tokio::spawn(async move { tokio::time::sleep(std::time::Duration::from_millis(2500)).await; me2.bump_chats(); crate::agent::kick(&me2, "files-changed"); }); }
+            }
             for b in arr(o.g("message").g("content")) { if b.s("type") == "tool_use" { job.emit(json!({"t": "tool", "id": b.s("id"), "name": b.s("name"), "input": crate::core::tool_input(&b.s("name"), b.get("input")), "text": crate::core::tool_line(&b)})); } }
         } else if t == "user" {
             for b in arr(o.g("message").g("content")) { if b.s("type") == "tool_result" { job.emit(json!({"t": "result", "id": b.s("tool_use_id"), "text": crate::core::result_text(b.get("content")), "error": b.t("is_error")})); } }

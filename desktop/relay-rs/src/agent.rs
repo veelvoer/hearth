@@ -215,7 +215,7 @@ async fn agent_loop(r: Arc<Relay>, gen: u64, l: Link) {
         let ep = r.link.lock().unwrap().last_epoch;
         match agent_post(&r, &l, "/agent/poll", &json!({"epoch": ep}), 30000).await {
             Ok(res) => {
-                if res.get("epoch").is_some() && res.n("epoch") as i64 != ep { r.link.lock().unwrap().last_epoch = res.n("epoch") as i64; kick(&r, "server-changed"); }
+                if res.get("epoch").is_some() && res.n("epoch") as i64 != ep { r.link.lock().unwrap().last_epoch = res.n("epoch") as i64; kick(&r, "server-changed"); let fa = r.link.lock().unwrap().file_agent.clone(); if let Some(f) = fa { let (f, r3) = (f.clone(), r.clone()); tokio::spawn(async move { f.sync_once(&r3, "server-changed").await; }); } }
                 for a in arr(res.g("answers")) {
                     if !a.s("stop").is_empty() { r.stop_job(&a.s("stop")); continue; }
                     r.resolve_pending(&a.s("req"), a.g("value").clone());
