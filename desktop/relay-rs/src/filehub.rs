@@ -132,7 +132,7 @@ impl FileAgent {
         let me = self.clone();
         let h = tokio::spawn(async move {
             me.sync_once(&r, "start").await;
-            loop { tokio::time::sleep(std::time::Duration::from_secs(6)).await; if me.st.lock().unwrap().stopped { return; } me.sync_once(&r, "timer").await; }
+            loop { tokio::time::sleep(std::time::Duration::from_secs(if std::env::var_os("HEARTH_TEST").is_some() { 12 } else { 6 })).await; if me.st.lock().unwrap().stopped { return; } me.sync_once(&r, "timer").await; }
         });
         self.st.lock().unwrap().timer = Some(h);
     }

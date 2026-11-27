@@ -103,7 +103,7 @@ let pass = 0, fail = 0; const ok = (name, cond, extra = '') => { (cond ? pass++ 
   ok('13 server edit reached laptop', await until(() => fs.readFileSync(lapRoot + '/app/src/a.txt', 'utf8') === 'edited on server'));
   fs.unlinkSync(lapRoot + '/app/src/a.txt'); await syncNow();
   ok('14 delete on laptop removes it on server (to trash)', !fs.existsSync(srvRoot + '/app/src/a.txt') && fs.existsSync(srvRoot + '/.hearth-trash'));
-  W(lapRoot + '/app/c.txt', 'v1', 30); await syncNow();
+  W(lapRoot + '/app/c.txt', 'v1', 30); await syncNow(); await new Promise((r) => setTimeout(r, 2500));   // the wake-up this push caused must be over before the two edits
   W(lapRoot + '/app/c.txt', 'laptop v2', 5); W(srvRoot + '/app/c.txt', 'server v2', 1);
   const conflicts = () => fs.readdirSync(lapRoot + '/app').concat(fs.readdirSync(srvRoot + '/app')).filter((n) => n.includes('conflict'));
   ok('15 conflict: newest wins, other kept', await until(() => fs.readFileSync(lapRoot + '/app/c.txt', 'utf8') === 'server v2' && conflicts().length > 0), conflicts().join(',') + ' lap=' + fs.readFileSync(lapRoot + '/app/c.txt', 'utf8') + ' srv=' + fs.readFileSync(srvRoot + '/app/c.txt', 'utf8'));

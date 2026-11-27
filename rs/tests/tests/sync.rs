@@ -103,7 +103,7 @@ fn sync() {
     c.ok("13 server edit reached laptop", until(&|| fs::read_to_string(lap.join("projects/app/src/a.txt")).map(|s| s == "edited on server").unwrap_or(false), 8));
     fs::remove_file(lap.join("projects/app/src/a.txt")).unwrap(); sync_now();
     c.ok("14 delete on laptop removes it on server (to trash)", !srv.join("projects/app/src/a.txt").exists() && srv.join("projects/.hearth-trash").exists());
-    w(&lap.join("projects/app/c.txt"), "v1", 30.0); sync_now();
+    w(&lap.join("projects/app/c.txt"), "v1", 30.0); sync_now(); sleep(2500);   // the wake-up this push caused must be over before the two edits
     w(&lap.join("projects/app/c.txt"), "laptop v2", 5.0); w(&srv.join("projects/app/c.txt"), "server v2", 1.0);
     let conflicts = || -> Vec<String> { let mut v: Vec<String> = vec![]; for d in [lap.join("projects/app"), srv.join("projects/app")] { for e in fs::read_dir(d).unwrap().flatten() { let n = e.file_name().to_string_lossy().to_string(); if n.contains("conflict") { v.push(n); } } } v };
     let okc = until(&|| fs::read_to_string(lap.join("projects/app/c.txt")).map(|s| s == "server v2").unwrap_or(false) && !conflicts().is_empty(), 8);

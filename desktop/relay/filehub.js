@@ -86,7 +86,7 @@ function createHub({ root, onLog = () => {} }) {
 }
 
 // ───────────────────────── computer side ─────────────────────────
-function createAgent({ root, stateFile, name, transport, onLog = () => {}, intervalMs = 6000, onPending = () => {} }) {
+function createAgent({ root, stateFile, name, transport, onLog = () => {}, intervalMs = process.env.HEARTH_TEST ? 12000 : 6000, onPending = () => {} }) {
   let timer = null, inflight = null, dirty = false, last = null, pending = [], paused = null, arrived = [];
   let state = { files: {}, accepted: [], rejected: [] };
   try { state = { files: {}, accepted: [], rejected: [], ...JSON.parse(fs.readFileSync(stateFile, 'utf8')) }; } catch { /* first run */ }
